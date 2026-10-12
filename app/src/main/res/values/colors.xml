@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Z-Agent 配色（深色基底 + QQ 蓝强调；保持原工程色名兼容，勿改名） -->
+<resources>
+    <!-- 背景层次 -->
+    <color name="bg_root">#FF0E1116</color>          <!-- 页面底色 -->
+    <color name="bg_surface">#FF161B22</color>       <!-- 顶栏/底栏/卡片 -->
+    <color name="bg_input">#FF21262D</color>         <!-- 输入框 -->
+    <color name="divider">#FF30363D</color>          <!-- 分隔线 -->
+
+    <!-- 文字 -->
+    <color name="text_primary">#FFE6EDF3</color>
+    <color name="text_secondary">#FF8B949E</color>
+
+    <!-- 语义色（MainActivity.lineColor / showStatus 引用） -->
+    <color name="accent">#FF58A6FF</color>           <!-- AI 输出/强调（QQ 蓝系） -->
+    <color name="ok">#FF3FB950</color>               <!-- 引导/体检成功 -->
+    <color name="warn">#FFD29922</color>             <!-- 用户输入行 -->
+    <color name="danger">#FFF85149</color>           <!-- 致命/桥接异常 -->
+
+    <!-- 胶囊选中态（bg_chip 引用） -->
+    <color name="chip_bg_selected">#332C5A94</color>
+    <color name="chip_stroke">#FF30363D</color>
+
+    <!-- 发送按钮 -->
+    <color name="text_on_accent">#FFFFFFFF</color>
+    <color name="send_pressed">#FF4389E0</color>
+
+    <!-- 兼容插件页/源码弹窗 -->
+    <color name="card_stroke">#FF30363D</color>
+</resources>

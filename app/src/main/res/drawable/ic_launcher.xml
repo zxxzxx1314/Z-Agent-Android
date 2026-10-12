@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 应用图标：深底 + 蓝色 Z（矢量，无位图依赖） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FF161B22"
+        android:pathData="M8,4 h32 a4,4 0 0 1 4,4 v32 a4,4 0 0 1 -4,4 h-32 a4,4 0 0 1 -4,-4 v-32 a4,4 0 0 1 4,-4 z" />
+    <path
+        android:fillColor="#FF58A6FF"
+        android:pathData="M15,14 h18 v4.5 l-11.5,11 h11.5 v4.5 h-18 v-4.5 l11.5,-11 h-11.5 z" />
+</vector>

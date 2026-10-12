@@ -1,0 +1,54 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "com.chaquo.python"
+}
+
+android {
+    namespace = "com.example.zagent"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "com.example.zagent"
+        minSdk = 24
+        targetSdk = 34
+        // versionCode 3 -> 4：递增以触发出厂基因（assets/zagent_factory）重新部署
+        versionCode = 4
+        versionName = "6.1"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled = false
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"),
+                          "proguard-rules.pro"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    // Chaquopy：Python 3.12（与 APK 内 bootstrap-native/cpython-312 一致）。
+    // Python 源码目录用默认值 src/main/python（无需显式配置）。
+    chaquopy {
+        defaultConfig {
+            version = "3.12"
+            pip {
+                // 唯一网络依赖（zagent.py 明确不使用 openai 库）
+                install "requests"
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:2.0.20"
+    implementation "androidx.core:core-ktx:1.13.1"
+    implementation "androidx.appcompat:appcompat:1.7.0"
+}

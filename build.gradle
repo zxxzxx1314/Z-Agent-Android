@@ -1,0 +1,7 @@
+// Z-Agent 根构建脚本（Kotlin + Chaquopy Python）
+// 版本依据 APK 内构建元数据还原：AGP 8.5.2 / Kotlin 2.0.20 / Chaquopy 16.1.0
+plugins {
+    id "com.android.application" version "8.5.2" apply false
+    id "org.jetbrains.kotlin.android" version "2.0.20" apply false
+    id "com.chaquo.python" version "16.1.0" apply false
+}
