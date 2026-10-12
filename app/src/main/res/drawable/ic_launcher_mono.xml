@@ -13,4 +13,5 @@
         android:strokeLineJoin="round" />
     <path
         android:fillColor="#FFFFFF"
+        android:pathData="M 82,30 Q 82,40 92,40 Q 82,40 82,50 Q 82,40 72,40 Q 82,40 82,30 Z" />
 </vector>
