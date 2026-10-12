@@ -497,6 +497,23 @@ private fun bounceIn(view: View) {
         .start()
 }
 
+private fun switchMode(m: String) {
+    when (m) {
+        "think" -> {
+            inputEdit.hint = "要深度思考的任务……"
+            sendCommand("/think")
+        }
+        "plan" -> {
+            inputEdit.hint = "输入消息，或点上方按钮"
+            sendCommand("/plan")
+        }
+        else -> {
+            inputEdit.hint = "输入消息，或点上方按钮"
+            sendCommand("/build")
+        }
+    }
+}
+
 private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
 private fun showStatus(json: String) {
