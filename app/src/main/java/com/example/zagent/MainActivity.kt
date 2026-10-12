@@ -7,11 +7,10 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.text.Editable
-import android.text.Spanned
-import android.text.style.ForegroundColorSpan
 import android.view.View
+import android.view.Gravity
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.EditText
 import android.widget.ScrollView
 import android.widget.TextView
@@ -42,7 +41,7 @@ class MainActivity : AppCompatActivity() {
 
     // ---- 视图（与 activity_main.xml 的 id 一一对应）----
     private lateinit var statusText: TextView
-    private lateinit var outputText: TextView
+    private lateinit var chatContainer: LinearLayout
     private lateinit var outputScroll: ScrollView
     private lateinit var inputEdit: EditText
     private lateinit var sendButton: Button
@@ -66,7 +65,7 @@ class MainActivity : AppCompatActivity() {
 
         // ---- 绑定视图 ----
         statusText = findViewById(R.id.statusText)
-        outputText = findViewById(R.id.outputText)
+        chatContainer = findViewById(R.id.chatContainer)
         outputScroll = findViewById(R.id.outputScroll)
         inputEdit = findViewById(R.id.inputEdit)
         sendButton = findViewById(R.id.sendButton)
@@ -384,46 +383,112 @@ class MainActivity : AppCompatActivity() {
     // ------------------------------------------------------------------
 
     /** 追加对话输出并按行着色，随后滚动到底部。 */
-    private fun appendOutput(text: String) {
-        val tv = outputText
-        val start = tv.length()
-        tv.append(text)
-        val e = tv.text as? Editable ?: return
-        var off = 0
-        for (line in text.split('\n')) {
-            val lineStart = start + off
-            val len = minOf(line.length, 400)
-            if (len > 0) {
-                lineColor(line)?.let { color ->
-                    e.setSpan(
-                        ForegroundColorSpan(color), lineStart, lineStart + len,
-                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                    )
-                }
-            }
-            off += line.length + 1
-        }
-        // 滚动到底部（微信聊天式贴底）
-        outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
-    }
+    /** 追加输出（微信/QQ 式气泡）：
 
-    /** 行级配色：错误=danger，引导=ok，用户=warn，其余=accent。 */
-    private fun lineColor(line: String): Int? {
-        return when {
-            line.startsWith("[FATAL]") || line.startsWith("[桥接异常]") ||
-                line.contains("未就绪") || line.contains("初始化异常") ->
-                ContextCompat.getColor(this, R.color.danger)
-            line.startsWith("[bootstrap]") || line.startsWith("[boot_guard]") ||
-                line.contains("就绪：v") || line.contains("体检 通过") ->
-                ContextCompat.getColor(this, R.color.ok)
-            line.startsWith("你>") ->
-                ContextCompat.getColor(this, R.color.warn)
-            else ->
-                ContextCompat.getColor(this, R.color.accent)
-        }
-    }
+"你>" 开头 → 右侧蓝色气泡
 
-    /** 解析 get_status JSON 并刷新顶部状态条（含模型名）。 */
+"[" 开头 → 居中灰色小字（系统/状态提示）
+
+其余 → 左侧深灰气泡（AI 回复）
+
+连续的非特殊行合并进同一个 AI 气泡，随后滚动到底部。 */
+private fun appendOutput(text: String) {
+if (text.isEmpty()) return
+val lines = text.trim('\n').split('\n')
+val buf = StringBuilder()
+fun flushAi() {
+if (buf.isNotEmpty()) {
+addAiBubble(buf.toString().trim())
+buf.setLength(0)
+}
+}
+for (line in lines) {
+when {
+line.startsWith("你>") -> {
+flushAi()
+addUserBubble(line.removePrefix("你>").trim())
+}
+line.startsWith("[") -> {
+flushAi()
+addSystemLine(line)
+}
+else -> {
+if (buf.isNotEmpty()) buf.append('\n')
+buf.append(line)
+}
+}
+}
+flushAi()
+outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+}
+
+/** 用户消息：右对齐、蓝底、白字。 */
+private fun addUserBubble(content: String) {
+val row = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.END
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { topMargin = dp(4); bottomMargin = dp(4) }
+}
+val bubble = TextView(this).apply {
+text = content
+textSize = 14f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_on_accent))
+setBackgroundResource(R.drawable.bg_bubble_user)
+setPadding(dp(14), dp(10), dp(14), dp(10))
+maxWidth = dp(280)
+setTextIsSelectable(true)
+}
+row.addView(bubble)
+chatContainer.addView(row)
+}
+
+/** AI 消息：左对齐、深灰气泡。 */
+private fun addAiBubble(content: String) {
+val row = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.START
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { topMargin = dp(4); bottomMargin = dp(4) }
+}
+val bubble = TextView(this).apply {
+text = content
+textSize = 14f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+setBackgroundResource(R.drawable.bg_bubble_ai)
+setPadding(dp(14), dp(10), dp(14), dp(10))
+maxWidth = dp(300)
+setTextIsSelectable(true)
+}
+row.addView(bubble)
+chatContainer.addView(row)
+}
+
+/** 系统/状态提示：居中、灰色小字。 */
+private fun addSystemLine(content: String) {
+val tv = TextView(this).apply {
+text = content
+textSize = 11f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+gravity = Gravity.CENTER
+setPadding(dp(12), dp(4), dp(12), dp(4))
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+)
+}
+chatContainer.addView(tv)
+}
+
+/** dp → px。 */
+private fun dp(v: Int): Int =
+(v * resources.displayMetrics.density).toInt()
+
+ /** 解析 get_status JSON 并刷新顶部状态条（含模型名）。 */
     private fun showStatus(json: String) {
         val tv = statusText
         try {
