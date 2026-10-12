@@ -61,6 +61,21 @@
             android:text="浅色"
             android:textColor="@color/accent"
             android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/settingsButton"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/bg_quick"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:text="设置"
+            android:textColor="@color/accent"
+            android:textSize="13sp" />
     </LinearLayout>
 
     <!-- 分隔线：顶栏 / 对话区 -->
@@ -121,7 +136,6 @@
             <TextView android:id="@+id/btnPlugins" android:layout_width="wrap_content" android:layout_height="30dp" android:layout_marginStart="6dp" android:background="@drawable/bg_quick" android:gravity="center" android:paddingStart="12dp" android:paddingEnd="12dp" android:text="插件" android:textColor="@color/text_secondary" android:textSize="12sp" />
             <TextView android:id="@+id/btnSavePlugin" android:layout_width="wrap_content" android:layout_height="30dp" android:layout_marginStart="6dp" android:background="@drawable/bg_quick" android:gravity="center" android:paddingStart="12dp" android:paddingEnd="12dp" android:text="存插件" android:textColor="@color/text_secondary" android:textSize="12sp" />
             <TextView android:id="@+id/btnClear" android:layout_width="wrap_content" android:layout_height="30dp" android:layout_marginStart="6dp" android:background="@drawable/bg_quick" android:gravity="center" android:paddingStart="12dp" android:paddingEnd="12dp" android:text="清屏" android:textColor="@color/text_secondary" android:textSize="12sp" />
-            <TextView android:id="@+id/settingsButton" android:layout_width="wrap_content" android:layout_height="30dp" android:layout_marginStart="6dp" android:background="@drawable/bg_quick" android:gravity="center" android:paddingStart="12dp" android:paddingEnd="12dp" android:text="设置" android:textColor="@color/accent" android:textSize="12sp" />
         </LinearLayout>
     </HorizontalScrollView>
 
