@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
+import android.view.animation.OvershootInterpolator
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -20,6 +21,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import org.json.JSONObject
 
@@ -33,6 +35,7 @@ private lateinit var sendButton: Button
 private lateinit var autoSwitch: android.widget.Switch
 private lateinit var topBar: LinearLayout
 private lateinit var themeButton: TextView
+private lateinit var inputBar: LinearLayout
 
 private var busy = false
 private lateinit var sp: SharedPreferences
@@ -40,6 +43,7 @@ private lateinit var sp: SharedPreferences
 override fun onCreate(savedInstanceState: Bundle?) {
 super.onCreate(savedInstanceState)
 setContentView(R.layout.activity_main)
+WindowCompat.setDecorFitsSystemWindows(window, false)
 
 sp = getSharedPreferences("zagent", Context.MODE_PRIVATE)
 
@@ -51,6 +55,7 @@ sendButton = findViewById(R.id.sendButton)
 autoSwitch = findViewById(R.id.autoSwitch)
 topBar = findViewById(R.id.topBar)
 themeButton = findViewById(R.id.themeButton)
+inputBar = findViewById(R.id.inputBar)
 
 applyTopInset()
 applySavedTheme()
@@ -104,12 +109,24 @@ requestNotifyPermission()
 }
 
 private fun applyTopInset() {
-ViewCompat.setOnApplyWindowInsetsListener(topBar) { v, insets ->
-val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-v.setPadding(v.paddingLeft, bars.top, v.paddingRight, v.paddingBottom)
-insets
-}
-ViewCompat.requestApplyInsets(topBar)
+    // 顶栏：加状态栏高度，避免被系统状态栏遮住
+    ViewCompat.setOnApplyWindowInsetsListener(topBar) { v, insets ->
+        val bars = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+        v.setPadding(v.paddingLeft, bars.top, v.paddingRight, v.paddingBottom)
+        insets
+    }
+    // 底栏：键盘弹起时输入框整体上移（IME insets）
+    val root = findViewById<View>(R.id.rootView)
+    ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+        val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+        val sys = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+        val pad = maxOf(ime.bottom, sys.bottom)
+        inputBar.setPadding(inputBar.paddingLeft, inputBar.paddingTop,
+            inputBar.paddingRight, pad)
+        insets
+    }
+    ViewCompat.requestApplyInsets(topBar)
+    ViewCompat.requestApplyInsets(root)
 }
 
 private fun applySavedTheme() {
@@ -378,6 +395,7 @@ setTextIsSelectable(true)
 }
 row.addView(bubble)
 chatContainer.addView(row)
+        row.post { bounceIn(row) }
 }
 
 private fun addAiBubble(content: String) {
@@ -400,6 +418,7 @@ setTextIsSelectable(true)
 }
 row.addView(bubble)
 chatContainer.addView(row)
+        row.post { bounceIn(row) }
 }
 
 private fun addSystemLine(content: String) {
@@ -454,6 +473,20 @@ header.text = if (expanded) "▸ 思考过程（点击展开）" else "▾ 思�
 box.addView(header)
 box.addView(body)
 chatContainer.addView(box)
+        box.post { bounceIn(box) }
+}
+
+private fun bounceIn(view: View) {
+    view.alpha = 0f
+    view.scaleX = 0.6f
+    view.scaleY = 0.6f
+    view.animate()
+        .alpha(1f)
+        .scaleX(1f)
+        .scaleY(1f)
+        .setDuration(360)
+        .setInterpolator(OvershootInterpolator(1.8f))
+        .start()
 }
 
 private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
