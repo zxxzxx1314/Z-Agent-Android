@@ -17,4 +17,5 @@
 <color name="send_pressed">#FF4389E0</color>
 
 <color name="card_stroke">#FF30363D</color>
+    <color name="btn_shadow">#33FFFFFF</color>
 </resources>
