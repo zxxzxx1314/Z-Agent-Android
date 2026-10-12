@@ -1,27 +1,30 @@
 plugins {
-    id "com.android.application"
-    id "org.jetbrains.kotlin.android"
-    id "com.chaquo.python"
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'com.chaquo.python'
 }
 
 android {
-    namespace = "com.example.zagent"
-    compileSdk = 34
+    namespace 'com.example.zagent'
+    compileSdk 35
 
     defaultConfig {
-        applicationId = "com.example.zagent"
-        minSdk = 24
-        targetSdk = 34
-        // versionCode 3 -> 4：递增以触发出厂基因（assets/zagent_factory）重新部署
-        versionCode = 4
-        versionName = "6.1"
+        applicationId "com.example.zagent"
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName "1.0"
+
+        // 关键修复：Chaquopy 必须要求指定 CPU 架构
+        ndk {
+            abiFilters "arm64-v8a"
+        }
     }
 
     buildTypes {
         release {
-            minifyEnabled = false
-            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"),
-                          "proguard-rules.pro"
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 
@@ -31,16 +34,13 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = "17"
+        jvmTarget = '17'
     }
 
-    // Chaquopy：Python 3.12（与 APK 内 bootstrap-native/cpython-312 一致）。
-    // Python 源码目录用默认值 src/main/python（无需显式配置）。
     chaquopy {
         defaultConfig {
             version = "3.12"
             pip {
-                // 唯一网络依赖（zagent.py 明确不使用 openai 库）
                 install "requests"
             }
         }
@@ -48,7 +48,7 @@ android {
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:2.0.20"
-    implementation "androidx.core:core-ktx:1.13.1"
-    implementation "androidx.appcompat:appcompat:1.7.0"
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
 }
