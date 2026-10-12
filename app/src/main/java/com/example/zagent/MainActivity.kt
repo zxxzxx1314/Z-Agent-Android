@@ -36,6 +36,8 @@ private lateinit var autoSwitch: android.widget.Switch
 private lateinit var topBar: LinearLayout
 private lateinit var themeButton: TextView
 private lateinit var inputBar: LinearLayout
+private lateinit var chipThink2: TextView
+private lateinit var chipSearch: TextView
 
 private var busy = false
 private lateinit var sp: SharedPreferences
@@ -56,6 +58,8 @@ autoSwitch = findViewById(R.id.autoSwitch)
 topBar = findViewById(R.id.topBar)
 themeButton = findViewById(R.id.themeButton)
 inputBar = findViewById(R.id.inputBar)
+chipThink2 = findViewById(R.id.chipThink2)
+chipSearch = findViewById(R.id.chipSearch)
 
 applyTopInset()
 applySavedTheme()
@@ -80,6 +84,10 @@ safeBridge { PythonBridge.setAuto(this@MainActivity, checked) }
 }
 
 sendButton.setOnClickListener { onSend() }
+
+    // 底部小胶囊：深度思考 → think 模式；智能搜索 → plan 模式（占位）
+    chipThink2.setOnClickListener { switchMode("think") }
+    chipSearch.setOnClickListener { switchMode("plan") }
 
 appendOutput("Z-Agent APK 启动中……\n")
 threadRun {
