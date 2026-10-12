@@ -1465,32 +1465,77 @@ def refresh_system():
 # ============================================================
 # 9. API 调用（纯 requests；_post 是唯一出口）
 # ============================================================
+_REASONING_BUF = "" # v6.2：最近一次 API 响应中的 reasoning_content
+
+
+def _make_http_session():
+    """构造带自动重试的 Session（3 次，指数退避 2s/4s/8s）。
+    仅对 429/5xx 与网络异常重试；失败时优雅降级为普通 Session。"""
+    try:
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+        s = requests.Session()
+        retry = Retry(
+            total=3,
+            backoff_factor=2,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=("POST",),
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        s.mount("http://", adapter)
+        s.mount("https://", adapter)
+        return s
+    except Exception:
+        return requests.Session()
+
+
+_HTTP_SESSION = _make_http_session()
+_POST_TIMEOUT = 600 # v6.2：300 -> 600，长思考模型不再超时
+
+
 def _post(msgs, temperature=0.3):
-    """底层请求：任意消息列表 → AI 回复文本（失败返回 None）。"""
+    """底层请求：任意消息列表 → AI 回复文本（失败返回 None）。
+    v6.2：Session + Retry 自动重试（3 次，指数退避 2s/4s/8s），
+    timeout 提升到 600s；同时提取 reasoning_content 供 UI 折叠显示。"""
+    global _REASONING_BUF
+    _REASONING_BUF = ""
     headers = {
         "Authorization": "Bearer " + API_KEY.strip(),
         "Content-Type": "application/json",
     }
     payload = {"model": MODEL, "messages": msgs,
-               "temperature": temperature, "stream": False}
+        "temperature": temperature, "stream": False}
     try:
-        resp = requests.post(BASE_URL, headers=headers, json=payload, timeout=300)
+        resp = _HTTP_SESSION.post(BASE_URL, headers=headers, json=payload,
+            timeout=_POST_TIMEOUT)
     except requests.RequestException as e:
-        print("[网络错误] %s" % e)
+        print("[网络错误（已重试 3 次仍失败）] %s" % e)
         return None
     if resp.status_code != 200:
         print("[API 错误 %d] %s" % (resp.status_code, resp.text[:500]))
         return None
     try:
-        return resp.json()["choices"][0]["message"]["content"]
+        msg = resp.json()["choices"][0]["message"]
     except Exception:
         print("[响应解析失败]", resp.text[:500])
         return None
+    content = msg.get("content") or ""
+    reasoning = msg.get("reasoning_content") or ""
+    _REASONING_BUF = reasoning
+    return content
 
 
 def call_api():
-    """主对话调用：用全局 messages 请求 AI 回复。"""
-    return _post(messages)
+    """主对话调用：用全局 messages 请求 AI 回复。
+    v6.2：若响应含 reasoning_content，先打印特殊标记块供 UI 折叠显示，
+    再返回正文；标记块不会污染对话历史（history 只存 reply 正文）。"""
+    content = _post(messages)
+    if content is None:
+        return None
+    if _REASONING_BUF:
+        print("===REASONING_BEGIN===" + _REASONING_BUF + "===REASONING_END===")
+    return content
 
 # ============================================================
 # 10. 其余输出解析
@@ -2365,4 +2410,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

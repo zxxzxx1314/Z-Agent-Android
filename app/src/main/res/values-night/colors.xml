@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!-- Z-Agent 深色配色 --><resources> <color name="bg_root">#FF0E1116</color> <color name="bg_surface">#FF161B22</color> <color name="bg_input">#FF21262D</color> <color name="divider">#FF30363D</color> <color name="status_bar">#FF161B22</color>
+
+<color name="text_primary">#FFE6EDF3</color>
+<color name="text_secondary">#FF8B949E</color>
+
+<color name="accent">#FF58A6FF</color>
+<color name="ok">#FF3FB950</color>
+<color name="warn">#FFD29922</color>
+<color name="danger">#FFF85149</color>
+
+<color name="chip_bg_selected">#332C5A94</color>
+<color name="chip_stroke">#FF30363D</color>
+
+<color name="text_on_accent">#FFFFFFFF</color>
+<color name="send_pressed">#FF4389E0</color>
+
+<color name="card_stroke">#FF30363D</color>
+</resources>

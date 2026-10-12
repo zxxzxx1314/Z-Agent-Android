@@ -99,7 +99,7 @@ API_KEY = "sk-Xrz4KtS7s39PudyyNTCLCwl1Ar13vAOFTEcRSssTRmgGjQ6w"              # �
 BASE_URL = os.environ.get("RAIN_BASE_URL", "https://api.deepseek.com/chat/completions")
 # 模型名不再硬编码：优先 env(RAIN_MODEL) → mind/config.json 的 model 字段
 # （APK 设置界面「设置模型名称」写入）→ DEFAULT_MODEL 出厂默认。
-# 详见下方 load_model()；main() 启动时会用 load_model() 刷新本变量。
+# 详见下方 load_model()；zagent_app.bootstrap / main() 会用它刷新本变量。
 DEFAULT_MODEL = "deepseek-flash"
 MODEL = os.environ.get("RAIN_MODEL", DEFAULT_MODEL)
 VERSION = 6.1             # v6.1: 字面区协议（标签误抓历史终结）+ /restart 自重启闭环 + 影子剧本 T0/T6；AI 进化时必须递增
@@ -266,45 +266,10 @@ def load_api_key():
     return key
 
 
-def normalize_base_url(url):
-    """把用户输入规整成完整 chat 端点。
-    兼容裸域名 / 带 /v1 / 完整 /chat/completions 三种写法；
-    空输入返回空（语义=沿用默认）。"""
-    u = (url or "").strip().rstrip("/")
-    if not u:
-        return ""
-    if not (u.startswith("http://") or u.startswith("https://")):
-        u = "https://" + u          # 裸域名自动补协议
-    if u.endswith("/chat/completions") or u.endswith("/completions"):
-        return u
-    return u + "/chat/completions"
-
-
-def load_base_url():
-    """按优先级获取 API 地址：环境变量 -> config.json -> 默认官方端点。
-    config.json 里的 base_url 由 zagent_app.set_base_url / 设置界面写入
-    （APK 端）；本函数保证桌面/Termux 直跑时同样生效。全程非交互。"""
-    env_url = os.environ.get("RAIN_BASE_URL", "").strip()
-    if env_url:
-        return normalize_base_url(env_url) or BASE_URL
-    if os.path.exists(CONFIG_PATH):
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-            if isinstance(cfg, dict):
-                raw = str(cfg.get("base_url", "")).strip()
-                if raw:
-                    return normalize_base_url(raw)
-        except (json.JSONDecodeError, OSError, ValueError):
-            pass
-    return BASE_URL
-
-
 def load_model():
     """按优先级获取模型名：环境变量(RAIN_MODEL) -> config.json(model) -> DEFAULT_MODEL。
     config.json 里的 model 由 zagent_app.set_model / APK 设置界面
-    「设置模型名称」写入；本函数保证桌面/Termux 直跑时同样生效。
-    全程非交互，不做合法性校验（模型名由服务商侧校验）。"""
+    「设置模型名称」写入。全程非交互，与 factory 版 zagent.py 保持一致。"""
     env_model = os.environ.get("RAIN_MODEL", "").strip()
     if env_model:
         return env_model
@@ -1500,32 +1465,77 @@ def refresh_system():
 # ============================================================
 # 9. API 调用（纯 requests；_post 是唯一出口）
 # ============================================================
+_REASONING_BUF = "" # v6.2：最近一次 API 响应中的 reasoning_content
+
+
+def _make_http_session():
+    """构造带自动重试的 Session（3 次，指数退避 2s/4s/8s）。
+    仅对 429/5xx 与网络异常重试；失败时优雅降级为普通 Session。"""
+    try:
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+        s = requests.Session()
+        retry = Retry(
+            total=3,
+            backoff_factor=2,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=("POST",),
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        s.mount("http://", adapter)
+        s.mount("https://", adapter)
+        return s
+    except Exception:
+        return requests.Session()
+
+
+_HTTP_SESSION = _make_http_session()
+_POST_TIMEOUT = 600 # v6.2：300 -> 600，长思考模型不再超时
+
+
 def _post(msgs, temperature=0.3):
-    """底层请求：任意消息列表 → AI 回复文本（失败返回 None）。"""
+    """底层请求：任意消息列表 → AI 回复文本（失败返回 None）。
+    v6.2：Session + Retry 自动重试（3 次，指数退避 2s/4s/8s），
+    timeout 提升到 600s；同时提取 reasoning_content 供 UI 折叠显示。"""
+    global _REASONING_BUF
+    _REASONING_BUF = ""
     headers = {
         "Authorization": "Bearer " + API_KEY.strip(),
         "Content-Type": "application/json",
     }
     payload = {"model": MODEL, "messages": msgs,
-               "temperature": temperature, "stream": False}
+        "temperature": temperature, "stream": False}
     try:
-        resp = requests.post(BASE_URL, headers=headers, json=payload, timeout=300)
+        resp = _HTTP_SESSION.post(BASE_URL, headers=headers, json=payload,
+            timeout=_POST_TIMEOUT)
     except requests.RequestException as e:
-        print("[网络错误] %s" % e)
+        print("[网络错误（已重试 3 次仍失败）] %s" % e)
         return None
     if resp.status_code != 200:
         print("[API 错误 %d] %s" % (resp.status_code, resp.text[:500]))
         return None
     try:
-        return resp.json()["choices"][0]["message"]["content"]
+        msg = resp.json()["choices"][0]["message"]
     except Exception:
         print("[响应解析失败]", resp.text[:500])
         return None
+    content = msg.get("content") or ""
+    reasoning = msg.get("reasoning_content") or ""
+    _REASONING_BUF = reasoning
+    return content
 
 
 def call_api():
-    """主对话调用：用全局 messages 请求 AI 回复。"""
-    return _post(messages)
+    """主对话调用：用全局 messages 请求 AI 回复。
+    v6.2：若响应含 reasoning_content，先打印特殊标记块供 UI 折叠显示，
+    再返回正文；标记块不会污染对话历史（history 只存 reply 正文）。"""
+    content = _post(messages)
+    if content is None:
+        return None
+    if _REASONING_BUF:
+        print("===REASONING_BEGIN===" + _REASONING_BUF + "===REASONING_END===")
+    return content
 
 # ============================================================
 # 10. 其余输出解析
@@ -2344,13 +2354,12 @@ def handle_command(u: str):
 # 17. 程序入口（横幅死代码已删，改为固定提示）
 # ============================================================
 def main():
-    global API_KEY, BASE_URL, MODEL
+    global API_KEY, MODEL
     for d in (SKILLS_DIR, PLUGINS_DIR, MIND_DIR, EVOLUTION_DIR,
               CONTRACTS_DIR):
         os.makedirs(d, exist_ok=True)
     welcome_onboarding()
     API_KEY = load_api_key()
-    BASE_URL = load_base_url()
     MODEL = load_model()          # 模型名：env → config.json → 出厂默认
     if not API_KEY:
         print("未提供 API Key，无法启动。请重新运行并输入，")
@@ -2401,4 +2410,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
