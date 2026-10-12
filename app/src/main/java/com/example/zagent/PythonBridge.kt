@@ -172,7 +172,8 @@ object PythonBridge {
         val path = dir.absolutePath
         val py = Python.getInstance()
         try {
-            val sysPath: PyObject = py.getModule("sys").get("path")
+ val sysPath = py.getModule("sys").get("path")
+ ?: throw IllegalStateException("sys.path 不可用")
             sysPath.callAttr("insert", 0, path)
         } catch (e: Exception) {
             Log.w(TAG, "sys.path.insert 直调失败，改用 exec：$e")

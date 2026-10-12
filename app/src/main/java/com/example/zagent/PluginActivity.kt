@@ -87,7 +87,7 @@ class PluginActivity : AppCompatActivity() {
         loading = true
         Thread {
             try {
-                val list = parseList(PythonBridge.INSTANCE.listPlugins(this))
+                val list = parseList(PythonBridge.listPlugins(this))
                 runOnUiThread { applyList(list) }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -114,7 +114,7 @@ class PluginActivity : AppCompatActivity() {
     private fun viewSource(item: PluginItem) {
         Thread {
             val json = try {
-                PythonBridge.INSTANCE.readPlugin(this, item.file)
+                PythonBridge.readPlugin(this, item.file)
             } catch (e: Exception) {
                 """{"ok":false,"err":"$e"}"""
             }
@@ -160,7 +160,7 @@ class PluginActivity : AppCompatActivity() {
     private fun doDelete(item: PluginItem) {
         Thread {
             val json = try {
-                PythonBridge.INSTANCE.deletePlugin(this, item.file)
+                PythonBridge.deletePlugin(this, item.file)
             } catch (e: Exception) {
                 """{"ok":false,"err":"$e"}"""
             }

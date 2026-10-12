@@ -94,7 +94,7 @@ class MainActivity : AppCompatActivity() {
         autoSwitch.setOnCheckedChangeListener { _, checked ->
             threadRun {
                 safeBridge {
-                    PythonBridge.INSTANCE.setAuto(this@MainActivity, checked)
+                    PythonBridge.setAuto(this@MainActivity, checked)
                 }
             }
         }
@@ -107,12 +107,12 @@ class MainActivity : AppCompatActivity() {
         appendOutput("Z-Agent APK 启动中……\n")
         threadRun {
             try {
-                val st = PythonBridge.INSTANCE.status(this@MainActivity)
+                val st = PythonBridge.status(this@MainActivity)
                 // 引导完成后：把 SharedPreferences 里的模型名同步给 Python 层
                 val savedModel = sp.getString(KEY_MODEL_NAME, "") ?: ""
                 if (savedModel.isNotBlank()) {
                     try {
-                        PythonBridge.INSTANCE.setModel(this@MainActivity, savedModel)
+                        PythonBridge.setModel(this@MainActivity, savedModel)
                     } catch (e: Exception) {
                         runOnUiThread { appendOutput("[设置] 模型名同步失败：${e.message}\n") }
                     }
@@ -155,7 +155,7 @@ class MainActivity : AppCompatActivity() {
                     4 -> threadRun {
                         safeBridge {
                             val st = try {
-                                PythonBridge.INSTANCE.status(this@MainActivity)
+                                PythonBridge.status(this@MainActivity)
                             } catch (e: Exception) {
                                 "{}"
                             }
@@ -178,7 +178,7 @@ class MainActivity : AppCompatActivity() {
                 val key = input.text.toString().trim()
                 threadRun {
                     safeBridge {
-                        val r = PythonBridge.INSTANCE.setApiKey(this@MainActivity, key)
+                        val r = PythonBridge.setApiKey(this@MainActivity, key)
                         runOnUiThread {
                             appendOutput("[设置] API Key $r\n")
                             toast("已保存")
@@ -194,7 +194,7 @@ class MainActivity : AppCompatActivity() {
     private fun promptBaseUrl() {
         threadRun {
             val cur = try {
-                val st = PythonBridge.INSTANCE.status(this@MainActivity)
+                val st = PythonBridge.status(this@MainActivity)
                 JSONObject(st).optString("base_url", "")
             } catch (e: Exception) {
                 ""
@@ -216,7 +216,7 @@ class MainActivity : AppCompatActivity() {
                 val url = input.text.toString().trim()
                 threadRun {
                     safeBridge {
-                        val r = PythonBridge.INSTANCE.setBaseUrl(this@MainActivity, url)
+                        val r = PythonBridge.setBaseUrl(this@MainActivity, url)
                         runOnUiThread {
                             appendOutput("[设置] API 地址 $r\n")
                             toast("已保存")
@@ -240,7 +240,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             threadRun {
                 val cur = try {
-                    val st = PythonBridge.INSTANCE.status(this@MainActivity)
+                    val st = PythonBridge.status(this@MainActivity)
                     JSONObject(st).optString("model", "")
                 } catch (e: Exception) {
                     ""
@@ -266,7 +266,7 @@ class MainActivity : AppCompatActivity() {
                 // 2) 同步到 Python 层（config.json + MODEL 热更新）
                 threadRun {
                     safeBridge {
-                        val r = PythonBridge.INSTANCE.setModel(this@MainActivity, name)
+                        val r = PythonBridge.setModel(this@MainActivity, name)
                         runOnUiThread {
                             appendOutput("[设置] 模型名称 $r\n")
                             toast("已保存")
@@ -287,7 +287,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("确定") { _, _ ->
                 threadRun {
                     safeBridge {
-                        val r = PythonBridge.INSTANCE.resetSession(this@MainActivity)
+                        val r = PythonBridge.resetSession(this@MainActivity)
                         runOnUiThread { appendOutput("[会话] $r\n") }
                     }
                 }
@@ -340,7 +340,7 @@ class MainActivity : AppCompatActivity() {
         sendButton.isEnabled = false
         threadRun {
             safeBridge {
-                val reply = PythonBridge.INSTANCE.runAgent(this@MainActivity, cmd)
+                val reply = PythonBridge.runAgent(this@MainActivity, cmd)
                 runOnUiThread {
                     appendOutput(reply + "\n")
                     busy = false
@@ -450,7 +450,7 @@ class MainActivity : AppCompatActivity() {
         threadRun {
             safeBridge {
                 val st = try {
-                    PythonBridge.INSTANCE.status(this@MainActivity)
+                    PythonBridge.status(this@MainActivity)
                 } catch (e: Exception) {
                     "{}"
                 }
