@@ -586,47 +586,61 @@ def scan_plugins():
 
 
 # 插件子进程引导代码：在独立进程里导入插件并调用 run()
-_PLUGIN_RUNNER = (
-    "import importlib.util, sys\n"
-    "path = sys.argv[1]\n"
-    "spec = importlib.util.spec_from_file_location('rain_plugin_isolated', path)\n"
-    "mod = importlib.util.module_from_spec(spec)\n"
-    "spec.loader.exec_module(mod)\n"
-    "if not hasattr(mod, 'run'):\n"
-    "    sys.stdout.write('插件缺少 run() 函数')\n"
-    "    sys.exit(3)\n"
-    "ret = mod.run()\n"
-    "if ret is None:\n"
-    "    sys.stdout.write('(插件 run() 无返回值)')\n"
-    "elif isinstance(ret, str):\n"
-    "    sys.stdout.write(ret)\n"
-    "else:\n"
-    "    sys.stdout.write(repr(ret))\n"
-)
+_PLUGIN_RUNNER = """import importlib.util, sys
+path = @@PLGPATH@@
+spec = importlib.util.spec_from_file_location('rain_plugin_isolated', path)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+if not hasattr(mod, 'run'):
+    sys.stdout.write('插件缺少 run() 函数')
+    sys.exit(3)
+ret = mod.run()
+if ret is None:
+    sys.stdout.write('(插件 run() 无返回值)')
+elif isinstance(ret, str):
+    sys.stdout.write(ret)
+else:
+    sys.stdout.write(repr(ret))
+"""
 
 
-def run_plugin(pid: str) -> str:
-    """在隔离子进程中执行插件（超时可杀、无法污染宿主进程状态）。
-    注意：这是进程隔离，不是沙箱——插件对文件系统的权限与宿主相同。"""
+
+
+def run_plugin(pid):
+    """执行插件。Termux 走隔离子进程；APK/Chaquopy 无子进程，
+    降级为进程内执行（无隔离、超时无法强杀线程）。
+    v6.2 修复：不再依赖 sys.argv 传路径（APK 进程内模式取不到），
+    改为把路径直接嵌进 runner 源码（@@PLGPATH@@ 占位符）。"""
     pid = pid.strip()
     if pid.endswith(".py"):
         pid = pid[:-3]
     path = os.path.join(PLUGINS_DIR, pid + ".py")
     if not os.path.exists(path):
         return "插件 %s 不存在于 %s" % (pid, PLUGINS_DIR)
+    # v6.2：APK 环境无 termux-* 命令，提前短路，避免插件卡死宿主线程
+    if os.environ.get("ZAGENT_NO_SUBPROCESS") == "1":
+        try:
+            with open(path, encoding="utf-8", errors="replace") as _f:
+                _src = _f.read(20000)
+            if "termux-" in _src:
+                return ("插件 %s 依赖 termux-* 命令，APK 环境不支持。"
+                        "请改用 android_api 模块：battery_info() / notify() / toast()。"
+                        % pid)
+        except Exception:
+            pass
+    runner_code = _PLUGIN_RUNNER.replace("@@PLGPATH@@", repr(path))
     rc, out, err, timed_out = _run_process(
-        [sys.executable, "-c", _PLUGIN_RUNNER, path], PLUGIN_TIMEOUT)
+        [sys.executable, "-c", runner_code], PLUGIN_TIMEOUT)
     if timed_out:
-        return ("插件 %s 执行超时（>%d 秒），进程组已被强制终止。"
-                % (pid, PLUGIN_TIMEOUT))
+        return "插件 %s 执行超时（>%d 秒）。" % (pid, PLUGIN_TIMEOUT)
     if rc == 3:
         return (out or "插件缺少 run() 函数")
     if rc != 0:
-        return ("插件执行异常（隔离子进程退出码 %d）:\n%s"
-                % (rc, clip_output(err) or clip_output(out)))
+        _msg = "插件执行异常（退出码 %d）：" % rc
+        _detail = clip_output(err) or clip_output(out)
+        return _msg + chr(10) + _detail
     return clip_output(out) if out.strip() else "(插件 run() 无返回值)"
 
-# ============================================================
 # 6. 进化引擎（基因型进化 + 多重护栏 + 原子替换）
 # ============================================================
 def get_gen() -> int:
@@ -1476,8 +1490,8 @@ def _make_http_session():
         from urllib3.util.retry import Retry
         s = requests.Session()
         retry = Retry(
-            total=3,
-            backoff_factor=2,
+            total=2,
+            backoff_factor=1,
             status_forcelist=(429, 500, 502, 503, 504),
             allowed_methods=("POST",),
             raise_on_status=False,
@@ -1491,7 +1505,7 @@ def _make_http_session():
 
 
 _HTTP_SESSION = _make_http_session()
-_POST_TIMEOUT = 600 # v6.2：300 -> 600，长思考模型不再超时
+_POST_TIMEOUT = 120 # v6.2：300 -> 600，长思考模型不再超时
 
 
 def _post(msgs, temperature=0.3):
