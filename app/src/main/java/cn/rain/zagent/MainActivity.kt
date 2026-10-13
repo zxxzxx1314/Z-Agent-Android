@@ -81,6 +81,21 @@ private var stopRequested = false
 
 // 流式渲染状态
 private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+private val placeholderHints = arrayOf(
+    "解释这段代码", "写个单元测试", "重构这个函数", "排查这个报错",
+    "帮我写一个正则", "解释这个异常栈", "把这段翻成英文", "帮我做代码审查",
+)
+private var placeholderIdx = 0
+private val placeholderRotator = object : Runnable {
+    override fun run() {
+        if (inputEdit.text.isNullOrEmpty()) {
+            inputEdit.hint = placeholderHints[placeholderIdx % placeholderHints.size]
+            placeholderIdx++
+        }
+        uiHandler.postDelayed(this, 4000)
+    }
+}
 private var streamPolling = false
 private var streamingBubble: TextView? = null
 private var streamingSb = StringBuilder()
@@ -321,6 +336,12 @@ override fun onResume() {
             uiHandler.postDelayed({ refreshStatusQuiet() }, 4000)
         }
     }
+    uiHandler.postDelayed(placeholderRotator, 4000)
+
+override fun onPause() {
+    super.onPause()
+    uiHandler.removeCallbacks(placeholderRotator)
+}
 }
 
 private fun haptic(v: View) {
@@ -870,11 +891,11 @@ private fun sendCommand(cmd: String) {
                 busy = false
                 stopRequested = false
                 refreshSendButton()
-                HapticTokens.tap(sendButton)
                 val failed = wasStopped
                         || reply.contains("[API错误")
                         || reply.contains("[网络错误")
                         || reply.contains("[流读取中断]")
+        if (failed) HapticTokens.warn(sendButton) else HapticTokens.success(sendButton)
                 if (failed) addErrorBar(cmd, extractErrorReason(reply, wasStopped))
             }
         }
