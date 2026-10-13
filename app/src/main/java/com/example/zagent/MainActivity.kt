@@ -77,6 +77,26 @@ private lateinit var sp: SharedPreferences
 override fun onCreate(savedInstanceState: Bundle?) {
 super.onCreate(savedInstanceState)
 setContentView(R.layout.activity_main)
+
+    // ── 签名校验：防止二次打包 ──
+    if (!SignatureCheck.verify(this, BuildConfig.ZAGENT_EXPECTED_SIGNATURE)) {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("安全警告")
+            .setMessage("当前 APK 签名与官方不一致，可能被篡改或二次打包。\n\n为保护你的 API Key 与数据安全，应用将退出。")
+            .setCancelable(false)
+            .setPositiveButton("退出") { _, _ -> finishAffinity() }
+            .show()
+        return
+    }
+
+    // ── API Key：优先用源码外配置（BuildConfig），首次启动自动写入 ──
+    if (BuildConfig.ZAGENT_API_KEY.isNotBlank()) {
+        threadRun { safeBridge {
+            try {
+                PythonBridge.setApiKey(this@MainActivity, BuildConfig.ZAGENT_API_KEY)
+            } catch (_: Exception) { }
+        } }
+    }
 WindowCompat.setDecorFitsSystemWindows(window, false)
 
 sp = getSharedPreferences("zagent", Context.MODE_PRIVATE)

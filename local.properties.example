@@ -1,0 +1,19 @@
+# ── Z-Agent 本地配置模板 ──
+
+复制为 local.properties 并填入真实值；该文件已被 .gitignore 忽略。
+Windows 路径示例：C:\Users\me\zagent.jks
+macOS / Linux 示例：/home/me/zagent.jks
+出厂 API Key（可选）：首次启动自动写入应用
+
+ZAGENT_API_KEY=
+
+官方签名 SHA-256（小写十六进制，无冒号）；留空则跳过签名校验
+
+ZAGENT_EXPECTED_SIGNATURE=
+
+── Release 签名（可选；不填则 release 不签名，CI 不受影响）──
+
+RELEASE_STORE_FILE=
+RELEASE_STORE_PASSWORD=
+RELEASE_KEY_ALIAS=
+RELEASE_KEY_PASSWORD=
