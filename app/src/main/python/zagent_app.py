@@ -404,7 +404,12 @@ def run_agent(user_input):
             zag.handle_command(u)
         else:
             zag.note_task(u)
-            zag.messages.append({"role": "user", "content": u})
+            try:
+                enhanced = zag.preprocess_attachments(u)
+            except Exception as _e:
+                enhanced = u
+                turn_buf.append("[附件] 预处理异常: %r" % _e)
+            zag.messages.append({"role": "user", "content": enhanced})
             verdict = zag.agent_loop()
             if verdict == "api_error":
                 turn_buf.append("\n[网络/API 异常] 本轮未完成。"
