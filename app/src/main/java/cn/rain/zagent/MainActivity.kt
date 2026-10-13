@@ -118,18 +118,6 @@ WindowCompat.setDecorFitsSystemWindows(window, false)
 
 sp = getSharedPreferences("zagent", Context.MODE_PRIVATE)
 
-// 输入框 Enter = 发送（多行视觉但仍走 IME_ACTION_SEND）
-inputEdit.setOnEditorActionListener { _, actionId, event ->
-if (actionId == EditorInfo.IME_ACTION_SEND ||
-(event != null && event.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)) {
-onSend(); true
-} else false
-}
-inputEdit.setOnKeyListener { _, keyCode, event ->
-if (keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN && !event.isShiftPressed) {
-onSend(); true
-} else false
-}
 
 // Predictive back：设置 Sheet 打开时先收 Sheet，再次返回才退出
 onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -203,6 +191,18 @@ true
 // 输入草稿自动保存 / 恢复
 inputEdit.setText(sp.getString(KEY_DRAFT, "") ?: "")
 inputEdit.setSelection(inputEdit.text.length)
+// 输入框 Enter = 发送（多行视觉但仍走 IME_ACTION_SEND）
+inputEdit.setOnEditorActionListener { _, actionId, event ->
+if (actionId == EditorInfo.IME_ACTION_SEND ||
+(event != null && event.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)) {
+onSend(); true
+} else false
+}
+inputEdit.setOnKeyListener { _, keyCode, event ->
+if (keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN && !event.isShiftPressed) {
+onSend(); true
+} else false
+}
 inputEdit.addTextChangedListener(object : android.text.TextWatcher {
 override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
 override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
