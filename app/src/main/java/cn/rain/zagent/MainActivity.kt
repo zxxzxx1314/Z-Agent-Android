@@ -984,7 +984,7 @@ private fun extractErrorReason(reply: String, stopped: Boolean): String {
     if (stopped) return "已手动停止"
     if (reply.contains("[网络错误")) return "网络连接失败，请检查网络或 API 地址"
     if (reply.contains("[API错误")) {
-        val m = Regex("\[API错误 (\d+)\]").find(reply)
+        val m = Regex("\\[API错误 (\\d+)\\]").find(reply)
         val code = m?.groupValues?.getOrNull(1) ?: ""
         if (code == "401") return "API Key 无效或已过期"
         if (code == "429") return "请求过于频繁，稍后重试"
