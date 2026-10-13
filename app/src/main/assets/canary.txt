@@ -1,0 +1,15 @@
+CANARY v1 - 该文件用于 CI 门禁，验证敏感字符在整条流水线中不被吞。
+
+1. Python dunder: __init__ __name__ __main__
+2. Markdown bold: **bold**
+3. Markdown italic: *em* _em_
+4. Inline code: `code`
+5. Triple fence: ```lang```
+6. Lambda placeholders: { _, _ -> }
+7. Backslash: \
+8. Angle: <tag>
+9. Quote: "q" 's'
+10. Hash: # comment
+11. Tabs: 	tab	
+12. Trailing spaces: abc 
+13. Byte sequence: _`#*\

@@ -58,3 +58,7 @@ jobs:
           name: r8-mapping
           path: app/build/outputs/mapping/release/mapping.txt
           retention-days: 30
+
+      - name: Verify canary bytes
+        if: always()
+        run: python3 canary_check.py
