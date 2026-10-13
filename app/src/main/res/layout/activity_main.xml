@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    Z-Agent 主界面：三段式（顶栏 / 对话区 / 底栏），段间用 1dp 分隔线视觉区分
--->
+<!-- Z-Agent：顶部标题栏 / 对话区 / 快捷条 / 输入卡片 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/rootView"
     android:layout_width="match_parent"
@@ -27,7 +25,6 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:orientation="vertical">
-
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -35,7 +32,6 @@
                 android:textColor="@color/text_primary"
                 android:textSize="19sp"
                 android:textStyle="bold" />
-
             <TextView
                 android:id="@+id/statusText"
                 android:layout_width="match_parent"
@@ -78,11 +74,7 @@
             android:textSize="13sp" />
     </LinearLayout>
 
-    <!-- 分隔线：顶栏 / 对话区 -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/divider" />
+    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
 
     <!-- ============ 对话区 ============ -->
     <ScrollView
@@ -94,7 +86,6 @@
         android:fillViewport="true"
         android:overScrollMode="never"
         android:scrollbars="vertical">
-
         <LinearLayout
             android:id="@+id/chatContainer"
             android:layout_width="match_parent"
@@ -106,20 +97,15 @@
             android:paddingBottom="12dp" />
     </ScrollView>
 
-    <!-- 分隔线：对话区 / 底栏 -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/divider" />
+    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
 
-    <!-- ============ 底部快捷按钮条 ============ -->
+    <!-- ============ 快捷按钮条 ============ -->
     <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/bg_surface"
         android:overScrollMode="never"
         android:scrollbars="none">
-
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -128,7 +114,6 @@
             android:paddingTop="8dp"
             android:paddingEnd="12dp"
             android:paddingBottom="8dp">
-
             <TextView android:id="@+id/btnIdle" android:layout_width="wrap_content" android:layout_height="30dp" android:background="@drawable/bg_quick" android:gravity="center" android:paddingStart="12dp" android:paddingEnd="12dp" android:text="自主" android:textColor="@color/text_secondary" android:textSize="12sp" />
             <TextView android:id="@+id/btnContract" android:layout_width="wrap_content" android:layout_height="30dp" android:layout_marginStart="6dp" android:background="@drawable/bg_quick" android:gravity="center" android:paddingStart="12dp" android:paddingEnd="12dp" android:text="合同" android:textColor="@color/text_secondary" android:textSize="12sp" />
             <TextView android:id="@+id/btnVersions" android:layout_width="wrap_content" android:layout_height="30dp" android:layout_marginStart="6dp" android:background="@drawable/bg_quick" android:gravity="center" android:paddingStart="12dp" android:paddingEnd="12dp" android:text="版本" android:textColor="@color/text_secondary" android:textSize="12sp" />
@@ -139,14 +124,9 @@
         </LinearLayout>
     </HorizontalScrollView>
 
-    <!-- 分隔线：快捷条 / 输入栏 -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/divider" />
+    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
 
-    <!-- ============ 底部输入栏 ============ -->
-    <!-- ============ 底部输入卡片（DeepSeek 风格） ============ -->
+    <!-- ============ 输入卡片（DeepSeek 风格：大圆角卡片 + 分段胶囊 + 圆形按钮） ============ -->
     <LinearLayout
         android:id="@+id/inputBar"
         android:layout_width="match_parent"
@@ -158,7 +138,7 @@
         android:paddingEnd="14dp"
         android:paddingBottom="12dp">
 
-        <!-- 卡片：大圆角 -->
+        <!-- 输入卡片 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -169,14 +149,14 @@
             android:paddingEnd="12dp"
             android:paddingBottom="10dp">
 
-            <!-- 输入框：透明融入卡片 -->
+            <!-- 输入框 -->
             <EditText
                 android:id="@+id/inputEdit"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:minHeight="44dp"
                 android:background="@null"
-                android:hint="发消息"
+                android:hint="输入消息..."
                 android:imeOptions="actionSend"
                 android:inputType="textMultiLine|text"
                 android:maxLines="6"
@@ -186,29 +166,50 @@
                 android:textColorHint="@color/text_secondary"
                 android:textSize="15sp" />
 
-            <!-- 卡片内底部行：小胶囊 + 弹簧 + 发送 -->
+            <!-- 卡片底部工具行：分段胶囊 + 深度思考 + 弹簧 + 加号 + 发送 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
-                <TextView
-                    android:id="@+id/chipThink2"
+                <!-- Plan / Build 分段胶囊 -->
+                <LinearLayout
+                    android:id="@+id/segContainer"
                     android:layout_width="wrap_content"
                     android:layout_height="30dp"
-                    android:background="@drawable/bg_mini_pill"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:paddingStart="12dp"
-                    android:paddingEnd="12dp"
-                    android:text="✻ 深度思考"
-                    android:textColor="@color/accent"
-                    android:textSize="12sp" />
+                    android:background="@drawable/bg_seg_container"
+                    android:orientation="horizontal"
+                    android:padding="2dp">
 
+                    <TextView
+                        android:id="@+id/segPlan"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:background="@null"
+                        android:gravity="center"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:text="Plan"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/segBuild"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/bg_seg_thumb"
+                        android:gravity="center"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:text="Build"
+                        android:textColor="@color/accent"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <!-- 深度思考胶囊 -->
                 <TextView
-                    android:id="@+id/chipSearch"
+                    android:id="@+id/chipThink2"
                     android:layout_width="wrap_content"
                     android:layout_height="30dp"
                     android:layout_marginStart="6dp"
@@ -218,9 +219,17 @@
                     android:gravity="center"
                     android:paddingStart="12dp"
                     android:paddingEnd="12dp"
-                    android:text="⌕ 智能搜索"
-                    android:textColor="@color/accent"
-                    android:textSize="12sp" />
+                    android:text="深度思考"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+
+                <!-- 智能搜索占位：隐藏 -->
+                <TextView
+                    android:id="@+id/chipSearch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="30dp"
+                    android:visibility="gone"
+                    android:text="智能搜索" />
 
                 <!-- 弹簧 -->
                 <View
@@ -228,39 +237,52 @@
                     android:layout_height="1dp"
                     android:layout_weight="1" />
 
-                <!-- 发送 -->
-                <Button
+                <!-- 加号圆钮 -->
+                <FrameLayout
+                    android:id="@+id/btnPlus"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_circle_btn"
+                    android:clickable="true"
+                    android:focusable="true">
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_plus" />
+                </FrameLayout>
+
+                <!-- 圆形发送按钮 -->
+                <FrameLayout
                     android:id="@+id/sendButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="36dp"
-                    android:background="@drawable/bg_send"
-                    android:minWidth="60dp"
-                    android:paddingStart="16dp"
-                    android:paddingEnd="16dp"
-                    android:stateListAnimator="@null"
-                    android:text="发送"
-                    android:textAllCaps="false"
-                    android:textColor="@color/text_on_accent"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_circle_send"
+                    android:clickable="true"
+                    android:focusable="true">
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_send_arrow" />
+                </FrameLayout>
             </LinearLayout>
         </LinearLayout>
 
-        <!-- 卡片下方：自动执行开关 -->
+        <!-- 自动执行开关 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
-
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="自动执行（免确认）"
                 android:textColor="@color/text_secondary"
                 android:textSize="11sp" />
-
             <android.widget.Switch
                 android:id="@+id/autoSwitch"
                 android:layout_width="wrap_content"
