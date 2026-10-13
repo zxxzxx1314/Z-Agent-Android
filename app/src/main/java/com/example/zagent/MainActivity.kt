@@ -10,7 +10,6 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.view.Gravity
-import android.view.animation.OvershootInterpolator
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -539,18 +538,22 @@ chatContainer.addView(box)
         box.post { bounceIn(box) }
 }
 
-private fun bounceIn(view: View) {
-    view.alpha = 0f
-    view.scaleX = 0.6f
-    view.scaleY = 0.6f
-    view.animate()
-        .alpha(1f)
-        .scaleX(1f)
-        .scaleY(1f)
-        .setDuration(360)
-        .setInterpolator(OvershootInterpolator(1.8f))
-        .start()
-}
+    // 苹果风格倾斜入场：轻微 3D 倾斜 + 缩放 + 淡入（ease-out）
+    private fun bounceIn(view: View) {
+        view.cameraDistance = 8000f * resources.displayMetrics.density
+        view.rotationX = 8f
+        view.scaleX = 0.94f
+        view.scaleY = 0.94f
+        view.alpha = 0f
+        view.animate()
+            .rotationX(0f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .alpha(1f)
+            .setDuration(360)
+            .setInterpolator(android.view.animation.PathInterpolator(0.16f, 1f, 0.3f, 1f))
+            .start()
+    }
 
 // 深度思考胶囊高亮：开启时蓝字、关闭时灰字
 private fun refreshThinkChip() {
