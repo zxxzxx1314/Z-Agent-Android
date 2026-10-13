@@ -257,8 +257,11 @@ insets
 val root = findViewById<View>(R.id.rootView)
 ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
 val sys = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
-val pad = if (insets.isVisible(WindowInsetsCompat.Type.ime()))
-insets.getInsets(WindowInsetsCompat.Type.ime()).bottom else sys.bottom
+val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+// 只接受合理的键盘高度，防止异常 inset 撑爆输入区
+val imeBottom = if (ime.bottom in 1..(resources.displayMetrics.heightPixels / 2)) ime.bottom else 0
+val raw = maxOf(sys.bottom, imeBottom)
+val pad = raw.coerceIn(0, resources.displayMetrics.heightPixels / 3)
 inputBar.setPadding(inputBar.paddingLeft, inputBar.paddingTop,
 inputBar.paddingRight, pad)
 insets
