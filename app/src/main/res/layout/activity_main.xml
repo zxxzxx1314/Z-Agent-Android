@@ -317,7 +317,9 @@ android:paddingStart="11dp"
 android:paddingEnd="11dp"
 android:text="✻ 深度思考"
 android:textColor="@color/text_secondary"
-android:textSize="@dimen/fs_label" />
+android:textSize="@dimen/fs_label"
+android:maxLines="1"
+android:singleLine="true" />
 
 <TextView
 android:id="@+id/chipSearch"
