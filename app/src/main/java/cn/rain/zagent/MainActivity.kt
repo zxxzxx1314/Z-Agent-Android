@@ -101,6 +101,12 @@ private var streamingBubble: TextView? = null
 private var streamingSb = StringBuilder()
 private var cursorOn = true
 private var loadingDotsView: TextView? = null
+private var stepBarBox: LinearLayout? = null
+private var stepBarLabel: TextView? = null
+private var stepBarChev: TextView? = null
+private var stepBarSteps: LinearLayout? = null
+private var stepBarExpanded = true
+private val stepRows = HashMap<Int, LinearLayout>()
 private var settingsSheet: BottomSheetDialog? = null
 private var thinkOn = false
 private var appMode = "build"
@@ -847,7 +853,10 @@ private val streamPoll = object : Runnable {
                     if (arr != null) {
                         for (i in 0 until arr.length()) {
                             val c = arr.optJSONObject(i) ?: continue
-                            if (c.optString("t") == "content") appendStream(c.optString("v"))
+                            when (c.optString("t")) {
+                                "content" -> appendStream(c.optString("v"))
+                                "step" -> onStepEvent(c.optString("v"))
+                            }
                         }
                     }
                     done = o.optBoolean("done", false)
@@ -857,6 +866,144 @@ private val streamPoll = object : Runnable {
         if (done) { streamPolling = false; return }
         uiHandler.postDelayed(this, 60)
     }
+}
+
+private fun fmtMs(ms: Int): String =
+    if (ms < 1000) ms.toString() + "ms" else String.format("%.1fs", ms / 1000.0)
+
+private fun beginStepBarIfNeeded() {
+    if (stepBarBox != null) return
+    val col = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(4); bottomMargin = dp(4) }
+    }
+    val bar = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setBackgroundResource(R.drawable.bg_step_bar)
+        setPadding(dp(12), dp(10), dp(12), dp(10))
+        isClickable = true
+    }
+    val label = TextView(this).apply {
+        text = "preparing"
+        textSize = 14f
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+        setTypeface(null, android.graphics.Typeface.BOLD)
+        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+    }
+    val chev = TextView(this).apply {
+        text = "v"
+        textSize = 12f
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+    }
+    bar.addView(label)
+    bar.addView(chev)
+    bar.setOnClickListener {
+        stepBarExpanded = !stepBarExpanded
+        stepBarSteps?.visibility = if (stepBarExpanded) View.VISIBLE else View.GONE
+        stepBarChev?.text = if (stepBarExpanded) "v" else ">"
+    }
+    val steps = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setBackgroundResource(R.drawable.bg_step_body)
+        setPadding(dp(12), dp(6), dp(12), dp(10))
+    }
+    col.addView(bar)
+    col.addView(steps)
+    chatContainer.addView(col)
+    stepBarBox = col
+    stepBarLabel = label
+    stepBarChev = chev
+    stepBarSteps = steps
+    stepBarExpanded = true
+    stepRows.clear()
+    hideEmpty()
+}
+
+private fun onStepEvent(json: String) {
+    val o = try { JSONObject(json) } catch (e: Exception) { return }
+    val idx = o.optInt("idx", 0)
+    val total = o.optInt("total", 0)
+    val label = o.optString("label", "step")
+    val status = o.optString("status", "run")
+    val ms = if (o.has("elapsed_ms")) o.optInt("elapsed_ms", -1) else -1
+    beginStepBarIfNeeded()
+    val steps = stepBarSteps ?: return
+    var row = stepRows[idx]
+    if (row == null) {
+        row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(4), 0, dp(4))
+        }
+        val ico = TextView(this).apply {
+            text = "."
+            textSize = 13f
+            setPadding(dp(2), 0, dp(8), 0)
+            tag = "ico"
+        }
+        val cmd = TextView(this).apply {
+            text = label
+            textSize = 12f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            tag = "cmd"
+        }
+        val tm = TextView(this).apply {
+            text = "-"
+            textSize = 12f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+            tag = "tm"
+        }
+        row.addView(ico)
+        row.addView(cmd)
+        row.addView(tm)
+        steps.addView(row)
+        stepRows[idx] = row
+    }
+    val ico = row.findViewWithTag<TextView>("ico")
+    val tm = row.findViewWithTag<TextView>("tm")
+    val accent = ContextCompat.getColor(this@MainActivity, R.color.accent)
+    val okc = ContextCompat.getColor(this@MainActivity, R.color.ok)
+    val dng = ContextCompat.getColor(this@MainActivity, R.color.danger)
+    when (status) {
+        "run" -> { ico?.text = ">"; ico?.setTextColor(accent); tm?.text = "..." }
+        "ok" -> { ico?.text = "OK"; ico?.setTextColor(okc); tm?.text = if (ms >= 0) fmtMs(ms) else "-" }
+        "err" -> { ico?.text = "X"; ico?.setTextColor(dng); tm?.text = if (ms >= 0) fmtMs(ms) else "-" }
+    }
+    if (status == "run") {
+        stepBarLabel?.text = "> running " + idx + "/" + total + " · " + label
+        stepBarLabel?.setTextColor(accent)
+    } else if (idx == total) {
+        var okCount = 0
+        for (r in stepRows.values) {
+            if (r.findViewWithTag<TextView>("ico")?.text == "OK") okCount++
+        }
+        if (okCount == stepRows.size) {
+            stepBarLabel?.text = "OK " + total + "/" + total + " · done"
+            stepBarLabel?.setTextColor(okc)
+        } else {
+            stepBarLabel?.text = "! " + total + "/" + total + " · failed"
+            stepBarLabel?.setTextColor(dng)
+        }
+        stepBarSteps?.visibility = View.GONE
+        stepBarChev?.text = ">"
+        stepBarExpanded = false
+    }
+}
+
+private fun endStepBar() {
+    stepBarBox = null
+    stepBarLabel = null
+    stepBarChev = null
+    stepBarSteps = null
+    stepRows.clear()
 }
 
 private fun renderStreamText(tv: TextView) {
@@ -933,6 +1080,7 @@ private fun sendCommand(cmd: String) {
                     val fb = if (wasStopped) "[已停止]\n" else reply + "\n"
                     appendOutput(fb)
                 }
+                endStepBar()
                 busy = false
                 stopRequested = false
                 refreshSendButton()

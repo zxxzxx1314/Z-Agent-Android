@@ -2335,6 +2335,12 @@ def agent_loop(first_reply=None):
                 rejected = False
                 batch_failed = False
                 for idx, (code, desc) in enumerate(scripts):
+                    _step_t0 = time.time()
+                    _step_label = (desc or ("script %d" % (idx + 1))).strip()[:80]
+                    try:
+                        emit_step(idx + 1, len(scripts), _step_label, "run")
+                    except Exception:
+                        pass
                     if self_repair_count >= MAX_SELF_REPAIR:
                         feedbacks.append(
                             "【系统自动回传】自我修复次数已达上限（%d/%d），"
@@ -2351,6 +2357,12 @@ def agent_loop(first_reply=None):
                             "请解释原因、给出修改方案，或改用其他方式完成。")
                         break
                     rc, out, err = run_python_code(code)
+                    _step_ms = int((time.time() - _step_t0) * 1000)
+                    try:
+                        emit_step(idx + 1, len(scripts), _step_label,
+                                  "ok" if rc == 0 else "err", _step_ms)
+                    except Exception:
+                        pass
                     show_exec_result(code, rc, out, err)
                     if rc == 0:
                         LAST_SCRIPT = code
@@ -2691,6 +2703,18 @@ if __name__ == "__main__":
 _STREAM_BUF = []
 _STREAM_DONE = [False]
 _STREAM_STOP = [False]
+
+
+def emit_step(idx, total, label, status, elapsed_ms=None):
+    try:
+        import json as _j
+        obj = {"idx": int(idx), "total": int(total),
+            "label": str(label)[:80], "status": str(status)}
+        if elapsed_ms is not None:
+            obj["elapsed_ms"] = int(elapsed_ms)
+        _STREAM_BUF.append(("step", _j.dumps(obj, ensure_ascii=False)))
+    except Exception:
+        pass
 
 
 def _post_stream(msgs, temperature=0.3):
