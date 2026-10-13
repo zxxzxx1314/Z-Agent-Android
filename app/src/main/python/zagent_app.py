@@ -53,10 +53,10 @@ def _make_printer(buf):
         try:
             s = sep.join(str(a) for a in args) + end
             try:
-             from zcore.mask import scrub as msk
-             s = msk(s)
+                from zcore.mask import scrub as msk
+                s = msk(s)
             except Exception:
-             pass
+                pass
             buf.append(s)
         except Exception:
             pass
