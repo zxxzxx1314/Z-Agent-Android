@@ -1089,7 +1089,7 @@ private fun sendCommand(cmd: String) {
                         || reply.contains("[网络错误")
                         || reply.contains("[流读取中断]")
         if (failed) HapticTokens.warn(sendButton) else HapticTokens.success(sendButton)
-                if (failed) addErrorBar(cmd, extractErrorReason(reply, wasStopped))
+                if (failed) addErrorBar(cmd, extractErrorReason(reply, wasStopped), reply)
             }
         }
     }
@@ -1402,68 +1402,108 @@ private fun extractErrorReason(reply: String, stopped: Boolean): String {
 }
 
 // 错误态：行内提示条（原因 + 去设置 + 重试）
-private fun addErrorBar(cmd: String, reason: String) {
-    hideEmpty()
-    val card = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setBackgroundResource(R.drawable.bg_reasoning_box)
-        setPadding(dp(14), dp(10), dp(14), dp(10))
-        layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(4); bottomMargin = dp(8) }
-    }
-    val msgTv = TextView(this).apply {
-    text = maskSecret("⚠ " + reason)
-        textSize = 13f
-        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.danger))
-    }
-    card.addView(msgTv)
-    val btnRow = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.END
-        layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(8) }
-    }
-    val settingsBtn = TextView(this).apply {
-        text = "去设置"
-        textSize = 13f
-        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
-        setPadding(dp(12), dp(6), dp(12), dp(6))
-        isClickable = true
-        setBackgroundResource(R.drawable.bg_quick)
-    }
-    settingsBtn.setOnClickListener {
-        HapticTokens.tap(it)
-        showSettingsTransform()
-    }
-    val retryBtn = TextView(this).apply {
-        text = "↻ 重试"
-        textSize = 13f
-        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
-        setPadding(dp(12), dp(6), dp(12), dp(6))
-        isClickable = true
-        setBackgroundResource(R.drawable.bg_quick)
-    }
-    val lp2 = LinearLayout.LayoutParams(
-        LinearLayout.LayoutParams.WRAP_CONTENT,
-        LinearLayout.LayoutParams.WRAP_CONTENT
-    ).apply { marginStart = dp(8) }
-    retryBtn.layoutParams = lp2
-    retryBtn.setOnClickListener {
-        HapticTokens.tap(it)
-        chatContainer.removeView(card)
-        appendOutput("你> " + cmd + "\n")
-        sendCommand(cmd)
-    }
-    btnRow.addView(settingsBtn)
-    btnRow.addView(retryBtn)
-    card.addView(btnRow)
-    chatContainer.addView(card)
-    outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+private fun addErrorBar(cmd: String, reason: String, detail: String = "") {
+hideEmpty()
+val card = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_reasoning_box)
+setPadding(dp(14), dp(10), dp(14), dp(10))
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { topMargin = dp(4); bottomMargin = dp(8) }
 }
+val msgTv = TextView(this).apply {
+text = maskSecret("⚠ " + reason)
+textSize = 13f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.danger))
+}
+card.addView(msgTv)
+
+val detailTv = TextView(this).apply {
+val d = if (detail.length > 1000)
+detail.substring(0, 1000) + "\n…（已截断，共 " + detail.length + " 字）"
+else detail
+text = maskSecret(d.ifBlank { "（无更多信息）" })
+textSize = 12f
+typeface = android.graphics.Typeface.MONOSPACE
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+setPadding(dp(2), dp(8), dp(2), dp(2))
+setTextIsSelectable(true)
+visibility = View.GONE
+}
+card.addView(detailTv)
+
+val btnRow = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.END
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { topMargin = dp(8) }
+}
+val detailBtn = TextView(this).apply {
+text = "看详情"
+textSize = 13f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+setPadding(dp(12), dp(6), dp(12), dp(6))
+isClickable = true
+setBackgroundResource(R.drawable.bg_quick)
+}
+detailBtn.setOnClickListener {
+HapticTokens.tap(it)
+val expanded = detailTv.visibility == View.VISIBLE
+detailTv.visibility = if (expanded) View.GONE else View.VISIBLE
+detailBtn.text = if (expanded) "看详情" else "收起"
+}
+val retryBtn = TextView(this).apply {
+text = "↻ 重试"
+textSize = 13f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+setPadding(dp(12), dp(6), dp(12), dp(6))
+isClickable = true
+setBackgroundResource(R.drawable.bg_quick)
+}
+retryBtn.layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.WRAP_CONTENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { marginStart = dp(8) }
+retryBtn.setOnClickListener {
+HapticTokens.tap(it)
+chatContainer.removeView(card)
+appendOutput("你> " + cmd + "\n")
+sendCommand(cmd)
+}
+btnRow.addView(detailBtn)
+btnRow.addView(retryBtn)
+card.addView(btnRow)
+
+val setRow = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.END
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { topMargin = dp(4) }
+}
+val settingsBtn = TextView(this).apply {
+text = "去设置 →"
+textSize = 12f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+setPadding(dp(6), dp(2), dp(6), dp(2))
+isClickable = true
+}
+settingsBtn.setOnClickListener {
+HapticTokens.tap(it)
+showSettingsTransform()
+}
+setRow.addView(settingsBtn)
+card.addView(setRow)
+
+chatContainer.addView(card)
+outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+}
+
 
 // 加载态：3 点跳动
 private fun showLoadingDots(): TextView {
