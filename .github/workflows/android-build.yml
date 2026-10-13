@@ -62,7 +62,7 @@ jobs:
         run: gradle assembleRelease --no-daemon --stacktrace
 
       - name: Verify canary bytes packed into APK
-        run: python3 canary_check.py
+        run: python3 canary_check.py --require-apk
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
