@@ -253,7 +253,7 @@ android:minHeight="44dp"
 android:background="@null"
 android:hint="输入消息..."
 android:imeOptions="actionSend"
-android:inputType="textMultiLine|textCapSentences"
+android:inputType="textCapSentences"
 android:maxLines="5"
 android:paddingTop="8dp"
 android:paddingBottom="4dp"
@@ -270,7 +270,7 @@ android:orientation="horizontal">
 <FrameLayout
 android:id="@+id/segContainer"
 android:layout_width="wrap_content"
-android:layout_height="32dp"
+android:layout_height="48dp"
 android:background="@drawable/bg_seg_container"
 android:padding="2dp">
 <View
@@ -308,8 +308,8 @@ android:textSize="@dimen/fs_label" />
 <TextView
 android:id="@+id/chipThink2"
 android:layout_width="wrap_content"
-android:layout_height="32dp"
-android:layout_marginStart="6dp"
+android:layout_height="48dp"
+android:layout_marginStart="8dp"
 android:background="@drawable/bg_mini_pill"
 android:clickable="true"
 android:focusable="true"
@@ -326,7 +326,7 @@ android:singleLine="true" />
 <TextView
 android:id="@+id/chipSearch"
 android:layout_width="wrap_content"
-android:layout_height="32dp"
+android:layout_height="48dp"
 android:visibility="gone" />
 
 <View
@@ -337,8 +337,8 @@ android:layout_weight="1" />
 <FrameLayout
 android:id="@+id/btnPlus"
 android:contentDescription="添加附件"
-android:layout_width="36dp"
-android:layout_height="36dp"
+android:layout_width="48dp"
+android:layout_height="48dp"
 android:background="@drawable/bg_circle_btn"
 android:clickable="true"
 android:focusable="true"
@@ -355,7 +355,7 @@ android:id="@+id/sendButton"
 android:contentDescription="发送消息"
 android:layout_width="36dp"
 android:layout_height="36dp"
-android:layout_marginStart="6dp"
+android:layout_marginStart="8dp"
 android:background="@drawable/bg_circle_send"
 android:clickable="true"
 android:focusable="true"
@@ -381,6 +381,7 @@ android:id="@+id/autoLabel"
 android:layout_width="wrap_content"
 android:layout_height="wrap_content"
 android:text="自动执行（免确认）"
+android:maxLines="1"
 android:textColor="@color/text_secondary"
 android:textSize="@dimen/fs_caption" />
 <android.widget.Switch

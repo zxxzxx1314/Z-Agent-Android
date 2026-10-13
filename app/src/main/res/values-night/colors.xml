@@ -11,7 +11,7 @@
 <!-- ===== 文字（避免纯白刺眼）===== -->
 <color name="text_primary">#ECECF1</color>
 <color name="text_secondary">#9A9AA8</color>
-<color name="text_tertiary">#6E6E7C</color>
+<color name="text_tertiary">#8A8A98</color>
 
 <!-- ===== 主色 ===== -->
 <color name="accent">#9B7FFF</color> <!-- 深色下提亮 -->

@@ -34,6 +34,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsAnimationCompat
 import androidx.core.view.WindowInsetsCompat
 import org.json.JSONObject
+import androidx.activity.OnBackPressedCallback
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+import android.view.KeyEvent
+import android.view.inputmethod.EditorInfo
 
 class MainActivity : AppCompatActivity() {
 
@@ -112,6 +117,41 @@ setContentView(R.layout.activity_main)
 WindowCompat.setDecorFitsSystemWindows(window, false)
 
 sp = getSharedPreferences("zagent", Context.MODE_PRIVATE)
+
+// 输入框 Enter = 发送（多行视觉但仍走 IME_ACTION_SEND）
+inputEdit.setOnEditorActionListener { _, actionId, event ->
+if (actionId == EditorInfo.IME_ACTION_SEND ||
+(event != null && event.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)) {
+onSend(); true
+} else false
+}
+inputEdit.setOnKeyListener { _, keyCode, event ->
+if (keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN && !event.isShiftPressed) {
+onSend(); true
+} else false
+}
+
+// Predictive back：设置 Sheet 打开时先收 Sheet，再次返回才退出
+onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+override fun handleOnBackPressed() {
+val s = settingsSheet
+if (s != null && s.isShowing) { s.dismiss(); settingsSheet = null; return }
+if (busy) {
+stopRequested = true
+threadRun { try { PythonBridge.stopStream(this@MainActivity) } catch (e: Exception) { } }
+toast("正在停止……")
+return
+}
+isEnabled = false
+onBackPressedDispatcher.onBackPressed()
+}
+})
+
+// 首次：从 EncryptedSharedPreferences 注入 API Key 到 Python 层
+val encKey = SecurePrefs.getApiKey(this)
+if (!encKey.isNullOrBlank()) {
+threadRun { safeBridge { try { PythonBridge.setApiKey(this@MainActivity, encKey) } catch (e: Exception) { } } }
+}
 
 statusText = findViewById(R.id.statusText)
 outputScroll = findViewById(R.id.outputScroll)
@@ -201,17 +241,12 @@ findViewById<View>(R.id.emptyChip4).setOnClickListener { haptic(it); fillInput("
 themeButton.setOnClickListener { haptic(it); toggleTheme() }
 
  autoSwitch.setOnCheckedChangeListener { v, checked ->
- HapticTokens.tap(v)
+ if (checked) HapticTokens.warn(v) else HapticTokens.tap(v)
  refreshAutoSwitch(checked)
+threadRun { safeBridge { try { PythonBridge.setAuto(this@MainActivity, checked) } catch (e: Exception) { } } }
  }
  refreshAutoSwitch(autoSwitch.isChecked)
 
-autoSwitch.setOnCheckedChangeListener { v, checked ->
-HapticTokens.tap(v)
-threadRun {
-safeBridge { PythonBridge.setAuto(this@MainActivity, checked) }
-}
-}
 
 sendButton.setOnClickListener { haptic(it); onSend() }
 btnPlus.setOnClickListener {
@@ -531,11 +566,13 @@ AlertDialog.Builder(this)
 .setView(input)
 .setPositiveButton("保存") { _, _ ->
 val key = input.text.toString().trim()
+SecurePrefs.putApiKey(this@MainActivity, key)
+HapticTokens.success(sendButton)
 threadRun {
 safeBridge {
-val r = PythonBridge.setApiKey(this@MainActivity, key)
+PythonBridge.setApiKey(this@MainActivity, key)
 runOnUiThread {
-appendOutput("[设置] API Key " + r + "\n")
+appendOutput("[设置] API Key 已保存\n")
 toast("已保存")
 }
 }
@@ -566,6 +603,7 @@ AlertDialog.Builder(this)
 .setView(input)
 .setPositiveButton("保存") { _, _ ->
 val url = input.text.toString().trim()
+HapticTokens.success(sendButton)
 threadRun {
 safeBridge {
 val r = PythonBridge.setBaseUrl(this@MainActivity, url)
@@ -606,6 +644,7 @@ AlertDialog.Builder(this)
 .setView(input)
 .setPositiveButton("保存") { _, _ ->
 val name = input.text.toString().trim()
+HapticTokens.success(sendButton)
 sp.edit().putString(KEY_MODEL_NAME, name).apply()
 threadRun {
 safeBridge {
@@ -627,6 +666,7 @@ AlertDialog.Builder(this)
 .setTitle("清空会话")
 .setMessage("将清空对话记忆与待办（未验收合同挂起）。确定？")
 .setPositiveButton("确定") { _, _ ->
+HapticTokens.warn(window.decorView)
 threadRun {
 safeBridge {
 val r = PythonBridge.resetSession(this@MainActivity)
@@ -649,6 +689,7 @@ AlertDialog.Builder(this)
 .setView(input)
 .setPositiveButton("保存") { _, _ ->
 val name = input.text.toString().trim()
+HapticTokens.success(sendButton)
 if (name.isEmpty()) toast("名称不能为空")
 else sendCommand("/save " + name)
 }
@@ -681,6 +722,7 @@ private fun onSend() {
 val text = inputEdit.text.toString().trim()
 if (text.isEmpty() && pendingFiles.isEmpty()) return
 inputEdit.setText("")
+inputEdit.requestFocus()
 val attachInfo = if (pendingFiles.isEmpty()) ""
 else "\n[附件] " + pendingFiles.joinToString(" ")
 val fullText = text + attachInfo
@@ -1367,24 +1409,6 @@ sendButton.isClickable = true; sendButton.alpha = 1f
 private fun toast(msg: String) {
 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 }
-
-    // Predictive back：Sheet 打开时先收 Sheet，再次返回才退出
-    @Suppress("DEPRECATION")
-    override fun onBackPressed() {
-        val s = settingsSheet
-        if (s != null && s.isShowing) {
-            s.dismiss()
-            settingsSheet = null
-            return
-        }
-        if (busy) {
-            stopRequested = true
-            threadRun { try { PythonBridge.stopStream(this@MainActivity) } catch (e: Exception) { } }
-            toast("正在停止……")
-            return
-        }
-        super.onBackPressed()
-    }
 
 private fun requestNotifyPermission() {
 if (Build.VERSION.SDK_INT >= 33) {

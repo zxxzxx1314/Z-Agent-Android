@@ -12,7 +12,7 @@
 <!-- ===== 文字（三档，全部带紫调）===== -->
 <color name="text_primary">#1A1A24</color>
 <color name="text_secondary">#6D6D7A</color>
-<color name="text_tertiary">#9E9EAB</color>
+<color name="text_tertiary">#6B6B78</color>
 
 <!-- ===== 主色 ===== -->
 <color name="accent">#6D4AFF</color> <!-- 浅色下加深保对比度 -->
