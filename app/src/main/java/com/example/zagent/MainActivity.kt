@@ -62,6 +62,7 @@ private lateinit var chipThink2: TextView
 private lateinit var chipSearch: TextView
 private lateinit var attachScroll: HorizontalScrollView
 private lateinit var attachRow: LinearLayout
+ private lateinit var scrollBottomBtn: FrameLayout
 
 private var busy = false
 private var thinkOn = false
@@ -97,6 +98,48 @@ chipSearch = findViewById(R.id.chipSearch)
 attachScroll = findViewById(R.id.attachScroll)
 attachRow = findViewById(R.id.attachRow)
 
+scrollBottomBtn = findViewById(R.id.scrollBottomBtn)
+
+// 回到底部：滚动离开底部时显示悬浮按钮
+outputScroll.setOnScrollChangeListener { _, _, scrollY, _, _ ->
+val ch = outputScroll.getChildAt(0) ?: return@setOnScrollChangeListener
+val atBottom = scrollY >= ch.height - outputScroll.height - dp(8)
+scrollBottomBtn.visibility = if (atBottom) View.GONE else View.VISIBLE
+}
+scrollBottomBtn.setOnClickListener {
+haptic(it)
+outputScroll.post {
+ outputScroll.fullScroll(View.FOCUS_DOWN)
+ scrollBottomBtn.visibility = View.GONE
+ }
+}
+
+// 状态栏长按复制
+statusText.setOnLongClickListener {
+haptic(it)
+copyText(statusText.text.toString())
+true
+}
+
+// 输入草稿自动保存 / 恢复
+inputEdit.setText(sp.getString(KEY_DRAFT, "") ?: "")
+inputEdit.setSelection(inputEdit.text.length)
+inputEdit.addTextChangedListener(object : android.text.TextWatcher {
+override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+override fun afterTextChanged(s: android.text.Editable?) {
+sp.edit().putString(KEY_DRAFT, s?.toString() ?: "").apply()
+}
+})
+
+// 长按发送键 = 清空输入
+sendButton.setOnLongClickListener {
+haptic(it)
+inputEdit.setText("")
+sp.edit().remove(KEY_DRAFT).apply()
+toast("已清空输入")
+true
+}
 applyTopInset()
 applySavedTheme()
 
@@ -470,6 +513,27 @@ buf.append(line)
 flushAi()
 }
 
+ private fun wrapWithTime(bubbleRow: View, alignEnd: Boolean): LinearLayout {
+val col = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+)
+gravity = if (alignEnd) Gravity.END else Gravity.START
+}
+val time = TextView(this).apply {
+text = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+.format(java.util.Date())
+textSize = 10f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+setPadding(dp(6), dp(2), dp(6), 0)
+}
+col.addView(time)
+col.addView(bubbleRow)
+return col
+}
+
 private fun addUserBubble(content: String) {
 hideEmpty()
 val row = LinearLayout(this).apply {
@@ -497,8 +561,9 @@ showBubbleMenu(v, row, content, true)
 true
 }
 row.addView(bubble)
-chatContainer.addView(row)
-row.post { bounceIn(row) }
+ val wrapped = wrapWithTime(row, true)
+ chatContainer.addView(wrapped)
+ wrapped.post { bounceIn(wrapped) }
 }
 
 private fun addAiBubble(content: String) {
@@ -528,8 +593,9 @@ showBubbleMenu(v, row, content, false)
 true
 }
 row.addView(bubble)
-chatContainer.addView(row)
-row.post { bounceIn(row) }
+ val wrapped = wrapWithTime(row, false)
+ chatContainer.addView(wrapped)
+ wrapped.post { bounceIn(wrapped) }
 }
 
 private fun showBubbleMenu(anchor: View, row: View, content: String, isUser: Boolean) {
@@ -546,7 +612,7 @@ sendCommand(content)
 true
 }
 3 -> {
-chatContainer.removeView(row)
+(row.parent as? View)?.let { chatContainer.removeView(it) } ?: chatContainer.removeView(row)
 if (chatContainer.childCount <= 1) emptyState.visibility = View.VISIBLE
 true
 }
@@ -795,6 +861,7 @@ requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
 companion object {
 private const val KEY_MODEL_NAME = "model_name"
 private const val KEY_LIGHT_THEME = "light_theme"
+private const val KEY_DRAFT = "input_draft"
 private const val BEG = "===REASONING_BEGIN==="
 private const val END = "===REASONING_END==="
 }

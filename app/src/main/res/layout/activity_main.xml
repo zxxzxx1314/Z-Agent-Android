@@ -7,7 +7,6 @@ android:layout_height="match_parent"
 android:background="@color/bg_root"
 android:orientation="vertical">
 
-<!-- ============ 顶部标题栏 ============ -->
 <LinearLayout
 android:id="@+id/topBar"
 android:layout_width="match_parent"
@@ -78,12 +77,16 @@ android:textSize="13sp" />
 
 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
 
-<!-- ============ 对话区 ============ -->
+<!-- 对话区（FrameLayout 承载悬浮回底按钮） -->
+<FrameLayout
+android:layout_width="match_parent"
+android:layout_height="0dp"
+android:layout_weight="1">
+
 <ScrollView
 android:id="@+id/outputScroll"
 android:layout_width="match_parent"
-android:layout_height="0dp"
-android:layout_weight="1"
+android:layout_height="match_parent"
 android:background="@color/bg_root"
 android:fillViewport="true"
 android:overScrollMode="always"
@@ -98,7 +101,6 @@ android:paddingTop="12dp"
 android:paddingEnd="8dp"
 android:paddingBottom="12dp">
 
-<!-- 空状态引导 -->
 <LinearLayout
 android:id="@+id/emptyState"
 android:layout_width="match_parent"
@@ -155,9 +157,32 @@ android:text="排查这个报错" />
 </LinearLayout>
 </ScrollView>
 
+<!-- 回到底部悬浮按钮 -->
+<FrameLayout
+android:id="@+id/scrollBottomBtn"
+android:layout_width="40dp"
+android:layout_height="40dp"
+android:layout_gravity="bottom|end"
+android:layout_marginEnd="16dp"
+android:layout_marginBottom="16dp"
+android:background="@drawable/bg_circle_btn"
+android:clickable="true"
+android:focusable="true"
+android:foreground="@drawable/ripple_circle"
+android:visibility="gone">
+<TextView
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:layout_gravity="center"
+android:text="↓"
+android:textColor="@color/accent"
+android:textSize="20sp"
+android:textStyle="bold" />
+</FrameLayout>
+</FrameLayout>
+
 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
 
-<!-- ============ 快捷按钮条 ============ -->
 <HorizontalScrollView
 android:layout_width="match_parent"
 android:layout_height="wrap_content"
@@ -184,7 +209,6 @@ android:paddingBottom="8dp">
 
 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
 
-<!-- ============ 输入卡片 ============ -->
 <LinearLayout
 android:id="@+id/inputBar"
 android:layout_width="match_parent"
@@ -207,7 +231,6 @@ android:paddingTop="10dp"
 android:paddingEnd="12dp"
 android:paddingBottom="10dp">
 
-<!-- 附件清单 -->
 <HorizontalScrollView
 android:id="@+id/attachScroll"
 android:layout_width="match_parent"
