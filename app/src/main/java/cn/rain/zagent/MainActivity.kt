@@ -1193,7 +1193,133 @@ row.addView(bubble)
  wrapped.post { bounceIn(wrapped) }
 }
 
+private fun makeCodeBlock(parent: LinearLayout, code: String) {
+val card = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_step_body)
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { topMargin = dp(6); bottomMargin = dp(6) }
+}
+val tools = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.END
+setPadding(dp(4), dp(4), dp(4), dp(2))
+}
+val accent = ContextCompat.getColor(this@MainActivity, R.color.accent)
+val sec = ContextCompat.getColor(this@MainActivity, R.color.text_secondary)
+fun mk(label: String, col: Int, onClick: () -> Unit): TextView {
+return TextView(this).apply {
+text = label
+textSize = 12f
+setTextColor(col)
+setPadding(dp(10), dp(6), dp(10), dp(6))
+isClickable = true
+setOnClickListener { HapticTokens.tap(it); onClick() }
+}
+}
+val runBtn = mk("运行", accent) {
+sendCommand("/zrun " + b64(code))
+}
+val saveBtn = mk("存为插件", sec) {
+val input = EditText(this).apply { hint = "插件名" }
+AlertDialog.Builder(this)
+.setTitle("存为插件")
+.setView(input)
+.setPositiveButton("保存") { , _ ->
+val nm = input.text.toString().trim().ifBlank { "code" + System.currentTimeMillis() }
+sendCommand("/zsave " + b64(nm) + " " + b64(code))
+}
+.setNegativeButton("取消", null)
+.show()
+}
+val copyBtn = mk("复制", sec) { copyText(code) }
+tools.addView(runBtn)
+tools.addView(saveBtn)
+tools.addView(copyBtn)
+card.addView(tools)
+val pre = TextView(this).apply {
+text = code
+textSize = 12.5f
+typeface = android.graphics.Typeface.MONOSPACE
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+setPadding(dp(12), dp(4), dp(12), dp(10))
+setTextIsSelectable(true)
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+)
+}
+card.addView(pre)
+parent.addView(card)
+}
+
+private fun b64(s: String): String =
+android.util.Base64.encodeToString(s.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+
+private fun addAiBubbleRich(content: String) {
+val col = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+gravity = Gravity.START
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { topMargin = dp(4); bottomMargin = dp(4) }
+}
+val open = "" + "`" val close = "" + "`"
+var idx = 0
+while (idx < content.length) {
+val a = content.indexOf(open, idx)
+if (a < 0) {
+val tail = content.substring(idx).trim()
+if (tail.isNotEmpty()) col.addView(makePlainAiBubble(col, tail))
+break
+}
+val head = content.substring(idx, a).trim()
+if (head.isNotEmpty()) col.addView(makePlainAiBubble(col, head))
+var p = a + 3
+while (p < content.length && content[p] != '\n' && content[p] != ' ') p++
+while (p < content.length && content[p] != '\n') p++
+if (p < content.length) p++
+val b = content.indexOf(close, p)
+if (b < 0) {
+val rest = content.substring(a).trim()
+if (rest.isNotEmpty()) col.addView(makePlainAiBubble(col, rest))
+break
+}
+makeCodeBlock(col, content.substring(p, b))
+idx = b + 3
+}
+if (col.childCount == 0) col.addView(makePlainAiBubble(col, content))
+val wrapped = wrapWithTime(col, false)
+chatContainer.addView(wrapped)
+wrapped.post { bounceIn(wrapped) }
+}
+
+private fun makePlainAiBubble(parent: LinearLayout, text: String): TextView {
+val bubble = TextView(this).apply {
+this.text = maskSecret(text)
+textSize = 15f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+setBackgroundResource(R.drawable.bg_bubble_ai)
+setPadding(dp(14), dp(10), dp(14), dp(10))
+maxWidth = dp(300)
+setTextIsSelectable(true)
+isClickable = true
+isLongClickable = true
+}
+bubble.setOnLongClickListener { v ->
+HapticTokens.longPress(v)
+showBubbleMenu(v, parent, text, false)
+true
+}
+return bubble
+}
+
+
 private fun addAiBubble(content: String) {
+    if (content.contains("``" + "`")) { addAiBubbleRich(content); return }
 hideEmpty()
 val row = LinearLayout(this).apply {
 orientation = LinearLayout.HORIZONTAL

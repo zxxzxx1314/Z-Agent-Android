@@ -51,13 +51,7 @@ APK_PROMPT_ADDON = """
 def _make_printer(buf):
     def _print(*args, sep=" ", end="\n", file=None, flush=False):
         try:
-            s = sep.join(str(a) for a in args) + end
-            try:
-                from zcore.mask import scrub as msk
-                s = msk(s)
-            except Exception:
-                pass
-            buf.append(s)
+            buf.append(sep.join(str(a) for a in args) + end)
         except Exception:
             pass
     return _print
@@ -406,6 +400,32 @@ def run_agent(user_input):
             zag.save_session(zag.messages)
             turn_buf.append("会话已持久化。APK 模式的「重启」= 完全关闭"
                             "应用后重新打开（Chaquopy 运行时随 App 生灭）。\n")
+        elif low.startswith("/zrun "):
+            import base64 as _b64
+            _p = u[len("/zrun "):]
+            _code = _b64.b64decode(_p.encode()).decode("utf-8")
+            turn_buf.append("[运行] 开始执行…" + chr(10))
+            try:
+                rc, out, err = zag.run_python_code(_code)
+                turn_buf.append("[退出码 " + str(rc) + "]" + chr(10))
+                turn_buf.append((out or "") + (err or "") + chr(10))
+            except Exception as e:
+                turn_buf.append("[运行异常] " + repr(e) + chr(10))
+        elif low.startswith("/zsave "):
+            import base64 as _b64
+            _parts = u[len("/zsave "):].split(" ", 1)
+            if len(_parts) < 2:
+                turn_buf.append("[存插件] 参数不足" + chr(10))
+            else:
+                try:
+                    _name = _b64.b64decode(_parts[0].encode()).decode("utf-8")
+                    _code = _b64.b64decode(_parts[1].encode()).decode("utf-8")
+                    zag.LAST_SCRIPT = _code
+                    zag.LAST_DESC = "从代码块三键保存"
+                    zag.save_plugin(_name)
+                    turn_buf.append("[存插件] 已保存" + chr(10))
+                except Exception as e:
+                    turn_buf.append("[存插件异常] " + repr(e) + chr(10))
         elif u.startswith("/"):
             zag.handle_command(u)
         else:
