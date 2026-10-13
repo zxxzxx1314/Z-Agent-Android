@@ -643,27 +643,191 @@ when (title) {
 return row
 }
 
+
+// ── 统一 BottomSheet 输入弹窗（与主 UI 一致：圆角卡 + accent 按钮）──
+private fun inputSheet(
+title: String,
+hint: String = "",
+initial: String = "",
+message: String = "",
+saveLabel: String = "保存",
+onSave: (String) -> Unit
+) {
+val sheet = BottomSheetDialog(this)
+val root = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_sheet)
+setPadding(0, dp(8), 0, dp(24))
+}
+root.addView(View(this).apply {
+setBackgroundResource(R.drawable.bg_handle)
+layoutParams = LinearLayout.LayoutParams(dp(36), dp(4)).apply {
+gravity = Gravity.CENTER_HORIZONTAL
+topMargin = dp(6); bottomMargin = dp(14)
+}
+})
+root.addView(TextView(this).apply {
+text = title
+textSize = 18f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+setTypeface(null, android.graphics.Typeface.BOLD)
+setPadding(dp(22), 0, dp(22), if (message.isEmpty()) dp(14) else dp(4))
+})
+if (message.isNotEmpty()) {
+root.addView(TextView(this).apply {
+text = message
+textSize = 13f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+setPadding(dp(22), 0, dp(22), dp(14))
+})
+}
+val input = EditText(this).apply {
+this.hint = hint
+setText(initial)
+textSize = 15f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+setHintTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+setBackgroundResource(R.drawable.bg_input_card)
+setPadding(dp(14), dp(12), dp(14), dp(12))
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { marginStart = dp(22); marginEnd = dp(22); bottomMargin = dp(18) }
+}
+root.addView(input)
+val row = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.END
+setPadding(dp(22), 0, dp(22), 0)
+}
+row.addView(TextView(this).apply {
+text = "取消"
+textSize = 14f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+setPadding(dp(20), dp(10), dp(20), dp(10))
+setBackgroundResource(R.drawable.bg_quick)
+isClickable = true
+setOnClickListener { HapticTokens.tap(it); sheet.dismiss() }
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.WRAP_CONTENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { marginEnd = dp(8) }
+})
+row.addView(TextView(this).apply {
+text = saveLabel
+textSize = 14f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+setTypeface(null, android.graphics.Typeface.BOLD)
+setPadding(dp(24), dp(10), dp(24), dp(10))
+setBackgroundResource(R.drawable.bg_quick)
+isClickable = true
+setOnClickListener {
+HapticTokens.tap(it)
+val v = input.text.toString()
+sheet.dismiss()
+onSave(v)
+}
+})
+root.addView(row)
+sheet.setContentView(root)
+sheet.show()
+input.requestFocus()
+input.post {
+val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+imm.showSoftInput(input, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+}
+}
+
+// ── 统一 BottomSheet 确认弹窗 ──
+private fun confirmSheet(
+title: String,
+message: String,
+confirmLabel: String = "确定",
+danger: Boolean = false,
+onConfirm: () -> Unit
+) {
+val sheet = BottomSheetDialog(this)
+val root = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_sheet)
+setPadding(0, dp(8), 0, dp(24))
+}
+root.addView(View(this).apply {
+setBackgroundResource(R.drawable.bg_handle)
+layoutParams = LinearLayout.LayoutParams(dp(36), dp(4)).apply {
+gravity = Gravity.CENTER_HORIZONTAL
+topMargin = dp(6); bottomMargin = dp(14)
+}
+})
+root.addView(TextView(this).apply {
+text = title
+textSize = 18f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+setTypeface(null, android.graphics.Typeface.BOLD)
+setPadding(dp(22), 0, dp(22), dp(6))
+})
+root.addView(TextView(this).apply {
+text = message
+textSize = 14f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+setPadding(dp(22), 0, dp(22), dp(18))
+})
+val row = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.END
+setPadding(dp(22), 0, dp(22), 0)
+}
+row.addView(TextView(this).apply {
+text = "取消"
+textSize = 14f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+setPadding(dp(20), dp(10), dp(20), dp(10))
+setBackgroundResource(R.drawable.bg_quick)
+isClickable = true
+setOnClickListener { HapticTokens.tap(it); sheet.dismiss() }
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.WRAP_CONTENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { marginEnd = dp(8) }
+})
+row.addView(TextView(this).apply {
+text = confirmLabel
+textSize = 14f
+setTextColor(ContextCompat.getColor(this@MainActivity,
+if (danger) R.color.danger else R.color.accent))
+setTypeface(null, android.graphics.Typeface.BOLD)
+setPadding(dp(24), dp(10), dp(24), dp(10))
+setBackgroundResource(R.drawable.bg_quick)
+isClickable = true
+setOnClickListener {
+HapticTokens.tap(it)
+sheet.dismiss()
+onConfirm()
+}
+})
+root.addView(row)
+sheet.setContentView(root)
+sheet.show()
+}
 private fun promptApiKey() {
-val input = EditText(this).apply { hint = "sk-..." }
-AlertDialog.Builder(this)
-.setTitle("DeepSeek API Key")
-.setView(input)
-.setPositiveButton("保存") { _, _ ->
-val key = input.text.toString().trim()
-SecurePrefs.putApiKey(this@MainActivity, key)
+inputSheet(
+title = "DeepSeek API Key",
+hint = "sk-...",
+message = "加密存储在 EncryptedSharedPreferences（AES256），绝不上传"
+) { key ->
+val k = key.trim()
+SecurePrefs.putApiKey(this@MainActivity, k)
 HapticTokens.success(sendButton)
 threadRun {
 safeBridge {
-PythonBridge.setApiKey(this@MainActivity, key)
+PythonBridge.setApiKey(this@MainActivity, k)
 runOnUiThread {
-appendOutput("[设置] API Key 已保存\n")
+appendOutput("[设置] API Key 已保存" + (10).toChar())
 toast("已保存")
 }
 }
 }
 }
-.setNegativeButton("取消", null)
-.show()
 }
 
 private fun promptBaseUrl() {
@@ -677,29 +841,24 @@ runOnUiThread { showBaseUrlDialog(cur) }
 }
 
 private fun showBaseUrlDialog(current: String) {
-val input = EditText(this).apply {
-hint = "api.deepseek.com"
-setText(current)
-}
-AlertDialog.Builder(this)
-.setTitle("API 地址（Base URL）")
-.setMessage("支持裸域名、带 /v1 或完整端点（自动补 /chat/completions）。")
-.setView(input)
-.setPositiveButton("保存") { _, _ ->
-val url = input.text.toString().trim()
+inputSheet(
+title = "API 地址（Base URL）",
+hint = "api.deepseek.com",
+initial = current,
+message = "支持裸域名、带 /v1 或完整端点（自动补 /chat/completions）"
+) { url ->
+val u = url.trim()
 HapticTokens.success(sendButton)
 threadRun {
 safeBridge {
-val r = PythonBridge.setBaseUrl(this@MainActivity, url)
+val r = PythonBridge.setBaseUrl(this@MainActivity, u)
 runOnUiThread {
-appendOutput("[设置] API 地址 " + r + "\n")
+appendOutput("[设置] API 地址 " + r + (10).toChar())
 toast("已保存")
 }
 }
 }
 }
-.setNegativeButton("取消", null)
-.show()
 }
 
 private fun testConnection() {
@@ -752,67 +911,63 @@ runOnUiThread { showModelDialog(cur) }
 }
 
 private fun showModelDialog(current: String) {
-val input = EditText(this).apply {
-hint = "如 deepseek-chat / deepseek-reasoner"
-setText(current)
-}
-AlertDialog.Builder(this)
-.setTitle("模型名称（Model Name）")
-.setMessage("留空并保存 = 恢复出厂默认模型。保存后下一轮对话立即生效。")
-.setView(input)
-.setPositiveButton("保存") { _, _ ->
-val name = input.text.toString().trim()
+inputSheet(
+title = "模型名称",
+hint = "如 deepseek-chat / deepseek-reasoner",
+initial = current,
+message = "留空 = 恢复出厂默认模型，下一轮对话立即生效"
+) { name ->
+val n = name.trim()
 HapticTokens.success(sendButton)
-sp.edit().putString(KEY_MODEL_NAME, name).apply()
+sp.edit().putString(KEY_MODEL_NAME, n).apply()
 threadRun {
 safeBridge {
-val r = PythonBridge.setModel(this@MainActivity, name)
+val r = PythonBridge.setModel(this@MainActivity, n)
 runOnUiThread {
-appendOutput("[设置] 模型名称 " + r + "\n")
+appendOutput("[设置] 模型名称 " + r + (10).toChar())
 toast("已保存")
 refreshStatusQuiet()
 }
 }
 }
 }
-.setNegativeButton("取消", null)
-.show()
 }
 
 private fun confirmClear() {
-AlertDialog.Builder(this)
-.setTitle("清空会话")
-.setMessage("将清空对话记忆与待办（未验收合同挂起）。确定？")
-.setPositiveButton("确定") { _, _ ->
+confirmSheet(
+title = "清空会话",
+message = "将清空对话记忆与待办（未验收合同挂起）。确定？",
+confirmLabel = "清空",
+danger = true
+) {
 HapticTokens.warn(window.decorView)
 threadRun {
 safeBridge {
 val r = PythonBridge.resetSession(this@MainActivity)
 runOnUiThread {
-appendOutput("[会话] " + r + "\n")
+appendOutput("[会话] " + r + (10).toChar())
 chatContainer.removeAllViews()
 emptyState.visibility = View.VISIBLE
 }
 }
 }
 }
-.setNegativeButton("取消", null)
-.show()
 }
 
 private fun promptSavePlugin() {
-val input = EditText(this).apply { hint = "插件名称（如 每日待办）" }
-AlertDialog.Builder(this)
-.setTitle("把当前会话保存为插件")
-.setView(input)
-.setPositiveButton("保存") { _, _ ->
-val name = input.text.toString().trim()
+inputSheet(
+title = "把当前会话保存为插件",
+hint = "插件名称（如 每日待办）",
+message = "保存后可在「插件」页面查看源码 / 删除"
+) { name ->
+val n = name.trim()
 HapticTokens.success(sendButton)
-if (name.isEmpty()) toast("名称不能为空")
-else sendCommand("/save " + name)
+if (n.isEmpty()) {
+toast("名称不能为空")
+} else {
+sendCommand("/save " + n)
 }
-.setNegativeButton("取消", null)
-.show()
+}
 }
 
 // 发送键状态：空 → 灰；有内容 → accent 实心；生成中 → 停止按钮
@@ -1336,16 +1491,14 @@ runOnUiThread { fillRunOutputCard(outCard, reply, el) }
 }
 }
 val saveBtn = mk("＋ 插件", sec) {
-val input = EditText(this).apply { hint = "插件名" }
-AlertDialog.Builder(this)
-.setTitle("存为插件")
-.setView(input)
-.setPositiveButton("保存") { _, _ ->
-val nm = input.text.toString().trim().ifBlank { "code" + System.currentTimeMillis() }
+inputSheet(
+title = "存为插件",
+hint = "插件名（默认 code+时间戳）",
+message = "把这段代码存成插件，可在「插件」页面查看"
+) { nmRaw ->
+val nm = nmRaw.trim().ifBlank { "code" + System.currentTimeMillis() }
 sendCommand("/zsave " + b64(nm) + " " + b64(code))
 }
-.setNegativeButton("取消", null)
-.show()
 }
 val copyBtn = mk("⧉ 复制", sec) { copyText(code) }
 actions.addView(runBtn)
@@ -1598,17 +1751,17 @@ sendCommand(content)
 true
 }
 3 -> {
-    val target = (row.parent as? View) ?: row
-    AlertDialog.Builder(this)
-        .setTitle("删除消息")
-        .setMessage("确定删除这条消息？")
-        .setPositiveButton("删除") { _, _ ->
-            chatContainer.removeView(target)
-            if (chatContainer.childCount <= 1) emptyState.visibility = View.VISIBLE
-        }
-        .setNegativeButton("取消", null)
-        .show()
-    true
+val target = (row.parent as? View) ?: row
+confirmSheet(
+title = "删除消息",
+message = "确定删除这条消息？",
+confirmLabel = "删除",
+danger = true
+) {
+chatContainer.removeView(target)
+if (chatContainer.childCount <= 1) emptyState.visibility = View.VISIBLE
+}
+true
 }
 else -> false
 }
