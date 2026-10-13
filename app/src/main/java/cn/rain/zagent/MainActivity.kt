@@ -351,7 +351,7 @@ override fun onPause() {
     uiHandler.removeCallbacks(placeholderRotator)
 }
 
-private val secretRegex = Regex("(ghp_|github_pat_|sk-)([A-Za-z0-9_-]{8,})|(Bearer +)([A-Za-z0-9_.-]{8,})")
+private val secretRegex = Regex("(ghp_|github_pat_|sk-)([A-Za-z0-9_-]{8,})|(Bearer +)([A-Za-z0-9._-]{8,})")
 
 private fun maskOne(s: String): String =
     if (s.length <= 8) s

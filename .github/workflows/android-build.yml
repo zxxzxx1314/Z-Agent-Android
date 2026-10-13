@@ -62,3 +62,10 @@ jobs:
       - name: Verify canary bytes
         if: always()
         run: python3 canary_check.py
+
+      - name: Cross-check mask implementations
+        if: always()
+        run: |
+          python3 mask_check_static.py
+          python3 mask_check.py
+          node mask_check.js

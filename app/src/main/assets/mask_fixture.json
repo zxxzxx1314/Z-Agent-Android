@@ -1,0 +1,13 @@
+{
+  "pattern": "(ghp_|github_pat_|sk-)([A-Za-z0-9_-]{8,})|(Bearer +)([A-Za-z0-9._-]{8,})",
+  "cases": [
+    {"name": "ghp_basic", "input": "ghp_FAKE00000000000000000000000000000", "expect": "ghp_FAKE...0000 [已脱敏]"},
+    {"name": "sk_basic", "input": "sk-TEST0000000000000000000000000000", "expect": "sk-TEST...0000 [已脱敏]"},
+    {"name": "bearer_jwt", "input": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", "expect": "Bearer eyJh...VCJ9 [已脱敏]"},
+    {"name": "ghp_pat", "input": "github_pat_ABCDEFGHIJKLMNOP", "expect": "github_pat_ABCD...MNOP [已脱敏]"},
+    {"name": "short_below", "input": "ghp_FAKE", "expect": "ghp_FAKE"},
+    {"name": "env_var", "input": "env DEEPSEEK_API_KEY 未设置", "expect": "env DEEPSEEK_API_KEY 未设置"},
+    {"name": "plain_text", "input": "本次请求耗时 42ms，无凭证", "expect": "本次请求耗时 42ms，无凭证"},
+    {"name": "multi_2", "input": "a=ghp_FAKE00000000000000000000000000000 b=Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", "expect": "a=ghp_FAKE...0000 [已脱敏] b=Bearer eyJh...VCJ9 [已脱敏]"}
+  ]
+}
