@@ -256,9 +256,9 @@ insets
 }
 val root = findViewById<View>(R.id.rootView)
 ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
-val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
 val sys = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
-val pad = maxOf(ime.bottom, sys.bottom)
+val pad = if (insets.isVisible(WindowInsetsCompat.Type.ime()))
+insets.getInsets(WindowInsetsCompat.Type.ime()).bottom else sys.bottom
 inputBar.setPadding(inputBar.paddingLeft, inputBar.paddingTop,
 inputBar.paddingRight, pad)
 insets

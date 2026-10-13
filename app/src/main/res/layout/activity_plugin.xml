@@ -1,109 +1,104 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 插件库页：顶栏（返回/计数/刷新）+ 列表 + 空态 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/bg_root"
-    android:orientation="vertical">
+android:layout_width="match_parent"
+android:layout_height="match_parent"
+android:background="@color/bg_canvas"
+android:orientation="vertical">
 
-    <!-- 顶栏 -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/bg_surface"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="10dp"
-        android:paddingTop="12dp"
-        android:paddingEnd="12dp"
-        android:paddingBottom="12dp">
+<LinearLayout
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:background="@color/bg_elevated"
+android:gravity="center_vertical"
+android:orientation="horizontal"
+android:paddingStart="8dp"
+android:paddingTop="10dp"
+android:paddingEnd="8dp"
+android:paddingBottom="10dp">
 
-        <TextView
-            android:id="@+id/backButton"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:background="@drawable/bg_quick"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
-            android:text="返回"
-            android:textColor="@color/accent"
-            android:textSize="14sp" />
+<FrameLayout
+android:id="@+id/backButton"
+android:layout_width="48dp"
+android:layout_height="48dp"
+android:background="?attr/selectableItemBackgroundBorderless"
+android:clickable="true"
+android:focusable="true">
+<ImageView
+android:layout_width="22dp"
+android:layout_height="22dp"
+android:layout_gravity="center"
+android:src="@drawable/ic_back" />
+</FrameLayout>
 
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:layout_weight="1"
-            android:orientation="vertical">
+<LinearLayout
+android:layout_width="0dp"
+android:layout_height="wrap_content"
+android:layout_weight="1"
+android:orientation="vertical">
+<TextView
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:text="插件库"
+android:textColor="@color/text_primary"
+android:textSize="@dimen/fs_display"
+android:textStyle="bold" />
+<TextView
+android:id="@+id/countText"
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:layout_marginTop="3dp"
+android:text="共 0 个"
+android:textColor="@color/text_tertiary"
+android:textSize="@dimen/fs_caption" />
+</LinearLayout>
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="插件库"
-                android:textColor="@color/text_primary"
-                android:textSize="17sp"
-                android:textStyle="bold" />
+<FrameLayout
+android:id="@+id/refreshButton"
+android:layout_width="48dp"
+android:layout_height="48dp"
+android:background="?attr/selectableItemBackgroundBorderless"
+android:clickable="true"
+android:focusable="true">
+<ImageView
+android:layout_width="22dp"
+android:layout_height="22dp"
+android:layout_gravity="center"
+android:src="@drawable/ic_refresh" />
+</FrameLayout>
+</LinearLayout>
 
-            <TextView
-                android:id="@+id/countText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="共 0 个"
-                android:textColor="@color/text_secondary"
-                android:textSize="11sp" />
-        </LinearLayout>
+<TextView
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:paddingStart="22dp"
+android:paddingTop="10dp"
+android:paddingEnd="22dp"
+android:paddingBottom="6dp"
+android:text="单击查看源码 · 长按删除"
+android:textColor="@color/text_tertiary"
+android:textSize="@dimen/fs_caption" />
 
-        <TextView
-            android:id="@+id/refreshButton"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:background="@drawable/bg_quick"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
-            android:text="刷新"
-            android:textColor="@color/accent"
-            android:textSize="14sp" />
-    </LinearLayout>
+<ListView
+android:id="@+id/pluginList"
+android:layout_width="match_parent"
+android:layout_height="0dp"
+android:layout_weight="1"
+android:divider="@android:color/transparent"
+android:dividerHeight="0dp"
+android:paddingStart="12dp"
+android:paddingEnd="12dp"
+android:paddingTop="4dp"
+android:paddingBottom="12dp"
+android:scrollbars="none" />
 
-    <!-- 操作提示 -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingStart="16dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="8dp"
-        android:text="单击查看源码 · 长按删除"
-        android:textColor="@color/text_secondary"
-        android:textSize="11sp" />
-
-    <!-- 插件列表 -->
-    <ListView
-        android:id="@+id/pluginList"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:divider="@color/divider"
-        android:dividerHeight="1dp"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:scrollbars="none" />
-
-    <!-- 空态 -->
-    <TextView
-        android:id="@+id/emptyText"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:gravity="center"
-        android:text="暂无插件。在主界面「存插件」可把当前会话保存为插件。"
-        android:textColor="@color/text_secondary"
-        android:textSize="13sp"
-        android:visibility="gone" />
+<TextView
+android:id="@+id/emptyText"
+android:layout_width="match_parent"
+android:layout_height="0dp"
+android:layout_weight="1"
+android:gravity="center"
+android:text="暂无插件。在主界面「存插件」可把当前会话保存为插件。"
+android:textColor="@color/text_tertiary"
+android:textSize="@dimen/fs_label"
+android:visibility="gone" />
 </LinearLayout>
