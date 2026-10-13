@@ -6,10 +6,36 @@ on:
   workflow_dispatch:
 
 jobs:
+  verify:
+    name: Gate - canary source + mask cross-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify canary source sha
+        run: python3 canary_check.py
+
+      - name: Cross-check mask implementations
+        run: |
+          python3 mask_check_static.py
+          python3 mask_check.py
+          node mask_check.js
+
   build:
     name: Assemble Debug + Release
+    needs: verify
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,8 +61,10 @@ jobs:
       - name: Build release APK (R8 test)
         run: gradle assembleRelease --no-daemon --stacktrace
 
+      - name: Verify canary bytes packed into APK
+        run: python3 canary_check.py
+
       - name: Upload debug APK
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: zagent-debug-apk
@@ -44,7 +72,6 @@ jobs:
           retention-days: 30
 
       - name: Upload release APK
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: zagent-release-apk
@@ -52,20 +79,8 @@ jobs:
           retention-days: 30
 
       - name: Upload R8 mapping
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: r8-mapping
           path: app/build/outputs/mapping/release/mapping.txt
           retention-days: 30
-
-      - name: Verify canary bytes
-        if: always()
-        run: python3 canary_check.py
-
-      - name: Cross-check mask implementations
-        if: always()
-        run: |
-          python3 mask_check_static.py
-          python3 mask_check.py
-          node mask_check.js
