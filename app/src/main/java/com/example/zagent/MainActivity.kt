@@ -12,6 +12,7 @@ import android.view.animation.OvershootInterpolator
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -31,16 +32,20 @@ private lateinit var statusText: TextView
 private lateinit var outputScroll: ScrollView
 private lateinit var chatContainer: LinearLayout
 private lateinit var inputEdit: EditText
-private lateinit var sendButton: Button
+private lateinit var sendButton: FrameLayout
 private lateinit var autoSwitch: android.widget.Switch
 private lateinit var topBar: LinearLayout
 private lateinit var themeButton: TextView
 private lateinit var inputBar: LinearLayout
+private lateinit var segPlan: TextView
+private lateinit var segBuild: TextView
+private lateinit var btnPlus: FrameLayout
 private lateinit var chipThink2: TextView
 private lateinit var chipSearch: TextView
 
 private var busy = false
     private var thinkOn = false // 深度思考开关（发送时自动加 /think 前缀）
+    private var appMode = "build" // plan / build
 
 private lateinit var sp: SharedPreferences
 
@@ -62,6 +67,9 @@ themeButton = findViewById(R.id.themeButton)
 inputBar = findViewById(R.id.inputBar)
 chipThink2 = findViewById(R.id.chipThink2)
 chipSearch = findViewById(R.id.chipSearch)
+segPlan = findViewById(R.id.segPlan)
+segBuild = findViewById(R.id.segBuild)
+btnPlus = findViewById(R.id.btnPlus)
 
 applyTopInset()
 applySavedTheme()
@@ -87,10 +95,18 @@ safeBridge { PythonBridge.setAuto(this@MainActivity, checked) }
 
 sendButton.setOnClickListener { onSend() }
 
+    // Plan / Build 分段切换
+    segPlan.setOnClickListener { setAppMode("plan") }
+    segBuild.setOnClickListener { setAppMode("build") }
+
+    // 加号：占位（未来用于附件/工具）
+    btnPlus.setOnClickListener { toast("更多功能开发中…") }
+
              // 智能搜索下线：直接隐藏；深度思考初始为关闭态
     chipSearch.visibility = android.view.View.GONE
     refreshThinkChip()
 
+    refreshSegVisual()
  // 深度思考：点击切换高亮，不清空输入、不发消息
     chipThink2.setOnClickListener {
         thinkOn = !thinkOn
@@ -326,7 +342,11 @@ if (busy) { toast("上一轮还在进行中……"); return }
 val text = inputEdit.text.toString().trim()
 if (text.isEmpty()) return
 inputEdit.setText("")
-        val payload = if (thinkOn && !text.startsWith("/")) "/think " + text else text
+               // 深度思考优先；否则按 appMode 加 /plan 或 /build 前缀（用户手敲 / 命令时不干预）
+        val payload = if (text.startsWith("/")) text
+                else if (thinkOn) "/think " + text
+                else if (appMode == "plan") "/plan " + text
+                else text
 appendOutput("你> " + text + "\n")
 sendCommand(payload)
 }
@@ -334,14 +354,14 @@ sendCommand(payload)
 private fun sendCommand(cmd: String) {
 if (busy) { toast("上一轮还在进行中……"); return }
 busy = true
-sendButton.isEnabled = false
+sendButton.isClickable = false; sendButton.alpha = 0.5f
 threadRun {
 safeBridge {
 val reply = PythonBridge.runAgent(this@MainActivity, cmd)
 runOnUiThread {
 appendOutput(reply + "\n")
 busy = false
-sendButton.isEnabled = true
+sendButton.isClickable = true; sendButton.alpha = 1f
 }
 }
 }
@@ -514,6 +534,20 @@ private fun refreshThinkChip() {
     chipThink2.text = if (thinkOn) "✻ 深度思考 ✓" else "✻ 深度思考"
 }
 
+// Plan / Build 切换：只更新界面状态，不发消息
+private fun setAppMode(m: String) {
+    appMode = m
+    refreshSegVisual()
+}
+
+private fun refreshSegVisual() {
+    val planOn = appMode == "plan"
+    segPlan.background = if (planOn) ContextCompat.getDrawable(this, R.drawable.bg_seg_thumb) else null
+    segPlan.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.accent else R.color.text_secondary))
+    segBuild.background = if (planOn) null else ContextCompat.getDrawable(this, R.drawable.bg_seg_thumb)
+    segBuild.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.text_secondary else R.color.accent))
+}
+
 private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
 private fun showStatus(json: String) {
@@ -557,7 +591,7 @@ block()
 runOnUiThread {
 appendOutput("\n[桥接异常] " + (e.message ?: "") + "\n")
 busy = false
-sendButton.isEnabled = true
+sendButton.isClickable = true; sendButton.alpha = 1f
 }
 }
 }
