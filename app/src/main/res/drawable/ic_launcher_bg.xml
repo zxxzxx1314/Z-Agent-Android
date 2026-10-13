@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive Icon 背景层：纯对角渐变（蓝） -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
@@ -8,8 +9,8 @@
     <path android:pathData="M0,0 h108 v108 h-108 z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:startColor="#7B5CFF"
-                android:endColor="#4DA6FF"
+                android:startColor="#6E9BFF"
+                android:endColor="#4A7DE8"
                 android:angle="315" />
         </aapt:attr>
     </path>
