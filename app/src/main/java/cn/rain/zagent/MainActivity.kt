@@ -83,8 +83,9 @@ private var stopRequested = false
 private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
 private val placeholderHints = arrayOf(
-    "解释这段代码", "写个单元测试", "重构这个函数", "排查这个报错",
-    "帮我写一个正则", "解释这个异常栈", "把这段翻成英文", "帮我做代码审查",
+"/help 看看能做什么", "解释这个文件", "重构这个函数",
+"跑一下这段代码", "查这个报错", "帮我做代码审查",
+"写个单元测试", "看看我的待办",
 )
 private var placeholderIdx = 0
 private val placeholderRotator = object : Runnable {
@@ -102,10 +103,15 @@ private var streamingSb = StringBuilder()
 private var cursorOn = true
 private var loadingDotsView: TextView? = null
 private var stepBarBox: LinearLayout? = null
+private var stepBarHead: LinearLayout? = null
 private var stepBarLabel: TextView? = null
 private var stepBarChev: TextView? = null
 private var stepBarSteps: LinearLayout? = null
-private var stepBarExpanded = true
+private var stepBarProgress: View? = null
+private var stepBarProgressFill: View? = null
+private var stepBarExpanded = false
+private var stepBarStartMs = 0L
+private var stepBarFailed = false
 private val stepRows = HashMap<Int, LinearLayout>()
 private var settingsSheet: BottomSheetDialog? = null
 private var thinkOn = false
@@ -297,7 +303,17 @@ inputEdit.addTextChangedListener(object : android.text.TextWatcher {
         if (!busy) refreshSendButton()
     }
 })
-inputCard.setOnClickListener { inputEdit.requestFocus() }
+inputCard.setOnClickListener {
+if (inputEdit.text.isNullOrEmpty()) {
+val h = inputEdit.hint?.toString() ?: ""
+if (h.isNotEmpty()) {
+inputEdit.setText(h)
+inputEdit.setSelection(h.length)
+}
+}
+inputEdit.requestFocus()
+}
+
 
     // 圆形按钮按下缩放
     btnPlus.pressScale()
@@ -622,6 +638,7 @@ when (title) {
 "模型名称" -> sheetRows["model"] = vl
 "清空会话" -> sheetRows["turns"] = vl
 "查看状态" -> sheetRows["status"] = vl
+"测试连接" -> sheetRows["test"] = vl
 }
 return row
 }
@@ -708,7 +725,14 @@ else "✗ 连接失败（无响应）"
 } catch (e: Exception) {
 "✗ 连接失败：" + (e.message ?: e.javaClass.simpleName)
 }
-runOnUiThread { toast(result) }
+runOnUiThread {
+toast(result)
+sheetRows["test"]?.text = result
+val okColor = ContextCompat.getColor(this@MainActivity, R.color.ok)
+val dngColor = ContextCompat.getColor(this@MainActivity, R.color.danger)
+sheetRows["test"]?.setTextColor(if (result.startsWith("✓")) okColor else dngColor)
+}
+
 } }
 }
 
@@ -872,138 +896,205 @@ private fun fmtMs(ms: Int): String =
     if (ms < 1000) ms.toString() + "ms" else String.format("%.1fs", ms / 1000.0)
 
 private fun beginStepBarIfNeeded() {
-    if (stepBarBox != null) return
-    val col = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(4); bottomMargin = dp(4) }
-    }
-    val bar = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setBackgroundResource(R.drawable.bg_step_bar)
-        setPadding(dp(12), dp(10), dp(12), dp(10))
-        isClickable = true
-    }
-    val label = TextView(this).apply {
-        text = "preparing"
-        textSize = 14f
-        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
-        setTypeface(null, android.graphics.Typeface.BOLD)
-        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-    }
-    val chev = TextView(this).apply {
-        text = "v"
-        textSize = 12f
-        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
-    }
-    bar.addView(label)
-    bar.addView(chev)
-    bar.setOnClickListener {
-        stepBarExpanded = !stepBarExpanded
-        stepBarSteps?.visibility = if (stepBarExpanded) View.VISIBLE else View.GONE
-        stepBarChev?.text = if (stepBarExpanded) "v" else ">"
-    }
-    val steps = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setBackgroundResource(R.drawable.bg_step_body)
-        setPadding(dp(12), dp(6), dp(12), dp(10))
-    }
-    col.addView(bar)
-    col.addView(steps)
-    chatContainer.addView(col)
-    stepBarBox = col
-    stepBarLabel = label
-    stepBarChev = chev
-    stepBarSteps = steps
-    stepBarExpanded = true
-    stepRows.clear()
-    hideEmpty()
+if (stepBarBox != null) return
+stepBarStartMs = System.currentTimeMillis()
+stepBarFailed = false
+val accent = ContextCompat.getColor(this@MainActivity, R.color.accent)
+val accentSubtle = ContextCompat.getColor(this@MainActivity, R.color.accent_subtle)
+val col = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_step_bar)
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { topMargin = dp(4); bottomMargin = dp(4) }
+}
+val bar = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.CENTER_VERTICAL
+setPadding(dp(14), dp(12), dp(14), dp(12))
+isClickable = true
+setBackgroundColor(accentSubtle)
+}
+val marker = TextView(this).apply {
+text = "▍"
+textSize = 14f
+setTextColor(accent)
+setTypeface(null, android.graphics.Typeface.BOLD)
+}
+val label = TextView(this).apply {
+text = "正在准备…"
+textSize = 14f
+setTextColor(accent)
+setTypeface(null, android.graphics.Typeface.BOLD)
+setPadding(dp(8), 0, 0, 0)
+layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+}
+val chev = TextView(this).apply {
+text = "▶"
+textSize = 11f
+setTextColor(accent)
+}
+bar.addView(marker)
+bar.addView(label)
+bar.addView(chev)
+bar.setOnClickListener {
+HapticTokens.tap(it)
+stepBarExpanded = !stepBarExpanded
+stepBarSteps?.visibility = if (stepBarExpanded) View.VISIBLE else View.GONE
+stepBarChev?.text = if (stepBarExpanded) "▼" else "▶"
+}
+val progTrack = FrameLayout(this).apply {
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT, dp(2))
+setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.accent_line))
+}
+val progFill = View(this).apply {
+layoutParams = FrameLayout.LayoutParams(0, FrameLayout.LayoutParams.MATCH_PARENT)
+setBackgroundColor(accent)
+}
+progTrack.addView(progFill)
+val steps = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setPadding(dp(14), dp(6), dp(14), dp(12))
+visibility = View.GONE
+}
+col.addView(bar)
+col.addView(progTrack)
+col.addView(steps)
+chatContainer.addView(col)
+stepBarBox = col
+stepBarHead = bar
+stepBarLabel = label
+stepBarChev = chev
+stepBarSteps = steps
+stepBarProgress = progTrack
+stepBarProgressFill = progFill
+stepBarExpanded = false
+stepRows.clear()
+hideEmpty()
 }
 
 private fun onStepEvent(json: String) {
-    val o = try { JSONObject(json) } catch (e: Exception) { return }
-    val idx = o.optInt("idx", 0)
-    val total = o.optInt("total", 0)
-    val label = o.optString("label", "step")
-    val status = o.optString("status", "run")
-    val ms = if (o.has("elapsed_ms")) o.optInt("elapsed_ms", -1) else -1
-    beginStepBarIfNeeded()
-    val steps = stepBarSteps ?: return
-    var row = stepRows[idx]
-    if (row == null) {
-        row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(4), 0, dp(4))
-        }
-        val ico = TextView(this).apply {
-            text = "."
-            textSize = 13f
-            setPadding(dp(2), 0, dp(8), 0)
-            tag = "ico"
-        }
-        val cmd = TextView(this).apply {
-            text = label
-            textSize = 12f
-            typeface = android.graphics.Typeface.MONOSPACE
-            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            tag = "cmd"
-        }
-        val tm = TextView(this).apply {
-            text = "-"
-            textSize = 12f
-            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
-            tag = "tm"
-        }
-        row.addView(ico)
-        row.addView(cmd)
-        row.addView(tm)
-        steps.addView(row)
-        stepRows[idx] = row
-    }
-    val ico = row.findViewWithTag<TextView>("ico")
-    val tm = row.findViewWithTag<TextView>("tm")
-    val accent = ContextCompat.getColor(this@MainActivity, R.color.accent)
-    val okc = ContextCompat.getColor(this@MainActivity, R.color.ok)
-    val dng = ContextCompat.getColor(this@MainActivity, R.color.danger)
-    when (status) {
-        "run" -> { ico?.text = ">"; ico?.setTextColor(accent); tm?.text = "..." }
-        "ok" -> { ico?.text = "OK"; ico?.setTextColor(okc); tm?.text = if (ms >= 0) fmtMs(ms) else "-" }
-        "err" -> { ico?.text = "X"; ico?.setTextColor(dng); tm?.text = if (ms >= 0) fmtMs(ms) else "-" }
-    }
-    if (status == "run") {
-        stepBarLabel?.text = "> running " + idx + "/" + total + " · " + label
-        stepBarLabel?.setTextColor(accent)
-    } else if (idx == total) {
-        var okCount = 0
-        for (r in stepRows.values) {
-            if (r.findViewWithTag<TextView>("ico")?.text == "OK") okCount++
-        }
-        if (okCount == stepRows.size) {
-            stepBarLabel?.text = "OK " + total + "/" + total + " · done"
-            stepBarLabel?.setTextColor(okc)
-        } else {
-            stepBarLabel?.text = "! " + total + "/" + total + " · failed"
-            stepBarLabel?.setTextColor(dng)
-        }
-        stepBarSteps?.visibility = View.GONE
-        stepBarChev?.text = ">"
-        stepBarExpanded = false
-    }
+val o = try { JSONObject(json) } catch (e: Exception) { return }
+val idx = o.optInt("idx", 0)
+val total = o.optInt("total", 0)
+val label = o.optString("label", "step")
+val status = o.optString("status", "run")
+val ms = if (o.has("elapsed_ms")) o.optInt("elapsed_ms", -1) else -1
+beginStepBarIfNeeded()
+val steps = stepBarSteps ?: return
+var row = stepRows[idx]
+if (row == null) {
+row = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.CENTER_VERTICAL
+setPadding(0, dp(4), 0, dp(4))
+}
+val ico = TextView(this).apply {
+text = "○"
+textSize = 13f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+setPadding(dp(2), 0, dp(10), 0)
+tag = "ico"
+}
+val cmd = TextView(this).apply {
+text = label
+textSize = 12.5f
+typeface = android.graphics.Typeface.MONOSPACE
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+maxLines = 1
+ellipsize = android.text.TextUtils.TruncateAt.END
+tag = "cmd"
+}
+val tm = TextView(this).apply {
+text = "-"
+textSize = 11.5f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+tag = "tm"
+}
+row.addView(ico)
+row.addView(cmd)
+row.addView(tm)
+steps.addView(row)
+stepRows[idx] = row
+}
+val ico = row.findViewWithTag<TextView>("ico")
+val tm = row.findViewWithTag<TextView>("tm")
+val accent = ContextCompat.getColor(this@MainActivity, R.color.accent)
+val okc = ContextCompat.getColor(this@MainActivity, R.color.ok)
+val dng = ContextCompat.getColor(this@MainActivity, R.color.danger)
+when (status) {
+"run" -> {
+ico?.text = "●"
+ico?.setTextColor(accent)
+tm?.text = "…"
+}
+"ok" -> {
+ico?.text = "✓"
+ico?.setTextColor(okc)
+tm?.text = if (ms >= 0) fmtMs(ms) else "-"
+}
+"err" -> {
+ico?.text = "✗"
+ico?.setTextColor(dng)
+tm?.text = if (ms >= 0) fmtMs(ms) else "-"
+stepBarFailed = true
+}
+}
+if (total > 0) {
+val pct = ((idx.toFloat() / total) * 100).toInt().coerceIn(0, 100)
+val fill = stepBarProgressFill
+val track = stepBarProgress
+if (fill != null && track != null) {
+val applyW: () -> Unit = {
+val w = track.width
+if (w > 0) {
+val lp = fill.layoutParams as FrameLayout.LayoutParams
+lp.width = w * pct / 100
+fill.layoutParams = lp
+}
+}
+applyW()
+track.post { applyW() }
+}
+}
+if (status == "run") {
+stepBarLabel?.text = "▍正在执行 " + idx + "/" + total + " · " + label
+stepBarLabel?.setTextColor(accent)
+} else if (idx == total) {
+var okCount = 0
+for (r in stepRows.values) {
+if (r.findViewWithTag<TextView>("ico")?.text == "✓") okCount++
+}
+val secs = ((System.currentTimeMillis() - stepBarStartMs) / 1000).toInt()
+val okAll = stepRows.isNotEmpty() && okCount == stepRows.size
+if (okAll) {
+stepBarLabel?.text = "✓ " + total + "/" + total + " · " + secs + "s"
+stepBarLabel?.setTextColor(okc)
+HapticTokens.tap(stepBarHead ?: chatContainer)
+} else {
+stepBarLabel?.text = "✗ " + total + "/" + total + " · 失败 · " + label
+stepBarLabel?.setTextColor(dng)
+HapticTokens.warn(stepBarHead ?: chatContainer)
+}
+stepBarProgress?.visibility = View.GONE
+stepBarSteps?.visibility = View.GONE
+stepBarChev?.text = "▶"
+stepBarExpanded = false
+}
 }
 
 private fun endStepBar() {
-    stepBarBox = null
-    stepBarLabel = null
-    stepBarChev = null
-    stepBarSteps = null
-    stepRows.clear()
+stepBarBox = null
+stepBarHead = null
+stepBarLabel = null
+stepBarChev = null
+stepBarSteps = null
+stepBarProgress = null
+stepBarProgressFill = null
+stepRows.clear()
 }
 
 private fun renderStreamText(tv: TextView) {
@@ -1193,7 +1284,7 @@ row.addView(bubble)
  wrapped.post { bounceIn(wrapped) }
 }
 
-private fun makeCodeBlock(parent: LinearLayout, code: String) {
+private fun makeCodeBlock(parent: LinearLayout, code: String, lang: String = "") {
 val card = LinearLayout(this).apply {
 orientation = LinearLayout.VERTICAL
 setBackgroundResource(R.drawable.bg_step_body)
@@ -1202,49 +1293,73 @@ LinearLayout.LayoutParams.MATCH_PARENT,
 LinearLayout.LayoutParams.WRAP_CONTENT
 ).apply { topMargin = dp(6); bottomMargin = dp(6) }
 }
-val tools = LinearLayout(this).apply {
+val head = LinearLayout(this).apply {
 orientation = LinearLayout.HORIZONTAL
-gravity = Gravity.END
-setPadding(dp(4), dp(4), dp(4), dp(2))
+gravity = Gravity.CENTER_VERTICAL
+setPadding(dp(12), dp(4), dp(4), dp(2))
 }
 val accent = ContextCompat.getColor(this@MainActivity, R.color.accent)
 val sec = ContextCompat.getColor(this@MainActivity, R.color.text_secondary)
+val ter = ContextCompat.getColor(this@MainActivity, R.color.text_tertiary)
+val langLabel = TextView(this).apply {
+text = guessLang(lang, code)
+textSize = 11f
+setTextColor(ter)
+typeface = android.graphics.Typeface.MONOSPACE
+letterSpacing = 0.06f
+layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+}
+val actions = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.CENTER_VERTICAL
+}
 fun mk(label: String, col: Int, onClick: () -> Unit): TextView {
 return TextView(this).apply {
 text = label
 textSize = 12f
 setTextColor(col)
-setPadding(dp(10), dp(6), dp(10), dp(6))
+setPadding(dp(8), dp(6), dp(8), dp(6))
 isClickable = true
 setOnClickListener { HapticTokens.tap(it); onClick() }
 }
 }
-val runBtn = mk("运行", accent) {
-sendCommand("/zrun " + b64(code))
+val runBtn = mk("▶ 运行", accent) {
+val outCard = mkRunOutputCard(parent, "● 正在运行…")
+val t0 = System.currentTimeMillis()
+threadRun {
+safeBridge {
+val reply = try { PythonBridge.runAgent(this@MainActivity, "/zrun " + b64(code)) }
+catch (e: Exception) { "[运行异常] " + (e.message ?: e.javaClass.simpleName) }
+val el = (System.currentTimeMillis() - t0).toInt()
+runOnUiThread { fillRunOutputCard(outCard, reply, el) }
 }
-val saveBtn = mk("存为插件", sec) {
+}
+}
+val saveBtn = mk("＋ 插件", sec) {
 val input = EditText(this).apply { hint = "插件名" }
 AlertDialog.Builder(this)
 .setTitle("存为插件")
 .setView(input)
-            .setPositiveButton("保存") { _, _ ->
-val nm = input.text.toString().trim().ifBlank { "code_" + System.currentTimeMillis() }
+.setPositiveButton("保存") { , _ ->
+val nm = input.text.toString().trim().ifBlank { "code" + System.currentTimeMillis() }
 sendCommand("/zsave " + b64(nm) + " " + b64(code))
 }
 .setNegativeButton("取消", null)
 .show()
 }
-val copyBtn = mk("复制", sec) { copyText(code) }
-tools.addView(runBtn)
-tools.addView(saveBtn)
-tools.addView(copyBtn)
-card.addView(tools)
+val copyBtn = mk("⧉ 复制", sec) { copyText(code) }
+actions.addView(runBtn)
+actions.addView(saveBtn)
+actions.addView(copyBtn)
+head.addView(langLabel)
+head.addView(actions)
+card.addView(head)
 val pre = TextView(this).apply {
 text = code
 textSize = 12.5f
 typeface = android.graphics.Typeface.MONOSPACE
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
-setPadding(dp(12), dp(4), dp(12), dp(10))
+setPadding(dp(12), dp(2), dp(12), dp(12))
 setTextIsSelectable(true)
 layoutParams = LinearLayout.LayoutParams(
 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1253,6 +1368,118 @@ LinearLayout.LayoutParams.WRAP_CONTENT
 }
 card.addView(pre)
 parent.addView(card)
+}
+
+private fun guessLang(lang: String, code: String): String {
+val l = lang.lowercase().trim()
+if (l.isNotEmpty()) return l.uppercase()
+val c = code
+return when {
+c.contains("<html") || c.contains("<!DOCTYPE") || c.contains("<div") -> "HTML"
+c.contains("function ") || c.contains("const ") || c.contains("=>") -> "JS"
+c.contains("def ") || c.contains("import ") || c.startsWith("class ") -> "PY"
+c.contains("SELECT ") || c.contains("INSERT INTO") -> "SQL"
+c.contains("fun ") || c.contains("val ") -> "KT"
+c.startsWith("{") || c.startsWith("[") -> "JSON"
+else -> "CODE"
+}
+}
+
+private fun mkRunOutputCard(parent: LinearLayout, initial: String): LinearLayout {
+val card = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_step_body)
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { topMargin = dp(4); bottomMargin = dp(6) }
+}
+val accent = ContextCompat.getColor(this@MainActivity, R.color.accent)
+val sec = ContextCompat.getColor(this@MainActivity, R.color.text_secondary)
+val head = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.CENTER_VERTICAL
+setPadding(dp(12), dp(10), dp(12), dp(10))
+isClickable = true
+}
+val ico = TextView(this).apply {
+text = "●"; textSize = 13f
+setTextColor(accent); tag = "ico"
+}
+val label = TextView(this).apply {
+text = initial; textSize = 13f
+setTextColor(accent)
+setPadding(dp(8), 0, 0, 0)
+layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+tag = "label"
+}
+val meta = TextView(this).apply {
+text = ""; textSize = 11.5f
+setTextColor(sec); tag = "meta"
+}
+val chev = TextView(this).apply {
+text = "▶"; textSize = 11f
+setTextColor(sec); setPadding(dp(8), 0, 0, 0)
+tag = "chev"
+}
+head.addView(ico)
+head.addView(label)
+head.addView(meta)
+head.addView(chev)
+val body = TextView(this).apply {
+text = ""; textSize = 12f
+typeface = android.graphics.Typeface.MONOSPACE
+setTextColor(sec)
+setPadding(dp(12), 0, dp(12), dp(12))
+visibility = View.GONE
+setTextIsSelectable(true)
+tag = "body"
+}
+head.setOnClickListener {
+HapticTokens.tap(it)
+val ex = body.visibility == View.VISIBLE
+body.visibility = if (ex) View.GONE else View.VISIBLE
+chev.text = if (ex) "▶" else "▼"
+}
+card.addView(head)
+card.addView(body)
+parent.addView(card)
+return card
+}
+
+private fun fillRunOutputCard(card: LinearLayout, output: String, elapsedMs: Int) {
+val ico = card.findViewWithTag<TextView>("ico") ?: return
+val label = card.findViewWithTag<TextView>("label")
+val meta = card.findViewWithTag<TextView>("meta")
+val body = card.findViewWithTag<TextView>("body")
+val chev = card.findViewWithTag<TextView>("chev")
+val okc = ContextCompat.getColor(this@MainActivity, R.color.ok)
+val dng = ContextCompat.getColor(this@MainActivity, R.color.danger)
+val m = Regex("\[退出码 (\d+)\]").find(output)
+val code = m?.groupValues?.getOrNull(1)?.toIntOrNull()
+val isErr = output.contains("[运行异常]") || (code != null && code != 0)
+val secs = elapsedMs / 1000.0
+val metaTxt = String.format("%.2fs · 退出码 %s", secs, code?.toString() ?: "-")
+if (isErr) {
+ico.text = "✗"; ico.setTextColor(dng)
+label?.text = "运行失败"
+label?.setTextColor(dng)
+HapticTokens.warn(card)
+} else {
+ico.text = "✓"; ico.setTextColor(okc)
+label?.text = "运行成功"
+label?.setTextColor(okc)
+HapticTokens.success(card)
+}
+meta?.text = metaTxt
+var bodyTxt = output
+bodyTxt = bodyTxt.replace(Regex("^\[运行\] 开始执行…\n"), "")
+bodyTxt = bodyTxt.replace(Regex("\[退出码 \d+\]\n?"), "")
+bodyTxt = bodyTxt.trim()
+if (bodyTxt.isEmpty()) bodyTxt = "（无输出）"
+body?.text = maskSecret(bodyTxt)
+body?.visibility = View.VISIBLE
+chev?.text = "▼"
 }
 
 private fun b64(s: String): String =
@@ -1289,7 +1516,12 @@ val rest = content.substring(a).trim()
 if (rest.isNotEmpty()) col.addView(makePlainAiBubble(col, rest))
 break
 }
-makeCodeBlock(col, content.substring(p, b))
+val langStart = a + 3
+var langEnd = langStart
+while (langEnd < content.length && content[langEnd] != '\n' && content[langEnd] != ' ') langEnd++
+val langTag = content.substring(langStart, langEnd)
+makeCodeBlock(col, content.substring(p, b), langTag)
+
 idx = b + 3
 }
 if (col.childCount == 0) col.addView(makePlainAiBubble(col, content))
