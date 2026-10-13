@@ -95,7 +95,7 @@ import requests        # 唯一网络依赖；绝不使用 openai 库
 # ============================================================
 # 0. 配置区（你只需要改这里）
 # ============================================================
-API_KEY = "sk-Xrz4KtS7s39PudyyNTCLCwl1Ar13vAOFTEcRSssTRmgGjQ6w"              # 空占位；实际值由 load_api_key() 在启动时决定
+API_KEY = "" # 空占位
 BASE_URL = os.environ.get("RAIN_BASE_URL", "https://api.deepseek.com/chat/completions")
 # 模型名不再硬编码：优先 env(RAIN_MODEL) → mind/config.json 的 model 字段
 # （APK 设置界面「设置模型名称」写入）→ DEFAULT_MODEL 出厂默认。

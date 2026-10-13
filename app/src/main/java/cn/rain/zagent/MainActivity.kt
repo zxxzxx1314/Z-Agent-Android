@@ -345,6 +345,21 @@ override fun onPause() {
     uiHandler.removeCallbacks(placeholderRotator)
 }
 
+private val secretRegex = Regex("(ghp_|github_pat_|sk-)([A-Za-z0-9_-]{8,})|(Bearer +)([A-Za-z0-9_.-]{8,})")
+
+private fun maskOne(s: String): String =
+    if (s.length <= 8) s
+    else s.substring(0, 4) + "..." + s.substring(s.length - 4) + " [已脱敏]"
+
+private fun maskSecret(s: String): String =
+    secretRegex.replace(s) { m ->
+        if (m.groupValues[1].isNotEmpty())
+            m.groupValues[1] + maskOne(m.groupValues[2])
+        else
+            m.groupValues[3] + maskOne(m.groupValues[4])
+    }
+
+
 private fun haptic(v: View) {
 HapticTokens.tap(v)
 }
@@ -464,6 +479,7 @@ root.addView(groupLabel("连接"))
 root.addView(settingsRow(R.drawable.ic_key, "API Key", apiKeySummary) { promptApiKey() })
 root.addView(settingsRow(R.drawable.ic_globe, "API 地址", baseUrlSummary) { promptBaseUrl() })
 root.addView(settingsRow(R.drawable.ic_model, "模型名称", modelSummary) { promptModel() })
+root.addView(settingsRow(R.drawable.ic_refresh, "测试连接", "检查 API 地址与 Key") { testConnection() })
 
 // 分组：会话
 root.addView(groupLabel("会话"))
@@ -663,6 +679,33 @@ toast("已保存")
 .show()
 }
 
+private fun testConnection() {
+toast("正在测试连接……")
+threadRun { safeBridge {
+val st = try { PythonBridge.status(this@MainActivity) } catch (e: Exception) { "{}" }
+val url = try { JSONObject(st).optString("base_url", "") } catch (e: Exception) { "" }
+val keySet = try { JSONObject(st).optBoolean("api_key_set", false) } catch (e: Exception) { false }
+if (url.isBlank()) { runOnUiThread { toast("未配置 API 地址") }; return@safeBridge }
+if (!keySet) { runOnUiThread { toast("未配置 API Key") }; return@safeBridge }
+val result = try {
+val u = java.net.URL(url)
+val conn = (u.openConnection() as java.net.HttpURLConnection)
+conn.requestMethod = "GET"
+conn.connectTimeout = 8000
+conn.readTimeout = 8000
+val code = try { conn.responseCode } catch (e: Exception) { 0 }
+conn.disconnect()
+if (code in 200..299) "✓ 已连通 · HTTP " + code
+else if (code == 401 || code == 403) "✓ 已连通 · Key 被拒 · HTTP " + code
+else if (code > 0) "✓ 已连通 · HTTP " + code
+else "✗ 连接失败（无响应）"
+} catch (e: Exception) {
+"✗ 连接失败：" + (e.message ?: e.javaClass.simpleName)
+}
+runOnUiThread { toast(result) }
+} }
+}
+
 private fun promptModel() {
 val saved = sp.getString(KEY_MODEL_NAME, "") ?: ""
 if (saved.isNotBlank()) {
@@ -817,7 +860,8 @@ private val streamPoll = object : Runnable {
 }
 
 private fun renderStreamText(tv: TextView) {
-    tv.text = if (cursorOn) streamingSb.toString() + "▌" else streamingSb.toString()
+    val _masked = maskSecret(streamingSb.toString())
+    tv.text = if (cursorOn) _masked + "▌" else _masked
 }
 
 private fun beginStreaming() {
@@ -980,7 +1024,7 @@ LinearLayout.LayoutParams.WRAP_CONTENT
 ).apply { topMargin = dp(4); bottomMargin = dp(4) }
 }
 val bubble = TextView(this).apply {
-text = content
+text = maskSecret(content)
 textSize = 15f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
 setBackgroundResource(R.drawable.bg_bubble_user)
@@ -1012,7 +1056,7 @@ LinearLayout.LayoutParams.WRAP_CONTENT
 ).apply { topMargin = dp(4); bottomMargin = dp(4) }
 }
 val bubble = TextView(this).apply {
-text = content
+text = maskSecret(content)
 textSize = 15f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
 setBackgroundResource(R.drawable.bg_bubble_ai)
@@ -1095,7 +1139,7 @@ private fun addErrorBar(cmd: String, reason: String) {
         ).apply { topMargin = dp(4); bottomMargin = dp(8) }
     }
     val msgTv = TextView(this).apply {
-        text = "⚠ " + reason
+    text = maskSecret("⚠ " + reason)
         textSize = 13f
         setTextColor(ContextCompat.getColor(this@MainActivity, R.color.danger))
     }
@@ -1223,7 +1267,7 @@ toast("已复制")
 
 private fun addSystemLine(content: String) {
 val tv = TextView(this).apply {
-text = content
+text = maskSecret(content)
 textSize = 13f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
 gravity = Gravity.CENTER
