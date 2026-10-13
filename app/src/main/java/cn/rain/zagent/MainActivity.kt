@@ -338,10 +338,11 @@ override fun onResume() {
     }
     uiHandler.postDelayed(placeholderRotator, 4000)
 
+}
+
 override fun onPause() {
     super.onPause()
     uiHandler.removeCallbacks(placeholderRotator)
-}
 }
 
 private fun haptic(v: View) {
