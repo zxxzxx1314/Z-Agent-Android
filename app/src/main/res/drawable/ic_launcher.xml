@@ -1,40 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Z-Agent 图标 · 方案A -->
-<!-- 紫蓝对角渐变底 + 白色圆角 Z（右倾 6°）+ 右上星芒光点 -->
+<!-- 兜底图标（如有代码引用 @drawable/ic_launcher）：完整 legacy 图 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-
-    <!-- 背景：大圆角方块 + 对角渐变（紫 #7B5CFF → 蓝 #4DA6FF） -->
     <path android:pathData="M20,8 h68 a12,12 0 0 1 12,12 v68 a12,12 0 0 1 -12,12 h-68 a12,12 0 0 1 -12,-12 v-68 a12,12 0 0 1 12,-12 z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:startColor="#7B5CFF"
-                android:endColor="#4DA6FF"
+                android:startColor="#6E9BFF"
+                android:endColor="#4A7DE8"
                 android:angle="315" />
         </aapt:attr>
     </path>
-
-    <!-- Z 字 + 星芒（同一 group，一起倾斜 6°） -->
     <group
         android:pivotX="54"
         android:pivotY="54"
         android:rotation="6">
-
-        <!-- Z：圆头圆角，等线体 10dp -->
         <path
-            android:pathData="M 32,38 L 72,38 L 32,74 L 72,74"
+            android:pathData="M 34,48 L 62,48 L 34,67 L 62,67"
             android:strokeColor="#FFFFFF"
-            android:strokeWidth="10"
+            android:strokeWidth="9"
             android:strokeLineCap="round"
             android:strokeLineJoin="round" />
-
-        <!-- 星芒：四角星，叠在 Z 顶横右端 -->
         <path
             android:fillColor="#FFFFFF"
-            android:pathData="M 82,28 Q 82,38 92,38 Q 82,38 82,48 Q 82,38 72,38 Q 82,38 82,28 Z" />
+            android:pathData="M 67,41 Q 67,48 74,48 Q 67,48 67,55 Q 67,48 60,48 Q 67,48 67,41 Z" />
     </group>
 </vector>
