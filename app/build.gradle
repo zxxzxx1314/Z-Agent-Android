@@ -47,6 +47,8 @@ chaquopy {
 
         pip {
             install "requests"
+ install "pillow"
+ install "pypdf"
         }
     }
 }
