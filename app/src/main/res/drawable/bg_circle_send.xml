@@ -1,14 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 圆形发送按钮（灰底，按压加深） -->
-<selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_pressed="true">
-        <shape android:shape="oval">
-            <solid android:color="#4A4A4A" />
-        </shape>
-    </item>
-    <item>
-        <shape android:shape="oval">
-            <solid android:color="#808080" />
-        </shape>
-    </item>
-</selector>
+<!-- 圆形发送按钮：实心主色，扁平 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+<solid android:color="@color/accent" />
+</shape>

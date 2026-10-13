@@ -713,8 +713,8 @@ refreshSegVisual()
 
 private fun refreshSegVisual() {
 val planOn = appMode == "plan"
-segPlan.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.accent else R.color.text_secondary))
-segBuild.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.text_secondary else R.color.accent))
+segPlan.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.on_accent else R.color.text_secondary))
+segBuild.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.text_secondary else R.color.on_accent))
 layoutSegThumb(true)
 }
 

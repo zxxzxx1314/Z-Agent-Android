@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Z-Agent 尺寸标尺 · 圆角三档 12/18/24；间距统一用 4 的倍数 -->
+<resources>
+
+<!-- ===== 圆角（三档，两主题共用）===== -->
+<dimen name="radius_sm">12dp</dimen> <!-- 胶囊/小按钮 -->
+<dimen name="radius_md">18dp</dimen> <!-- 气泡/中等卡片 -->
+<dimen name="radius_lg">24dp</dimen> <!-- 输入卡/大卡片 -->
+
+<!-- ===== 间距 ===== -->
+<dimen name="space_xs">4dp</dimen>
+<dimen name="space_sm">8dp</dimen>
+<dimen name="space_md">12dp</dimen>
+<dimen name="space_lg">16dp</dimen>
+<dimen name="space_xl">24dp</dimen>
+
+<!-- ===== 控件高度 ===== -->
+<dimen name="ctrl_h_sm">32dp</dimen> <!-- 胶囊/分段 -->
+<dimen name="ctrl_h_md">38dp</dimen> <!-- 圆形按钮 -->
+<dimen name="ctrl_h_lg">44dp</dimen> <!-- 输入框最小高 -->
+
+<!-- ===== 内边距 ===== -->
+<dimen name="pad_pill_h">14dp</dimen> <!-- 胶囊左右 -->
+<dimen name="pad_bubble_h">15dp</dimen> <!-- 气泡左右 -->
+<dimen name="pad_bubble_v">11dp</dimen> <!-- 气泡上下 -->
+<dimen name="pad_card">16dp</dimen> <!-- 卡片内边距 -->
+</resources>

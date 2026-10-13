@@ -29,7 +29,7 @@ android:layout_width="wrap_content"
 android:layout_height="wrap_content"
 android:text="Z-Agent"
 android:textColor="@color/text_primary"
-android:textSize="19sp"
+android:textSize="@dimen/fs_title"
 android:textStyle="bold" />
 <TextView
 android:id="@+id/statusText"
@@ -40,7 +40,7 @@ android:ellipsize="end"
 android:maxLines="1"
 android:text="正在连接……"
 android:textColor="@color/text_secondary"
-android:textSize="12sp" />
+android:textSize="@dimen/fs_caption" />
 </LinearLayout>
 
 <TextView
@@ -56,7 +56,7 @@ android:paddingStart="12dp"
 android:paddingEnd="12dp"
 android:text="浅色"
 android:textColor="@color/accent"
-android:textSize="13sp" />
+android:textSize="@dimen/fs_label" />
 
 <TextView
 android:id="@+id/settingsButton"
@@ -72,7 +72,7 @@ android:paddingStart="12dp"
 android:paddingEnd="12dp"
 android:text="设置"
 android:textColor="@color/accent"
-android:textSize="13sp" />
+android:textSize="@dimen/fs_label" />
 </LinearLayout>
 
 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
@@ -114,14 +114,14 @@ android:layout_width="wrap_content"
 android:layout_height="wrap_content"
 android:text="✻"
 android:textColor="@color/accent"
-android:textSize="48sp" />
+android:textSize="@dimen/fs_display" />
 <TextView
 android:layout_width="wrap_content"
 android:layout_height="wrap_content"
 android:layout_marginTop="8dp"
 android:text="开始一段新对话"
 android:textColor="@color/text_primary"
-android:textSize="17sp"
+android:textSize="@dimen/fs_title"
 android:textStyle="bold" />
 <TextView
 android:layout_width="wrap_content"
@@ -129,7 +129,7 @@ android:layout_height="wrap_content"
 android:layout_marginTop="4dp"
 android:text="选一个快捷指令，或直接输入"
 android:textColor="@color/text_secondary"
-android:textSize="12sp" />
+android:textSize="@dimen/fs_caption" />
 
 <LinearLayout
 android:layout_width="wrap_content"
@@ -259,7 +259,7 @@ android:paddingTop="8dp"
 android:paddingBottom="4dp"
 android:textColor="@color/text_primary"
 android:textColorHint="@color/text_secondary"
-android:textSize="15sp" />
+android:textSize="@dimen/fs_body" />
 
 <LinearLayout
 android:layout_width="match_parent"
@@ -292,7 +292,7 @@ android:paddingStart="14dp"
 android:paddingEnd="14dp"
 android:text="Plan"
 android:textColor="@color/text_secondary"
-android:textSize="13sp" />
+android:textSize="@dimen/fs_label" />
 <TextView
 android:id="@+id/segBuild"
 android:layout_width="wrap_content"
@@ -303,7 +303,7 @@ android:paddingStart="14dp"
 android:paddingEnd="14dp"
 android:text="Build"
 android:textColor="@color/accent"
-android:textSize="13sp" />
+android:textSize="@dimen/fs_label" />
 </LinearLayout>
 </FrameLayout>
 
@@ -321,7 +321,7 @@ android:paddingStart="12dp"
 android:paddingEnd="12dp"
 android:text="深度思考"
 android:textColor="@color/text_secondary"
-android:textSize="13sp" />
+android:textSize="@dimen/fs_label" />
 
 <TextView
 android:id="@+id/chipSearch"
@@ -379,7 +379,7 @@ android:layout_width="wrap_content"
 android:layout_height="wrap_content"
 android:text="自动执行（免确认）"
 android:textColor="@color/text_secondary"
-android:textSize="11sp" />
+android:textSize="@dimen/fs_caption" />
 <android.widget.Switch
 android:id="@+id/autoSwitch"
 android:layout_width="wrap_content"
