@@ -40,6 +40,8 @@ private lateinit var chipThink2: TextView
 private lateinit var chipSearch: TextView
 
 private var busy = false
+    private var thinkOn = false // 深度思考开关（发送时自动加 /think 前缀）
+
 private lateinit var sp: SharedPreferences
 
 override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,9 +87,15 @@ safeBridge { PythonBridge.setAuto(this@MainActivity, checked) }
 
 sendButton.setOnClickListener { onSend() }
 
-    // 底部小胶囊：深度思考 → think 模式；智能搜索 → plan 模式（占位）
-    chipThink2.setOnClickListener { switchMode("think") }
-    chipSearch.setOnClickListener { switchMode("plan") }
+             // 智能搜索下线：直接隐藏；深度思考初始为关闭态
+    chipSearch.visibility = android.view.View.GONE
+    refreshThinkChip()
+
+ // 深度思考：点击切换高亮，不清空输入、不发消息
+    chipThink2.setOnClickListener {
+        thinkOn = !thinkOn
+        refreshThinkChip()
+    }
 
 appendOutput("Z-Agent APK 启动中……\n")
 threadRun {
@@ -318,8 +326,9 @@ if (busy) { toast("上一轮还在进行中……"); return }
 val text = inputEdit.text.toString().trim()
 if (text.isEmpty()) return
 inputEdit.setText("")
+        val payload = if (thinkOn && !text.startsWith("/")) "/think " + text else text
 appendOutput("你> " + text + "\n")
-sendCommand(text)
+sendCommand(payload)
 }
 
 private fun sendCommand(cmd: String) {
@@ -497,21 +506,12 @@ private fun bounceIn(view: View) {
         .start()
 }
 
-private fun switchMode(m: String) {
-    when (m) {
-        "think" -> {
-            inputEdit.hint = "要深度思考的任务……"
-            sendCommand("/think")
-        }
-        "plan" -> {
-            inputEdit.hint = "输入消息，或点上方按钮"
-            sendCommand("/plan")
-        }
-        else -> {
-            inputEdit.hint = "输入消息，或点上方按钮"
-            sendCommand("/build")
-        }
-    }
+// 深度思考胶囊高亮：开启时蓝字、关闭时灰字
+private fun refreshThinkChip() {
+    val color = ContextCompat.getColor(this,
+        if (thinkOn) R.color.accent else R.color.text_secondary)
+    chipThink2.setTextColor(color)
+    chipThink2.text = if (thinkOn) "✻ 深度思考 ✓" else "✻ 深度思考"
 }
 
 private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
