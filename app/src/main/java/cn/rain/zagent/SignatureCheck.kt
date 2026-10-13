@@ -1,4 +1,4 @@
-package com.example.zagent
+package cn.rain.zagent
 
 import android.content.Context
 import android.content.pm.PackageManager

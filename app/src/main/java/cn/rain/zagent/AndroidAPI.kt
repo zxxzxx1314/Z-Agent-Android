@@ -1,4 +1,4 @@
-package com.example.zagent
+package cn.rain.zagent
 
 import android.app.NotificationChannel
 import android.app.NotificationManager

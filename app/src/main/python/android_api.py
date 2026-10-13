@@ -19,7 +19,7 @@ import json
 def _java():
     """惰性取 AndroidAPI Java 类；非 Android 环境返回 None。"""
     try:
-        from com.example.zagent import AndroidAPI
+        from cn.rain.zagent import AndroidAPI
         return AndroidAPI
     except Exception:
         return None

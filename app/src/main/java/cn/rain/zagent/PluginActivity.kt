@@ -1,4 +1,4 @@
-package com.example.zagent
+package cn.rain.zagent
 
 import android.os.Bundle
 import android.view.LayoutInflater

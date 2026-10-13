@@ -1,40 +1,61 @@
-name: Android Debug Build
+name: Android Build
 
 on:
-  push:
-    branches: [ main, master ]
-  workflow_dispatch:
+push:
+branches: [ main, master ]
+workflow_dispatch:
 
 jobs:
-  build:
-    name: Assemble Debug APK
-    runs-on: ubuntu-latest
+build:
+name: Assemble Debug + Release
+runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+steps:
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
+name: Checkout
+uses: actions/checkout@v4
 
-      - name: Set up Gradle 8.9
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.9
+name: Set up JDK 17
+uses: actions/setup-java@v4
+with:
+distribution: temurin
+java-version: 17
 
-      - name: Grant execute permission for gradlew
-        if: hashFiles('gradlew') != ''
-        run: chmod +x gradlew
+name: Set up Gradle 8.9
+uses: gradle/actions/setup-gradle@v4
+with:
+gradle-version: 8.9
 
-      - name: Build debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
+name: Grant execute permission for gradlew
+if: hashFiles('gradlew') != ''
+run: chmod +x gradlew
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: zagent-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 30
+name: Build debug APK
+run: gradle assembleDebug --no-daemon --stacktrace
+
+name: Build release APK (R8 / shrinkResources test)
+run: gradle assembleRelease --no-daemon --stacktrace
+
+name: Upload debug APK
+if: always()
+uses: actions/upload-artifact@v4
+with:
+name: zagent-debug-apk
+path: app/build/outputs/apk/debug/app-debug.apk
+retention-days: 30
+
+name: Upload release APK
+if: always()
+uses: actions/upload-artifact@v4
+with:
+name: zagent-release-apk
+path: app/build/outputs/apk/release/app-release.apk
+retention-days: 30
+
+name: Upload R8 mapping
+if: always()
+uses: actions/upload-artifact@v4
+with:
+name: r8-mapping
+path: app/build/outputs/mapping/release/mapping.txt
+retention-days: 30

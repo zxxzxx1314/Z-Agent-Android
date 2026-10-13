@@ -13,11 +13,11 @@ localPropsFile.withInputStream { localProps.load(it) }
 def cfg = { String key -> localProps.getProperty(key) ?: System.getenv(key) ?: "" }
 
 android {
-namespace 'com.example.zagent'
+namespace 'cn.rain.zagent'
 compileSdk 35
 
 defaultConfig {
-applicationId "com.example.zagent"
+applicationId "cn.rain.zagent"
 minSdk 24
 targetSdk 35
 versionCode 4
@@ -61,9 +61,7 @@ debuggable false
 ndk {
 debugSymbolLevel 'NONE'
 }
-if (ksFile) {
-signingConfig signingConfigs.release
-}
+            signingConfig ksFile ? signingConfigs.release : signingConfigs.debug
 }
 }
 

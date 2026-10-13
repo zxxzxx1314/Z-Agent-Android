@@ -18,8 +18,8 @@
 ---------- Chaquopy（Python 桥，必须全保留）----------
 
 -keep class com.chaquo.python.** { *; }
--keep class com.example.zagent.PythonBridge { ; }
--keep class com.example.zagent.AndroidAPI { ; }
+-keep class cn.rain.zagent.PythonBridge { *; }
+-keep class cn.rain.zagent.AndroidAPI { *; }
 -dontwarn com.chaquo.python.
 -keepclassmembers class * {
 @com.chaquo.python.PyObject *;
@@ -27,13 +27,13 @@
 
 ---------- Kotlin ----------
 
--keep class kotlin.Metadata { ; }
--keep class kotlin.reflect.* { ; }
+-keep class kotlin.Metadata { *; }
+-keep class kotlin.reflect.* { *; }
 -dontwarn kotlin.*
 -keepclassmembers class $WhenMappings {
 <fields>;
 }
--keepclassmembers class kotlin.coroutines.jvm.internal. { ; }
+-keepclassmembers class kotlin.coroutines.jvm.internal. { *; }
 -dontwarn kotlinx.coroutines.*
 
 ---------- Kotlin 协程 ----------
@@ -92,14 +92,14 @@ public static ** valueOf(java.lang.String);
 
 ---------- 保留应用入口与 Activity ----------
 
--keep class com.example.zagent.MainActivity { *; }
--keep class com.example.zagent.PluginActivity { *; }
--keep class com.example.zagent.SignatureCheck { *; }
+-keep class cn.rain.zagent.MainActivity { *; }
+-keep class cn.rain.zagent.PluginActivity { *; }
+-keep class cn.rain.zagent.SignatureCheck { *; }
 
 ---------- AndroidX / Material ----------
 
--keep class androidx.appcompat.** { ; }
--keep class com.google.android.material.* { ; }
+-keep class androidx.appcompat.** { *; }
+-keep class com.google.android.material.* { *; }
 -dontwarn androidx.*
 
 ---------- 杂项 ----------
@@ -110,3 +110,5 @@ public static ** valueOf(java.lang.String);
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+# ---------- Android 内置 org.json ----------
+-keep class org.json.** { *; }
