@@ -51,7 +51,13 @@ APK_PROMPT_ADDON = """
 def _make_printer(buf):
     def _print(*args, sep=" ", end="\n", file=None, flush=False):
         try:
-            buf.append(sep.join(str(a) for a in args) + end)
+            s = sep.join(str(a) for a in args) + end
+            try:
+             from zcore.mask import scrub as msk
+             s = msk(s)
+            except Exception:
+             pass
+            buf.append(s)
         except Exception:
             pass
     return _print
