@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Adaptive Icon：前景（Z+星芒）叠在紫蓝渐变背景上 -->
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_launcher_bg" />
-    <foreground android:drawable="@drawable/ic_launcher_fg" />
-    <monochrome android:drawable="@drawable/ic_launcher_mono" />
-</adaptive-icon>
