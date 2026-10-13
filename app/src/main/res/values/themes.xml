@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Z-Agent · DayNight 主题 · 全走 token -->
 <resources>
+
 <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
 <item name="android:windowBackground">@color/bg_canvas</item>
 <item name="colorPrimary">@color/accent</item>
@@ -13,6 +14,18 @@
 <item name="android:textColorPrimary">@color/text_primary</item>
 <item name="android:textColorSecondary">@color/text_secondary</item>
 <item name="android:textColorHint">@color/text_tertiary</item>
+<item name="bottomSheetDialogTheme">@style/AppBottomSheet</item>
+</style>
+
+<!-- Bottom Sheet：容器透明，圆角由内容背景提供 -->
+<style name="AppBottomSheet" parent="Theme.Design.Light.BottomSheetDialog">
+<item name="bottomSheetStyle">@style/AppBottomSheet.Modal</item>
+<item name="android:windowIsFloating">false</item>
+<item name="android:statusBarColor">@android:color/transparent</item>
+</style>
+
+<style name="AppBottomSheet.Modal" parent="Widget.Design.BottomSheet.Modal">
+<item name="android:background">@android:color/transparent</item>
 </style>
 
 <!-- 快捷条小胶囊 -->
@@ -29,7 +42,6 @@
 <item name="android:textSize">@dimen/fs_label</item>
 <item name="android:clickable">true</item>
 <item name="android:focusable">true</item>
-<item name="android:fontFamily">sans-serif</item>
 </style>
 
 <!-- 空状态引导按钮 -->
@@ -48,6 +60,5 @@
 <item name="android:textSize">@dimen/fs_label</item>
 <item name="android:clickable">true</item>
 <item name="android:focusable">true</item>
-<item name="android:fontFamily">sans-serif</item>
 </style>
 </resources>

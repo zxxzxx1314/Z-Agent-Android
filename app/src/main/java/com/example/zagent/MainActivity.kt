@@ -26,6 +26,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.widget.PopupMenu
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import android.widget.ImageView
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -51,7 +53,9 @@ private lateinit var inputCard: LinearLayout
 private lateinit var sendButton: FrameLayout
 private lateinit var autoSwitch: android.widget.Switch
 private lateinit var topBar: LinearLayout
-private lateinit var themeButton: TextView
+private lateinit var themeButton: View
+ private lateinit var themeIcon: ImageView
+ private lateinit var autoLabel: TextView
 private lateinit var inputBar: LinearLayout
 private lateinit var segContainer: FrameLayout
 private lateinit var segThumb: View
@@ -87,6 +91,8 @@ sendButton = findViewById(R.id.sendButton)
 autoSwitch = findViewById(R.id.autoSwitch)
 topBar = findViewById(R.id.topBar)
 themeButton = findViewById(R.id.themeButton)
+ themeIcon = findViewById(R.id.themeIcon)
+ autoLabel = findViewById(R.id.autoLabel)
 inputBar = findViewById(R.id.inputBar)
 segContainer = findViewById(R.id.segContainer)
 segThumb = findViewById(R.id.segThumb)
@@ -160,6 +166,12 @@ findViewById<View>(R.id.emptyChip3).setOnClickListener { haptic(it); fillInput("
 findViewById<View>(R.id.emptyChip4).setOnClickListener { haptic(it); fillInput("排查这个报错") }
 
 themeButton.setOnClickListener { haptic(it); toggleTheme() }
+
+ autoSwitch.setOnCheckedChangeListener { v, checked ->
+ v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+ refreshAutoSwitch(checked)
+ }
+ refreshAutoSwitch(autoSwitch.isChecked)
 
 autoSwitch.setOnCheckedChangeListener { v, checked ->
 v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
@@ -260,7 +272,7 @@ val light = sp.getBoolean(KEY_LIGHT_THEME, true)
 AppCompatDelegate.setDefaultNightMode(
 if (light) AppCompatDelegate.MODE_NIGHT_NO
 else AppCompatDelegate.MODE_NIGHT_YES)
-themeButton.text = if (light) "深色" else "浅色"
+themeIcon.setImageResource(if (light) R.drawable.ic_moon else R.drawable.ic_sun)
 }
 
 private fun toggleTheme() {
@@ -269,35 +281,157 @@ sp.edit().putBoolean(KEY_LIGHT_THEME, !light).apply()
 AppCompatDelegate.setDefaultNightMode(
 if (!light) AppCompatDelegate.MODE_NIGHT_NO
 else AppCompatDelegate.MODE_NIGHT_YES)
-themeButton.text = if (!light) "深色" else "浅色"
+themeIcon.setImageResource(if (!light) R.drawable.ic_moon else R.drawable.ic_sun)
+}
+
+private fun refreshAutoSwitch(on: Boolean) {
+val accent = ContextCompat.getColor(this, R.color.accent)
+val off = ContextCompat.getColor(this, R.color.text_tertiary)
+val white = ContextCompat.getColor(this, R.color.bg_elevated)
+autoSwitch.thumbTintList = android.content.res.ColorStateList.valueOf(white)
+autoSwitch.trackTintList = android.content.res.ColorStateList.valueOf(if (on) accent else off)
+autoLabel.setTextColor(if (on) accent else off)
+autoLabel.setTypeface(null, if (on) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
 }
 
 private fun showSettings() {
-val items = arrayOf(
-"设置 API Key",
-"设置 API 地址（Base URL）",
-"设置模型名称（Model Name）",
-"清空会话",
-"查看状态"
-)
-AlertDialog.Builder(this)
-.setTitle("设置")
-.setItems(items) { _, which ->
-when (which) {
-0 -> promptApiKey()
-1 -> promptBaseUrl()
-2 -> promptModel()
-3 -> confirmClear()
-4 -> threadRun {
-safeBridge {
+val sheet = BottomSheetDialog(this)
+val root = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_sheet)
+setPadding(0, dp(8), 0, dp(18))
+}
+
+// 拖柄
+val handle = View(this).apply {
+setBackgroundResource(R.drawable.bg_handle)
+layoutParams = LinearLayout.LayoutParams(dp(36), dp(4)).apply {
+gravity = Gravity.CENTER_HORIZONTAL
+topMargin = dp(6); bottomMargin = dp(14)
+}
+}
+root.addView(handle)
+
+// 标题
+root.addView(TextView(this).apply {
+text = "设置"
+textSize = 22f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+setTypeface(null, android.graphics.Typeface.BOLD)
+setPadding(dp(22), 0, dp(22), dp(6))
+})
+
+// 分组：连接
+root.addView(groupLabel("连接"))
+root.addView(settingsRow(R.drawable.ic_key, "API Key", apiKeySummary) { promptApiKey() })
+root.addView(settingsRow(R.drawable.ic_globe, "API 地址", baseUrlSummary) { promptBaseUrl() })
+root.addView(settingsRow(R.drawable.ic_model, "模型名称", modelSummary) { promptModel() })
+
+// 分组：会话
+root.addView(groupLabel("会话"))
+root.addView(settingsRow(R.drawable.ic_trash, "清空会话", turnsSummary, danger = true) { confirmClear() })
+root.addView(settingsRow(R.drawable.ic_info, "查看状态", statusSummary) {
+threadRun { safeBridge {
 val st = try { PythonBridge.status(this@MainActivity) } catch (e: Exception) { "{}" }
 runOnUiThread { showStatus(st) }
+} }
+})
+
+sheet.setContentView(root)
+sheet.show()
+
+// 拉一次状态刷新摘要
+threadRun { safeBridge {
+val st = try { PythonBridge.status(this@MainActivity) } catch (e: Exception) { "{}" }
+runOnUiThread { refreshSettingsSummaries(st) }
+} }
+}
+
+// —— 设置摘要（异步填充）——
+private var apiKeySummary = "未设置"
+private var baseUrlSummary = "未设置"
+private var modelSummary = "未设置"
+private var turnsSummary = ""
+private var statusSummary = ""
+private var sheetRows = mutableMapOf<String, TextView>()
+
+private fun refreshSettingsSummaries(json: String) {
+try {
+val o = JSONObject(json)
+val keyOk = o.optBoolean("api_key_set", false)
+apiKeySummary = if (keyOk) "已配置" else "未设置"
+baseUrlSummary = o.optString("base_url", "").ifBlank { "未设置" }
+modelSummary = o.optString("model", "").ifBlank { "未设置" }
+val t = o.optInt("turns", 0)
+turnsSummary = if (t > 0) "$t 条" else ""
+statusSummary = "v" + (o.opt("version")?.toString() ?: "?")
+} catch (_: Exception) {}
+sheetRows["key"]?.text = apiKeySummary
+sheetRows["url"]?.text = baseUrlSummary
+sheetRows["model"]?.text = modelSummary
+sheetRows["turns"]?.text = turnsSummary
+sheetRows["status"]?.text = statusSummary
+}
+
+private fun groupLabel(t: String): TextView = TextView(this).apply {
+text = t
+textSize = 12f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+setTypeface(null, android.graphics.Typeface.BOLD)
+letterSpacing = 0.05f
+setPadding(dp(22), dp(14), dp(22), dp(6))
+}
+
+private fun settingsRow(icon: Int, title: String, value: String, danger: Boolean = false, onClick: () -> Unit): LinearLayout {
+val row = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.CENTER_VERTICAL
+setBackgroundResource(R.drawable.bg_sheet_row)
+isClickable = true; isFocusable = true
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT, dp(56)
+).apply { marginStart = dp(10); marginEnd = dp(10) }
+setPadding(dp(12), 0, dp(12), 0)
+}
+val ic = ImageView(this).apply {
+setImageResource(icon)
+layoutParams = LinearLayout.LayoutParams(dp(22), dp(22))
+}
+if (danger) {
+ic.setColorFilter(ContextCompat.getColor(this, R.color.danger))
+}
+val tx = TextView(this).apply {
+text = title
+textSize = 15f
+setTextColor(ContextCompat.getColor(this@MainActivity,
+if (danger) R.color.danger else R.color.text_primary))
+layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+marginStart = dp(14)
 }
 }
+val vl = TextView(this).apply {
+text = value
+textSize = 13f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+maxLines = 1
+ellipsize = android.text.TextUtils.TruncateAt.END
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { marginStart = dp(12) }
+maxWidth = dp(150)
+gravity = Gravity.END
 }
+row.addView(ic); row.addView(tx); row.addView(vl)
+row.setOnClickListener { haptic(it); onClick() }
+// 登记以便刷新
+when (title) {
+"API Key" -> sheetRows["key"] = vl
+"API 地址" -> sheetRows["url"] = vl
+"模型名称" -> sheetRows["model"] = vl
+"清空会话" -> sheetRows["turns"] = vl
+"查看状态" -> sheetRows["status"] = vl
 }
-.setNegativeButton("关闭", null)
-.show()
+return row
 }
 
 private fun promptApiKey() {
@@ -547,7 +681,7 @@ LinearLayout.LayoutParams.WRAP_CONTENT
 val bubble = TextView(this).apply {
 text = content
 textSize = 14f
-setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_on_accent))
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
 setBackgroundResource(R.drawable.bg_bubble_user)
 setPadding(dp(14), dp(10), dp(14), dp(10))
 maxWidth = dp(280)
@@ -631,7 +765,7 @@ toast("已复制")
 private fun addSystemLine(content: String) {
 val tv = TextView(this).apply {
 text = content
-textSize = 11f
+textSize = 13f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
 gravity = Gravity.CENTER
 setPadding(dp(12), dp(4), dp(12), dp(4))
@@ -713,8 +847,8 @@ refreshSegVisual()
 
 private fun refreshSegVisual() {
 val planOn = appMode == "plan"
-segPlan.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.on_accent else R.color.text_secondary))
-segBuild.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.text_secondary else R.color.on_accent))
+segPlan.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.accent else R.color.text_secondary))
+segBuild.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.text_secondary else R.color.accent))
 layoutSegThumb(true)
 }
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 用户气泡：实心主色 -->
+<!-- 用户气泡：主色 8%/10% 淡填充 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-<solid android:color="@color/accent" />
+<solid android:color="@color/accent_subtle" />
 <corners android:radius="@dimen/radius_md" />
 </shape>
