@@ -1,17 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Adaptive Icon 背景层：纯对角渐变（蓝） -->
+<!-- Adaptive Icon 背景层 v3：accent #6D4AFF -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path android:pathData="M0,0 h108 v108 h-108 z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startColor="#6E9BFF"
-                android:endColor="#4A7DE8"
-                android:angle="315" />
-        </aapt:attr>
-    </path>
+    <path android:pathData="M0,0 h108 v108 h-108 z" android:fillColor="#6D4AFF" />
 </vector>
