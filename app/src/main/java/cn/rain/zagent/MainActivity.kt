@@ -235,10 +235,6 @@ haptic(it); startActivity(Intent(this, PluginActivity::class.java))
 }
 findViewById<View>(R.id.btnSavePlugin).setOnClickListener { haptic(it); promptSavePlugin() }
 
-findViewById<View>(R.id.emptyChip1).setOnClickListener { haptic(it); fillInput("解释这段代码") }
-findViewById<View>(R.id.emptyChip2).setOnClickListener { haptic(it); fillInput("写个单元测试") }
-findViewById<View>(R.id.emptyChip3).setOnClickListener { haptic(it); fillInput("重构这个函数") }
-findViewById<View>(R.id.emptyChip4).setOnClickListener { haptic(it); fillInput("排查这个报错") }
 
 themeButton.setOnClickListener { haptic(it); toggleTheme() }
 

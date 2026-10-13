@@ -128,19 +128,11 @@ android:textStyle="bold" />
 android:layout_width="wrap_content"
 android:layout_height="wrap_content"
 android:layout_marginTop="4dp"
-android:text="选一个快捷指令，或直接输入"
+android:text="输入消息开始对话"
 android:textColor="@color/text_secondary"
 android:textSize="@dimen/fs_caption" />
 <LinearLayout
 android:layout_width="wrap_content"
-android:layout_height="wrap_content"
-android:layout_marginTop="18dp"
-android:orientation="vertical">
-<TextView android:id="@+id/emptyChip1" style="@style/EmptyChip" android:text="解释这段代码" />
-<TextView android:id="@+id/emptyChip2" style="@style/EmptyChip" android:text="写个单元测试" />
-<TextView android:id="@+id/emptyChip3" style="@style/EmptyChip" android:text="重构这个函数" />
-<TextView android:id="@+id/emptyChip4" style="@style/EmptyChip" android:text="排查这个报错" />
-</LinearLayout>
 </LinearLayout>
 </LinearLayout>
 </ScrollView>
@@ -203,7 +195,7 @@ android:paddingBottom="8dp">
 <View
 android:id="@+id/quickScrim"
 android:layout_width="24dp"
-android:layout_height="48dp"
+android:layout_height="40dp"
 android:layout_gravity="end"
 android:background="@drawable/scrim_right" />
 </FrameLayout>
@@ -270,7 +262,7 @@ android:orientation="horizontal">
 <FrameLayout
 android:id="@+id/segContainer"
 android:layout_width="wrap_content"
-android:layout_height="48dp"
+android:layout_height="40dp"
 android:background="@drawable/bg_seg_container"
 android:padding="2dp">
 <View
@@ -308,7 +300,7 @@ android:textSize="@dimen/fs_label" />
 <TextView
 android:id="@+id/chipThink2"
 android:layout_width="wrap_content"
-android:layout_height="48dp"
+android:layout_height="40dp"
 android:layout_marginStart="8dp"
 android:background="@drawable/bg_mini_pill"
 android:clickable="true"
@@ -337,8 +329,8 @@ android:layout_weight="1" />
 <FrameLayout
 android:id="@+id/btnPlus"
 android:contentDescription="添加附件"
-android:layout_width="48dp"
-android:layout_height="48dp"
+android:layout_width="40dp"
+android:layout_height="40dp"
 android:background="@drawable/bg_circle_btn"
 android:clickable="true"
 android:focusable="true"
@@ -353,8 +345,8 @@ android:src="@drawable/ic_plus" />
 <FrameLayout
 android:id="@+id/sendButton"
 android:contentDescription="发送消息"
-android:layout_width="36dp"
-android:layout_height="36dp"
+android:layout_width="40dp"
+android:layout_height="40dp"
 android:layout_marginStart="8dp"
 android:background="@drawable/bg_circle_send"
 android:clickable="true"

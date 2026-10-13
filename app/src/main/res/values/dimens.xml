@@ -3,7 +3,7 @@
 <resources>
 
 <!-- ===== 圆角（三档，两主题共用）===== -->
-<dimen name="radius_sm">12dp</dimen> <!-- 胶囊/小按钮 -->
+<dimen name="radius_sm">20dp</dimen> <!-- 胶囊/小按钮 -->
 <dimen name="radius_md">18dp</dimen> <!-- 气泡/中等卡片 -->
 <dimen name="radius_lg">24dp</dimen> <!-- 输入卡/大卡片 -->
 

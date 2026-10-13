@@ -32,7 +32,7 @@
 <!-- 快捷条小胶囊 -->
 <style name="QuickChip">
 <item name="android:layout_width">wrap_content</item>
-<item name="android:layout_height">48dp</item>
+<item name="android:layout_height">40dp</item>
 <item name="android:layout_marginStart">@dimen/space_sm</item>
 <item name="android:background">@drawable/bg_quick</item>
 <item name="android:foreground">@drawable/ripple_press</item>
@@ -45,23 +45,6 @@
 <item name="android:focusable">true</item>
 </style>
 
-<!-- 空状态引导按钮 -->
-<style name="EmptyChip">
-<item name="android:layout_width">wrap_content</item>
-<item name="android:layout_height">wrap_content</item>
-<item name="android:layout_gravity">center_horizontal</item>
-<item name="android:layout_marginTop">@dimen/space_sm</item>
-<item name="android:background">@drawable/bg_quick</item>
-<item name="android:foreground">@drawable/ripple_press</item>
-<item name="android:paddingStart">20dp</item>
-<item name="android:paddingEnd">20dp</item>
-<item name="android:paddingTop">@dimen/space_md</item>
-<item name="android:paddingBottom">@dimen/space_md</item>
-<item name="android:textColor">@color/text_primary</item>
-<item name="android:textSize">@dimen/fs_label</item>
-<item name="android:clickable">true</item>
-<item name="android:focusable">true</item>
-</style>
 
 <!-- AlertDialog：跟随 DayNight，深色下自动变暗 -->
 <style name="AppAlertDialog" parent="Theme.AppCompat.DayNight.Dialog.Alert">
