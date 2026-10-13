@@ -34,7 +34,8 @@ class PluginActivity : AppCompatActivity() {
         val name: String,
         val desc: String,
         val size: Long,
-        val mtime: String
+        val mtime: String,
+        val enabled: Boolean
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,7 +75,8 @@ class PluginActivity : AppCompatActivity() {
                     name = o.optString("name"),
                     desc = o.optString("desc"),
                     size = o.optLong("size"),
-                    mtime = o.optString("mtime")
+                    mtime = o.optString("mtime"),
+                    enabled = o.optBoolean("enabled", true)
                 )
             )
         }
@@ -146,7 +148,25 @@ class PluginActivity : AppCompatActivity() {
         }.start()
     }
 
-    /** 长按删除确认（.py 不可恢复提示）。 */
+
+    private fun togglePlugin(item: PluginItem, checked: Boolean) {
+        Thread {
+            val json = try {
+                PythonBridge.togglePlugin(this, item.file, checked)
+            } catch (e: Exception) {
+                """{"ok":false,"err":"$e"}"""
+            }
+            runOnUiThread {
+                loading = false
+                val ok = try { JSONObject(json).optBoolean("ok") } catch (e: Exception) { false }
+                if (!ok) {
+                    Toast.makeText(this, "切换失败", Toast.LENGTH_SHORT).show()
+                    reload()
+                }
+            }
+        }.start()
+    }
+
     private fun confirmDelete(item: PluginItem) {
         AlertDialog.Builder(this)
             .setTitle("删除插件")
@@ -209,6 +229,13 @@ class PluginActivity : AppCompatActivity() {
             desc.visibility = if (item.desc.isEmpty()) View.GONE else View.VISIBLE
             v.findViewById<TextView>(R.id.pluginMeta).text =
                 "${item.size / 1024} KB · 单击看源码 · 长按删除"
+            val sw = v.findViewById<android.widget.Switch>(R.id.pluginSwitch)
+            sw.setOnCheckedChangeListener(null)
+            sw.isChecked = item.enabled
+            sw.setOnCheckedChangeListener { _, checked ->
+                togglePlugin(item, checked)
+            }
+            sw.setOnClickListener { it.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY) }
             return v
         }
     }

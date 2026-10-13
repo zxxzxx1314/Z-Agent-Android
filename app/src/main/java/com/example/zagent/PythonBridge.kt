@@ -277,4 +277,10 @@ object PythonBridge {
         return Python.getInstance().getModule("zagent_app")
             .callAttr("plugin_delete", pid)?.toString() ?: ""
     }
+    fun togglePlugin(context: Context, pid: String, enabled: Boolean): String {
+        ensureBootstrapped(context)
+        return Python.getInstance().getModule("zagent_app")
+            .callAttr("plugin_toggle", pid, enabled)?.toString() ?: ""
+    }
+
 }

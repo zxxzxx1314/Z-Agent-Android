@@ -555,9 +555,17 @@ def _plugins_dir():
 
 
 def plugins_list():
-    """已装插件清单 → JSON（file/name/desc/size/mtime）。"""
+    """已装插件清单 -> JSON (file/name/desc/size/mtime/enabled)"""
     out = []
     d = _plugins_dir()
+    _st = {}
+    try:
+        _sp = os.path.join(d, ".state.json") if d else None
+        if _sp and os.path.isfile(_sp):
+            with open(_sp, encoding="utf-8") as _f:
+                _st = json.load(_f)
+    except Exception:
+        _st = {}
     if d:
         for fn in sorted(os.listdir(d)):
             if not fn.endswith(".py"):
@@ -571,18 +579,23 @@ def plugins_list():
             try:
                 with open(p, encoding="utf-8", errors="replace") as f:
                     head = f.read(4000)
-                m = _re.search(r"#\s*@name:\s*(.+)", head)
+                m = _re.search(r"#\s@name:\s(.+)", head)
                 if m:
                     name = m.group(1).strip()
-                m = _re.search(r"#\s*@desc:\s*(.+)", head)
+                m = _re.search(r"#\s@desc:\s(.+)", head)
                 if m:
                     desc = m.group(1).strip()
             except OSError:
                 pass
-            out.append({"file": fn[:-3], "name": name, "desc": desc,
-                        "size": st.st_size,
-                        "mtime": _time.strftime(
-                            "%Y-%m-%d %H:%M", _time.localtime(st.st_mtime))})
+            out.append({
+                "file": fn[:-3],
+                "name": name,
+                "desc": desc,
+                "size": st.st_size,
+                "mtime": _time.strftime(
+                    "%Y-%m-%d %H:%M", _time.localtime(st.st_mtime)),
+                "enabled": _st.get(fn[:-3], True),
+            })
     return json.dumps({"ok": True, "plugins": out}, ensure_ascii=False)
 
 
@@ -623,3 +636,30 @@ def plugin_delete(pid):
     except OSError as e:
         return json.dumps({"ok": False, "err": str(e)}, ensure_ascii=False)
     return json.dumps({"ok": True, "file": pid}, ensure_ascii=False)
+
+
+def plugin_toggle(pid, enabled):
+    """启用/禁用插件 -> JSON"""
+    if not _PLUGIN_NAME_RE.match(pid or ""):
+        return json.dumps({"ok": False, "err": "插件名不合法"}, ensure_ascii=False)
+    d = _plugins_dir()
+    if not d:
+        return json.dumps({"ok": False, "err": "插件目录不存在"}, ensure_ascii=False)
+    p = os.path.join(d, pid + ".py")
+    if not os.path.isfile(p):
+        return json.dumps({"ok": False, "err": "插件不存在"}, ensure_ascii=False)
+    sp = os.path.join(d, ".state.json")
+    st = {}
+    try:
+        if os.path.isfile(sp):
+            with open(sp, encoding="utf-8") as f:
+                st = json.load(f)
+    except Exception:
+        st = {}
+    st[pid] = bool(enabled)
+    try:
+        with open(sp, "w", encoding="utf-8") as f:
+            json.dump(st, f, ensure_ascii=False)
+    except OSError as e:
+        return json.dumps({"ok": False, "err": str(e)}, ensure_ascii=False)
+    return json.dumps({"ok": True, "file": pid, "enabled": bool(enabled)}, ensure_ascii=False)
