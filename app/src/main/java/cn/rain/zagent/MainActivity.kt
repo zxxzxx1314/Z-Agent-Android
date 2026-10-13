@@ -458,10 +458,23 @@ sheet.show()
         sv.translationX = originX - screenW / 2f
         sv.alpha = 0.5f
         sv.post {
-            SpringAnimation(sv, SpringAnimation.SCALE_X, 1f).setSpring(MotionTokens.sheet()).start()
-            SpringAnimation(sv, SpringAnimation.SCALE_Y, 1f).setSpring(MotionTokens.sheet()).start()
-            SpringAnimation(sv, SpringAnimation.TRANSLATION_X, 0f).setSpring(MotionTokens.sheet()).start()
-            sv.animate().alpha(1f).setDuration(MotionTokens.FADE_MS).start()
+            if (MotionPrefs.reduceMotion(sv)) {
+                sv.scaleX = 1f
+                sv.scaleY = 1f
+                sv.translationX = 0f
+                sv.alpha = 1f
+            } else {
+                val a1 = SpringAnimation(sv, SpringAnimation.SCALE_X)
+                a1.spring = MotionTokens.sheet()
+                a1.animateToFinalPosition(1f)
+                val a2 = SpringAnimation(sv, SpringAnimation.SCALE_Y)
+                a2.spring = MotionTokens.sheet()
+                a2.animateToFinalPosition(1f)
+                val a3 = SpringAnimation(sv, SpringAnimation.TRANSLATION_X)
+                a3.spring = MotionTokens.sheet()
+                a3.animateToFinalPosition(0f)
+                sv.animate().alpha(1f).setDuration(MotionTokens.FADE_MS).start()
+            }
         }
     }
 
