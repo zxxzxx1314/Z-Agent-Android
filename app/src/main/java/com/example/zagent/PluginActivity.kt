@@ -126,15 +126,15 @@ class PluginActivity : AppCompatActivity() {
                     null
                 }
                 if (o != null && o.optBoolean("ok")) {
+ val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(this@PluginActivity)
                     val view = layoutInflater.inflate(R.layout.dialog_source, null)
+ view.setBackgroundResource(R.drawable.bg_sheet)
                     view.findViewById<TextView>(R.id.sourceTitle).text =
                         "${item.file}.py（${item.size / 1024} KB）"
                     view.findViewById<TextView>(R.id.sourceText).text =
                         o.optString("content", "")
-                    AlertDialog.Builder(this@PluginActivity)
-                        .setView(view)
-                        .setPositiveButton("关闭", null)
-                        .show()
+ sheet.setContentView(view)
+ sheet.show()
                 } else {
                     Toast.makeText(
                         this@PluginActivity,

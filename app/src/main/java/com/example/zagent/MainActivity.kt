@@ -375,7 +375,7 @@ sheetRows["status"]?.text = statusSummary
 
 private fun groupLabel(t: String): TextView = TextView(this).apply {
 text = t
-textSize = 12f
+textSize = 11f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
 setTypeface(null, android.graphics.Typeface.BOLD)
 letterSpacing = 0.05f
@@ -659,7 +659,7 @@ gravity = if (alignEnd) Gravity.END else Gravity.START
 val time = TextView(this).apply {
 text = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
 .format(java.util.Date())
-textSize = 10f
+textSize = 11f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
 setPadding(dp(6), dp(2), dp(6), 0)
 }
@@ -680,7 +680,7 @@ LinearLayout.LayoutParams.WRAP_CONTENT
 }
 val bubble = TextView(this).apply {
 text = content
-textSize = 14f
+textSize = 15f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
 setBackgroundResource(R.drawable.bg_bubble_user)
 setPadding(dp(14), dp(10), dp(14), dp(10))
@@ -712,7 +712,7 @@ LinearLayout.LayoutParams.WRAP_CONTENT
 }
 val bubble = TextView(this).apply {
 text = content
-textSize = 14f
+textSize = 15f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
 setBackgroundResource(R.drawable.bg_bubble_ai)
 setPadding(dp(14), dp(10), dp(14), dp(10))
@@ -791,7 +791,7 @@ LinearLayout.LayoutParams.WRAP_CONTENT
 }
 val header = TextView(this).apply {
 text = "▸ 思考过程（点击展开）"
-textSize = 12f
+textSize = 11f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
 setPadding(dp(2), dp(2), dp(2), dp(2))
 isClickable = true
@@ -882,7 +882,7 @@ val f = java.io.File(p)
 val name = f.name.substringAfter('_', f.name)
 val chip = TextView(this).apply {
 text = name + " ✕"
-textSize = 12f
+textSize = 11f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
 setBackgroundResource(R.drawable.bg_quick)
 setPadding(dp(10), dp(5), dp(10), dp(5))

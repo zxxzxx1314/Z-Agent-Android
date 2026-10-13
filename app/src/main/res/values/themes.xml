@@ -15,6 +15,7 @@
 <item name="android:textColorSecondary">@color/text_secondary</item>
 <item name="android:textColorHint">@color/text_tertiary</item>
 <item name="bottomSheetDialogTheme">@style/AppBottomSheet</item>
+ <item name="alertDialogTheme">@style/AppAlertDialog</item>
 </style>
 
 <!-- Bottom Sheet：容器透明，圆角由内容背景提供 -->
@@ -60,5 +61,14 @@
 <item name="android:textSize">@dimen/fs_label</item>
 <item name="android:clickable">true</item>
 <item name="android:focusable">true</item>
+</style>
+
+<!-- AlertDialog：跟随 DayNight，深色下自动变暗 -->
+<style name="AppAlertDialog" parent="Theme.AppCompat.DayNight.Dialog.Alert">
+<item name="colorAccent">@color/accent</item>
+<item name="android:textColorPrimary">@color/text_primary</item>
+<item name="android:textColorSecondary">@color/text_secondary</item>
+<item name="android:colorBackground">@color/bg_elevated</item>
+<item name="android:windowBackground">@color/bg_elevated</item>
 </style>
 </resources>
