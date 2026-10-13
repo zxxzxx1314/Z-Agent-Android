@@ -131,9 +131,6 @@ android:layout_marginTop="4dp"
 android:text="输入消息开始对话"
 android:textColor="@color/text_secondary"
 android:textSize="@dimen/fs_caption" />
-<LinearLayout
-android:layout_width="wrap_content"
-</LinearLayout>
 </LinearLayout>
 </ScrollView>
 
