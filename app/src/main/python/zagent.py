@@ -1138,6 +1138,213 @@ def begin_task_slot(desc):
     CURRENT_TASK = (desc or "")[:200]
 
 
+
+
+
+
+# ---------------- 附件预处理 ----------------
+_IMG_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".heic", ".heif")
+_TEXT_EXTS = (".txt", ".md", ".log", ".json", ".csv", ".py", ".js", ".ts",
+                  ".kt", ".java", ".c", ".cpp", ".h", ".html", ".htm", ".xml",
+                  ".yaml", ".yml", ".ini", ".cfg", ".conf", ".sh", ".bat",
+                  ".css", ".sql", ".toml", ".env", ".gradle", ".properties")
+_ARCHIVE_EXTS = (".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".rar")
+
+
+def _ext(path):
+    i = path.rfind(".")
+    return path[i:].lower() if i >= 0 else ""
+
+
+def _extract_archive(path):
+    ext = _ext(path)
+    out_dir = path + "_extracted"
+    try:
+        os.makedirs(out_dir, exist_ok=True)
+    except Exception as e:
+        return None, "无法创建目录: %s" % e
+    if ext == ".zip":
+        try:
+            import zipfile
+            with zipfile.ZipFile(path) as z:
+                names = z.namelist()
+                z.extractall(out_dir)
+            return out_dir, "zip 解压 %d 项" % len(names)
+        except Exception as e:
+            return None, "zip 解压失败: %s" % e
+    if ext in (".tar", ".gz", ".tgz", ".bz2", ".xz"):
+        try:
+            import tarfile
+            with tarfile.open(path) as t:
+                names = t.getnames()
+                t.extractall(out_dir)
+            return out_dir, "tar 解压 %d 项" % len(names)
+        except Exception as e:
+            return None, "tar 解压失败: %s" % e
+    if ext == ".7z":
+        try:
+            import py7zr
+            with py7zr.SevenZipFile(path, "r") as z:
+                z.extractall(out_dir)
+            return out_dir, "7z 解压完成"
+        except ImportError:
+            return None, "7z 需要 py7zr"
+        except Exception as e:
+            return None, "7z 解压失败: %s" % e
+    if ext == ".rar":
+        try:
+            import rarfile
+            with rarfile.RarFile(path) as r:
+                r.extractall(out_dir)
+            return out_dir, "rar 解压完成"
+        except ImportError:
+            return None, "rar 需要 rarfile"
+        except Exception as e:
+            return None, "rar 解压失败: %s" % e
+    return None, "不支持的压缩格式: %s" % ext
+
+
+def _list_dir_brief(d, max_n=50):
+    out = []
+    base_len = len(d.rstrip("/")) + 1
+    cnt = 0
+    for root, dirs, files in os.walk(d):
+        for f in sorted(files):
+            if cnt >= max_n:
+                out.append(" ...(更多省略)")
+                return out
+            full = os.path.join(root, f)
+            rel = full[base_len:]
+            try:
+                sz = os.path.getsize(full)
+            except OSError:
+                sz = 0
+            out.append(" %s (%d B)" % (rel, sz))
+            cnt += 1
+    return out
+
+
+def _describe_image(path):
+    lines = []
+    try:
+        sz = os.path.getsize(path)
+        lines.append(" 大小: %d B (%.1f KB)" % (sz, sz / 1024.0))
+    except Exception:
+        sz = 0
+    try:
+        from PIL import Image
+        with Image.open(path) as im:
+            lines.append(" 尺寸: %dx%d, 格式: %s, 模式: %s" % (im.size[0], im.size[1], im.format, im.mode))
+    except ImportError:
+        lines.append(" (未装 pillow)")
+    except Exception as e:
+        lines.append(" PIL 读取失败: %s" % e)
+    try:
+        if sz <= 512 * 1024:
+            import base64 as _b64
+            with open(path, "rb") as f:
+                data = f.read()
+            b = _b64.b64encode(data).decode("ascii")
+            ext2 = _ext(path).lstrip(".")
+            if ext2 == "jpg":
+                ext2 = "jpeg"
+            lines.append(" [base64 内嵌，可多模态识图]")
+            lines.append(" data:image/%s;base64,%s" % (ext2, b))
+        else:
+            lines.append(" (图片 > 512KB，未内嵌)")
+    except Exception as e:
+        lines.append(" base64 失败: %s" % e)
+    return lines
+
+
+def _describe_text(path, max_bytes=10000):
+    lines = []
+    try:
+        sz = os.path.getsize(path)
+        with open(path, "rb") as f:
+            data = f.read(max_bytes)
+        try:
+            txt = data.decode("utf-8")
+        except UnicodeDecodeError:
+            txt = data.decode("utf-8", "replace")
+        lines.append(" 文本 %d B (读前 %d B):" % (sz, len(data)))
+        lines.append(" ")
+        txt2 = txt.replace(chr(10), chr(10) + " ")
+        lines.append(" " + txt2)
+        lines.append("")
+    except Exception as e:
+        lines.append(" 读取失败: %s" % e)
+    return lines
+
+
+def _describe_pdf(path, max_pages=20):
+    lines = []
+    try:
+        import pypdf
+        with open(path, "rb") as f:
+            r = pypdf.PdfReader(f)
+            n = len(r.pages)
+            lines.append(" PDF %d 页" % n)
+            for i, pg in enumerate(r.pages[:max_pages]):
+                try:
+                    t = pg.extract_text() or ""
+                except Exception:
+                    t = ""
+                lines.append(" --- 第 %d 页 ---" % (i + 1))
+                t2 = t[:3000].replace(chr(10), " ")
+                lines.append(" " + t2)
+    except ImportError:
+        lines.append(" (未装 pypdf)")
+    except Exception as e:
+        lines.append(" PDF 抽取失败: %s" % e)
+    return lines
+
+
+def preprocess_attachments(text):
+    """扫描 [附件] 路径，自动解压/抽取内容，返回增强文本。"""
+    if not text or "[附件]" not in text:
+        return text
+    import re as _re
+    pat = chr(92) + "[附件" + chr(92) + "]" + chr(92) + "s*(.+?)(?:" + chr(92) + "n|$)"
+    m = _re.search(pat, text, _re.S)
+    if not m:
+        return text
+    paths = m.group(1).strip().split()
+    if not paths:
+        return text
+    report = []
+    for p in paths:
+        if not os.path.exists(p):
+            report.append("【附件】%s（不存在）" % p)
+            continue
+        ext = _ext(p)
+        name = os.path.basename(p)
+        report.append("")
+        report.append("==== 附件: %s ====" % name)
+        report.append("路径: %s" % p)
+        if ext in _ARCHIVE_EXTS:
+            out_dir, msg = _extract_archive(p)
+            report.append("解压: %s" % msg)
+            if out_dir:
+                report.append("解压目录: %s" % out_dir)
+                report.append("内容:")
+                report.extend(_list_dir_brief(out_dir))
+        elif ext in _IMG_EXTS:
+            report.extend(_describe_image(p))
+        elif ext == ".pdf":
+            report.extend(_describe_pdf(p))
+        elif ext in _TEXT_EXTS:
+            report.extend(_describe_text(p))
+        else:
+            try:
+                sz = os.path.getsize(p)
+            except OSError:
+                sz = 0
+            report.append("未知类型 (%s), 大小 %d B" % (ext or "无扩展名", sz))
+    sep = chr(10)
+    tail = sep + sep + "【附件预处理报告（宿主自动生成）】" + sep
+    return text + tail + sep.join(report)
+
 def note_task(desc):
     """记录任务描述；合同存续期间视为同一任务延续，不覆盖。"""
     global CURRENT_TASK
@@ -1400,6 +1607,16 @@ BASE_PROMPT = """你是 Z-Agent，一个运行在 Android 手机 Termux 终端�
 【插件调用】
 - 复用能力输出：[plugin:插件文件名]（不带 .py，可用中文）。
   插件在隔离子进程中执行，超时会被强制终止。
+
+【附件处理（重要）】
+- 用户消息末尾若出现「【附件预处理报告（宿主自动生成）】」，
+  说明宿主已经替你做过预处理，无需再手动读文件：
+  · 压缩包 → 已解压到 <原路径>_extracted/，列出内部文件清单
+  · 图片 → 给出尺寸/格式，若 <512KB 还会内嵌 data:image/...;base64
+  （可以直接看到图片内容，不需要再调 PIL 读）
+  · 文本/代码 → 直读前 10KB
+  · PDF → 抽取前 20 页文字
+- 需要看完整内容时，再自行读对应路径。
 
 【回传语义】
 - 「【系统自动回传】」= 脚本/插件/进化/验收的真实结果：
@@ -2417,7 +2634,8 @@ def main():
             handle_command(user_input)
             continue
         note_task(user_input)         # 合同存续=任务延续，否则记录新任务
-        messages.append({"role": "user", "content": user_input})
+        enhanced = preprocess_attachments(user_input)
+        messages.append({"role": "user", "content": enhanced})
         agent_loop()
         save_session(messages)
 
