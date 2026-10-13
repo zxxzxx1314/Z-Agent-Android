@@ -2096,7 +2096,7 @@ if (target.width == 0) {
 segContainer.post { layoutSegThumb(false) }
 return
 }
-val targetX = segContainer.paddingLeft + target.left.toFloat()
+val targetX = target.left.toFloat()
 val targetW = target.width
 val lp = segThumb.layoutParams
 if (lp.width != targetW) { lp.width = targetW; segThumb.layoutParams = lp }
