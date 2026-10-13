@@ -32,6 +32,7 @@ import android.widget.ImageView
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsAnimationCompat
 import androidx.core.view.WindowInsetsCompat
 import org.json.JSONObject
 
@@ -52,6 +53,7 @@ private lateinit var emptyState: LinearLayout
 private lateinit var inputEdit: EditText
 private lateinit var inputCard: LinearLayout
 private lateinit var sendButton: FrameLayout
+private lateinit var sendIcon: android.widget.ImageView
 private lateinit var autoSwitch: android.widget.Switch
 private lateinit var topBar: LinearLayout
 private lateinit var themeButton: View
@@ -70,6 +72,7 @@ private lateinit var attachRow: LinearLayout
  private lateinit var scrollBottomBtn: FrameLayout
 
 private var busy = false
+private var stopRequested = false
 private var thinkOn = false
 private var appMode = "build"
 
@@ -109,6 +112,7 @@ emptyState = findViewById(R.id.emptyState)
 inputEdit = findViewById(R.id.inputEdit)
 inputCard = findViewById(R.id.inputCard)
 sendButton = findViewById(R.id.sendButton)
+    sendIcon = sendButton.getChildAt(0) as android.widget.ImageView
 autoSwitch = findViewById(R.id.autoSwitch)
 topBar = findViewById(R.id.topBar)
 themeButton = findViewById(R.id.themeButton)
@@ -220,10 +224,17 @@ chipSearch.visibility = View.GONE
 refreshThinkChip()
 
 inputEdit.setOnFocusChangeListener { _, hasFocus ->
-inputCard.setBackgroundResource(
-if (hasFocus) R.drawable.bg_input_card_focus else R.drawable.bg_input_card
-)
+    inputCard.setBackgroundResource(
+        if (hasFocus) R.drawable.bg_input_card_focus else R.drawable.bg_input_card
+    )
 }
+inputEdit.addTextChangedListener(object : android.text.TextWatcher {
+    override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+    override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+    override fun afterTextChanged(s: android.text.Editable?) {
+        if (!busy) refreshSendButton()
+    }
+})
 inputCard.setOnClickListener { inputEdit.requestFocus() }
 
     // 圆形按钮按下缩放
@@ -274,25 +285,42 @@ if (emptyState.visibility != View.GONE) emptyState.visibility = View.GONE
 }
 
 private fun applyTopInset() {
-ViewCompat.setOnApplyWindowInsetsListener(topBar) { v, insets ->
-val bars = insets.getInsets(WindowInsetsCompat.Type.statusBars())
-v.setPadding(v.paddingLeft, bars.top, v.paddingRight, v.paddingBottom)
-insets
+    ViewCompat.setOnApplyWindowInsetsListener(topBar) { v, insets ->
+        val bars = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+        v.setPadding(v.paddingLeft, bars.top, v.paddingRight, v.paddingBottom)
+        insets
+    }
+    val root = findViewById<View>(R.id.rootView)
+
+    // IME inset：键盘弹出时输入卡贴键盘上沿跟手上移（不瞬移）
+    ViewCompat.setWindowInsetsAnimationCallback(root,
+        object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+            override fun onProgress(
+                insets: WindowInsetsCompat,
+                runningAnimations: MutableList<WindowInsetsAnimationCompat>
+            ): WindowInsetsCompat {
+                applyImePadding(insets)
+                return insets
+            }
+        })
+
+    ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+        applyImePadding(insets)
+        insets
+    }
+    ViewCompat.requestApplyInsets(topBar)
+    ViewCompat.requestApplyInsets(root)
 }
-val root = findViewById<View>(R.id.rootView)
-ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
-val sys = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
-val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
-// 只接受合理的键盘高度，防止异常 inset 撑爆输入区
-val imeBottom = if (ime.bottom in 1..(resources.displayMetrics.heightPixels / 2)) ime.bottom else 0
-val raw = maxOf(sys.bottom, imeBottom)
-val pad = raw.coerceIn(0, resources.displayMetrics.heightPixels / 3)
-inputBar.setPadding(inputBar.paddingLeft, inputBar.paddingTop,
-inputBar.paddingRight, pad)
-insets
-}
-ViewCompat.requestApplyInsets(topBar)
-ViewCompat.requestApplyInsets(root)
+
+// 计算并应用 IME + 导航栏 padding（带范围保护）
+private fun applyImePadding(insets: WindowInsetsCompat) {
+    val sys = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+    val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+    val h = resources.displayMetrics.heightPixels
+    val imeBottom = if (ime.bottom in 1..(h / 2)) ime.bottom else 0
+    val pad = maxOf(sys.bottom, imeBottom).coerceIn(0, h / 3)
+    inputBar.setPadding(inputBar.paddingLeft, inputBar.paddingTop,
+        inputBar.paddingRight, pad)
 }
 
 private fun applySavedTheme() {
@@ -619,8 +647,25 @@ else sendCommand("/save " + name)
 .show()
 }
 
+// 发送键状态：空 → 灰；有内容 → accent 实心；生成中 → 停止按钮
+private fun refreshSendButton() {
+    if (busy) {
+        sendIcon.setImageResource(R.drawable.ic_stop)
+        sendButton.alpha = 1f
+        return
+    }
+    val has = inputEdit.text?.isNotEmpty() == true || pendingFiles.isNotEmpty()
+    sendButton.alpha = if (has) 1f else 0.4f
+    sendIcon.setImageResource(R.drawable.ic_send_arrow)
+}
+
 private fun onSend() {
-if (busy) { toast("上一轮还在进行中……"); return }
+    if (busy) {
+        // 生成中点击 = 请求停止
+        stopRequested = true
+        toast("正在停止……")
+        return
+    }
 val text = inputEdit.text.toString().trim()
 if (text.isEmpty() && pendingFiles.isEmpty()) return
 inputEdit.setText("")
@@ -639,20 +684,26 @@ inputEdit.hint = "输入消息..."
 }
 
 private fun sendCommand(cmd: String) {
-if (busy) { toast("上一轮还在进行中……"); return }
-busy = true
-sendButton.isClickable = false; sendButton.alpha = 0.5f
-threadRun {
-safeBridge {
-val reply = PythonBridge.runAgent(this@MainActivity, cmd)
-runOnUiThread {
-appendOutput(reply + "\n")
-busy = false
-sendButton.isClickable = true; sendButton.alpha = 1f
-sendButton.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-}
-}
-}
+    if (busy) return
+    busy = true
+    stopRequested = false
+    refreshSendButton()
+    threadRun {
+        safeBridge {
+            val reply = PythonBridge.runAgent(this@MainActivity, cmd)
+            runOnUiThread {
+                if (stopRequested) {
+                    appendOutput("[已停止]\n")
+                } else {
+                    appendOutput(reply + "\n")
+                }
+                busy = false
+                stopRequested = false
+                refreshSendButton()
+                HapticTokens.tap(sendButton)
+            }
+        }
+    }
 }
 
 private fun appendOutput(text: String) {

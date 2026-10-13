@@ -32,7 +32,7 @@
 <!-- 快捷条小胶囊 -->
 <style name="QuickChip">
 <item name="android:layout_width">wrap_content</item>
-<item name="android:layout_height">@dimen/ctrl_h_sm</item>
+<item name="android:layout_height">48dp</item>
 <item name="android:layout_marginStart">@dimen/space_sm</item>
 <item name="android:background">@drawable/bg_quick</item>
 <item name="android:foreground">@drawable/ripple_press</item>
