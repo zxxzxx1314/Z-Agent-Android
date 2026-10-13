@@ -5,8 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.view.Gravity
 import android.view.animation.OvershootInterpolator
 import android.view.View
@@ -18,6 +20,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
@@ -27,6 +30,16 @@ import androidx.core.view.WindowInsetsCompat
 import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
+
+    // 待发送的附件（已复制到 App 私有目录的绝对路径）
+    private val pendingFiles = mutableListOf<String>()
+
+    // 系统文件选择器（支持所有 mime 类型）
+    private val pickFile = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) handlePickedFile(uri)
+    }
 
 private lateinit var statusText: TextView
 private lateinit var outputScroll: ScrollView
@@ -100,7 +113,14 @@ sendButton.setOnClickListener { onSend() }
     segBuild.setOnClickListener { setAppMode("build") }
 
     // 加号：占位（未来用于附件/工具）
-    btnPlus.setOnClickListener { toast("更多功能开发中…") }
+        // 加号：打开系统文件选择器（支持图片/文档/任意文件）
+    btnPlus.setOnClickListener {
+        try {
+            pickFile.launch(arrayOf("*/*"))
+        } catch (e: Exception) {
+            toast("无法打开文件选择器: " + (e.message ?: ""))
+        }
+    }
 
              // 智能搜索下线：直接隐藏；深度思考初始为关闭态
     chipSearch.visibility = android.view.View.GONE
@@ -340,15 +360,21 @@ sendCommand("/save " + name)
 private fun onSend() {
 if (busy) { toast("上一轮还在进行中……"); return }
 val text = inputEdit.text.toString().trim()
-if (text.isEmpty()) return
-inputEdit.setText("")
-               // 深度思考优先；否则按 appMode 加 /plan 或 /build 前缀（用户手敲 / 命令时不干预）
-        val payload = if (text.startsWith("/")) text
-                else if (thinkOn) "/think " + text
-                else if (appMode == "plan") "/plan " + text
-                else text
+    // 允许只发附件：文字为空但有附件时也继续
+    if (text.isEmpty() && pendingFiles.isEmpty()) return
+    inputEdit.setText("")
+        // 有附件时：在消息末尾附上文件路径，让 AI 能读到
+        val attachInfo = if (pendingFiles.isEmpty()) ""
+                else "\n[附件] " + pendingFiles.joinToString(" ")
+        val fullText = text + attachInfo
+        pendingFiles.clear()
+        val payload = if (fullText.startsWith("/")) fullText
+                else if (thinkOn) "/think " + fullText
+                else if (appMode == "plan") "/plan " + fullText
+                else fullText
 appendOutput("你> " + text + "\n")
 sendCommand(payload)
+        inputEdit.hint = "输入消息..."
 }
 
 private fun sendCommand(cmd: String) {
@@ -546,6 +572,35 @@ private fun refreshSegVisual() {
     segPlan.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.accent else R.color.text_secondary))
     segBuild.background = if (planOn) null else ContextCompat.getDrawable(this, R.drawable.bg_seg_thumb)
     segBuild.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.text_secondary else R.color.accent))
+}
+
+// 处理用户选中的文件：读元数据 → 复制到 filesDir/uploads/ → 记入待发列表
+private fun handlePickedFile(uri: Uri) {
+    threadRun {
+        try {
+            var name = "file"
+            contentResolver.query(uri, null, null, null, null)?.use { cur ->
+                val idx = cur.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (idx >= 0 && cur.moveToFirst()) name = cur.getString(idx) ?: name
+            }
+            val dir = java.io.File(filesDir, "uploads")
+            if (!dir.exists()) dir.mkdirs()
+            val safe = name.replace(Regex("[^A-Za-z0-9.-]"), "")
+            val dest = java.io.File(dir, System.currentTimeMillis().toString() + "_" + safe)
+            contentResolver.openInputStream(uri)?.use { ins ->
+                dest.outputStream().use { outs -> ins.copyTo(outs) }
+            }
+            val size = dest.length()
+            val mime = contentResolver.getType(uri) ?: "unknown"
+            runOnUiThread {
+                pendingFiles.add(dest.absolutePath)
+                toast("已附加: " + name + "（" + (size / 1024) + " KB）")
+                inputEdit.hint = "已附加 " + pendingFiles.size + " 个文件，输入消息或直接发送"
+            }
+        } catch (e: Exception) {
+            runOnUiThread { toast("读取文件失败: " + (e.message ?: "")) }
+        }
+    }
 }
 
 private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
