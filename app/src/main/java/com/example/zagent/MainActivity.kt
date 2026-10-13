@@ -1,6 +1,8 @@
 package com.example.zagent
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -10,18 +12,20 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
-import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.appcompat.widget.PopupMenu
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -30,34 +34,38 @@ import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
 
-    // 待发送的附件（已复制到 App 私有目录的绝对路径）
-    private val pendingFiles = mutableListOf<String>()
+private val pendingFiles = mutableListOf<String>()
 
-    // 系统文件选择器（支持所有 mime 类型）
-    private val pickFile = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        if (uri != null) handlePickedFile(uri)
-    }
+private val pickFile = registerForActivityResult(
+ActivityResultContracts.OpenDocument()
+) { uri: Uri? ->
+if (uri != null) handlePickedFile(uri)
+}
 
 private lateinit var statusText: TextView
 private lateinit var outputScroll: ScrollView
 private lateinit var chatContainer: LinearLayout
+private lateinit var emptyState: LinearLayout
 private lateinit var inputEdit: EditText
+private lateinit var inputCard: LinearLayout
 private lateinit var sendButton: FrameLayout
 private lateinit var autoSwitch: android.widget.Switch
 private lateinit var topBar: LinearLayout
 private lateinit var themeButton: TextView
 private lateinit var inputBar: LinearLayout
+private lateinit var segContainer: FrameLayout
+private lateinit var segThumb: View
 private lateinit var segPlan: TextView
 private lateinit var segBuild: TextView
 private lateinit var btnPlus: FrameLayout
 private lateinit var chipThink2: TextView
 private lateinit var chipSearch: TextView
+private lateinit var attachScroll: HorizontalScrollView
+private lateinit var attachRow: LinearLayout
 
 private var busy = false
-    private var thinkOn = false // 深度思考开关（发送时自动加 /think 前缀）
-    private var appMode = "build" // plan / build
+private var thinkOn = false
+private var appMode = "build"
 
 private lateinit var sp: SharedPreferences
 
@@ -71,66 +79,78 @@ sp = getSharedPreferences("zagent", Context.MODE_PRIVATE)
 statusText = findViewById(R.id.statusText)
 outputScroll = findViewById(R.id.outputScroll)
 chatContainer = findViewById(R.id.chatContainer)
+emptyState = findViewById(R.id.emptyState)
 inputEdit = findViewById(R.id.inputEdit)
+inputCard = findViewById(R.id.inputCard)
 sendButton = findViewById(R.id.sendButton)
 autoSwitch = findViewById(R.id.autoSwitch)
 topBar = findViewById(R.id.topBar)
 themeButton = findViewById(R.id.themeButton)
 inputBar = findViewById(R.id.inputBar)
-chipThink2 = findViewById(R.id.chipThink2)
-chipSearch = findViewById(R.id.chipSearch)
+segContainer = findViewById(R.id.segContainer)
+segThumb = findViewById(R.id.segThumb)
 segPlan = findViewById(R.id.segPlan)
 segBuild = findViewById(R.id.segBuild)
 btnPlus = findViewById(R.id.btnPlus)
+chipThink2 = findViewById(R.id.chipThink2)
+chipSearch = findViewById(R.id.chipSearch)
+attachScroll = findViewById(R.id.attachScroll)
+attachRow = findViewById(R.id.attachRow)
 
 applyTopInset()
 applySavedTheme()
 
-findViewById<View>(R.id.settingsButton).setOnClickListener { showSettings() }
-findViewById<View>(R.id.btnClear).setOnClickListener { sendCommand("/clear") }
-findViewById<View>(R.id.btnContract).setOnClickListener { sendCommand("/contract") }
-findViewById<View>(R.id.btnHelp).setOnClickListener { sendCommand("/help") }
-findViewById<View>(R.id.btnIdle).setOnClickListener { sendCommand("/idle") }
-findViewById<View>(R.id.btnVersions).setOnClickListener { sendCommand("/versions") }
+findViewById<View>(R.id.settingsButton).setOnClickListener { haptic(it); showSettings() }
+findViewById<View>(R.id.btnClear).setOnClickListener { haptic(it); sendCommand("/clear") }
+findViewById<View>(R.id.btnContract).setOnClickListener { haptic(it); sendCommand("/contract") }
+findViewById<View>(R.id.btnHelp).setOnClickListener { haptic(it); sendCommand("/help") }
+findViewById<View>(R.id.btnIdle).setOnClickListener { haptic(it); sendCommand("/idle") }
+findViewById<View>(R.id.btnVersions).setOnClickListener { haptic(it); sendCommand("/versions") }
 findViewById<View>(R.id.btnPlugins).setOnClickListener {
-startActivity(Intent(this, PluginActivity::class.java))
+haptic(it); startActivity(Intent(this, PluginActivity::class.java))
 }
-findViewById<View>(R.id.btnSavePlugin).setOnClickListener { promptSavePlugin() }
+findViewById<View>(R.id.btnSavePlugin).setOnClickListener { haptic(it); promptSavePlugin() }
 
-themeButton.setOnClickListener { toggleTheme() }
+findViewById<View>(R.id.emptyChip1).setOnClickListener { haptic(it); fillInput("解释这段代码") }
+findViewById<View>(R.id.emptyChip2).setOnClickListener { haptic(it); fillInput("写个单元测试") }
+findViewById<View>(R.id.emptyChip3).setOnClickListener { haptic(it); fillInput("重构这个函数") }
+findViewById<View>(R.id.emptyChip4).setOnClickListener { haptic(it); fillInput("排查这个报错") }
 
-autoSwitch.setOnCheckedChangeListener { _, checked ->
+themeButton.setOnClickListener { haptic(it); toggleTheme() }
+
+autoSwitch.setOnCheckedChangeListener { v, checked ->
+v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
 threadRun {
 safeBridge { PythonBridge.setAuto(this@MainActivity, checked) }
 }
 }
 
-sendButton.setOnClickListener { onSend() }
+sendButton.setOnClickListener { haptic(it); onSend() }
+btnPlus.setOnClickListener {
+haptic(it)
+try { pickFile.launch(arrayOf("*/*")) }
+catch (e: Exception) { toast("无法打开文件选择器: " + (e.message ?: "")) }
+}
 
-    // Plan / Build 分段切换
-    segPlan.setOnClickListener { setAppMode("plan") }
-    segBuild.setOnClickListener { setAppMode("build") }
+segPlan.setOnClickListener { haptic(it); setAppMode("plan") }
+segBuild.setOnClickListener { haptic(it); setAppMode("build") }
 
-    // 加号：占位（未来用于附件/工具）
-        // 加号：打开系统文件选择器（支持图片/文档/任意文件）
-    btnPlus.setOnClickListener {
-        try {
-            pickFile.launch(arrayOf("*/*"))
-        } catch (e: Exception) {
-            toast("无法打开文件选择器: " + (e.message ?: ""))
-        }
-    }
+chipThink2.setOnClickListener {
+haptic(it)
+thinkOn = !thinkOn
+refreshThinkChip()
+}
+chipSearch.visibility = View.GONE
+refreshThinkChip()
 
-             // 智能搜索下线：直接隐藏；深度思考初始为关闭态
-    chipSearch.visibility = android.view.View.GONE
-    refreshThinkChip()
+inputEdit.setOnFocusChangeListener { _, hasFocus ->
+inputCard.setBackgroundResource(
+if (hasFocus) R.drawable.bg_input_card_focus else R.drawable.bg_input_card
+)
+}
+inputCard.setOnClickListener { inputEdit.requestFocus() }
 
-    refreshSegVisual()
- // 深度思考：点击切换高亮，不清空输入、不发消息
-    chipThink2.setOnClickListener {
-        thinkOn = !thinkOn
-        refreshThinkChip()
-    }
+segContainer.post { layoutSegThumb(false) }
 
 appendOutput("Z-Agent APK 启动中……\n")
 threadRun {
@@ -159,25 +179,37 @@ appendOutput("\n初始化异常：" + e.toString() + "\n")
 requestNotifyPermission()
 }
 
+private fun haptic(v: View) {
+v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+}
+
+private fun fillInput(t: String) {
+inputEdit.setText(t)
+inputEdit.setSelection(t.length)
+inputEdit.requestFocus()
+}
+
+private fun hideEmpty() {
+if (emptyState.visibility != View.GONE) emptyState.visibility = View.GONE
+}
+
 private fun applyTopInset() {
-    // 顶栏：加状态栏高度，避免被系统状态栏遮住
-    ViewCompat.setOnApplyWindowInsetsListener(topBar) { v, insets ->
-        val bars = insets.getInsets(WindowInsetsCompat.Type.statusBars())
-        v.setPadding(v.paddingLeft, bars.top, v.paddingRight, v.paddingBottom)
-        insets
-    }
-    // 底栏：键盘弹起时输入框整体上移（IME insets）
-    val root = findViewById<View>(R.id.rootView)
-    ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
-        val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
-        val sys = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
-        val pad = maxOf(ime.bottom, sys.bottom)
-        inputBar.setPadding(inputBar.paddingLeft, inputBar.paddingTop,
-            inputBar.paddingRight, pad)
-        insets
-    }
-    ViewCompat.requestApplyInsets(topBar)
-    ViewCompat.requestApplyInsets(root)
+ViewCompat.setOnApplyWindowInsetsListener(topBar) { v, insets ->
+val bars = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+v.setPadding(v.paddingLeft, bars.top, v.paddingRight, v.paddingBottom)
+insets
+}
+val root = findViewById<View>(R.id.rootView)
+ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+val sys = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+val pad = maxOf(ime.bottom, sys.bottom)
+inputBar.setPadding(inputBar.paddingLeft, inputBar.paddingTop,
+inputBar.paddingRight, pad)
+insets
+}
+ViewCompat.requestApplyInsets(topBar)
+ViewCompat.requestApplyInsets(root)
 }
 
 private fun applySavedTheme() {
@@ -331,7 +363,11 @@ AlertDialog.Builder(this)
 threadRun {
 safeBridge {
 val r = PythonBridge.resetSession(this@MainActivity)
-runOnUiThread { appendOutput("[会话] " + r + "\n") }
+runOnUiThread {
+appendOutput("[会话] " + r + "\n")
+chatContainer.removeAllViews()
+emptyState.visibility = View.VISIBLE
+}
 }
 }
 }
@@ -346,11 +382,8 @@ AlertDialog.Builder(this)
 .setView(input)
 .setPositiveButton("保存") { _, _ ->
 val name = input.text.toString().trim()
-if (name.isEmpty()) {
-toast("名称不能为空")
-} else {
-sendCommand("/save " + name)
-}
+if (name.isEmpty()) toast("名称不能为空")
+else sendCommand("/save " + name)
 }
 .setNegativeButton("取消", null)
 .show()
@@ -359,21 +392,20 @@ sendCommand("/save " + name)
 private fun onSend() {
 if (busy) { toast("上一轮还在进行中……"); return }
 val text = inputEdit.text.toString().trim()
-    // 允许只发附件：文字为空但有附件时也继续
-    if (text.isEmpty() && pendingFiles.isEmpty()) return
-    inputEdit.setText("")
-        // 有附件时：在消息末尾附上文件路径，让 AI 能读到
-        val attachInfo = if (pendingFiles.isEmpty()) ""
-                else "\n[附件] " + pendingFiles.joinToString(" ")
-        val fullText = text + attachInfo
-        pendingFiles.clear()
-        val payload = if (fullText.startsWith("/")) fullText
-                else if (thinkOn) "/think " + fullText
-                else if (appMode == "plan") "/plan " + fullText
-                else fullText
+if (text.isEmpty() && pendingFiles.isEmpty()) return
+inputEdit.setText("")
+val attachInfo = if (pendingFiles.isEmpty()) ""
+else "\n[附件] " + pendingFiles.joinToString(" ")
+val fullText = text + attachInfo
+pendingFiles.clear()
+refreshAttachRow()
+val payload = if (fullText.startsWith("/")) fullText
+else if (thinkOn) "/think " + fullText
+else if (appMode == "plan") "/plan " + fullText
+else fullText
 appendOutput("你> " + text + "\n")
 sendCommand(payload)
-        inputEdit.hint = "输入消息..."
+inputEdit.hint = "输入消息..."
 }
 
 private fun sendCommand(cmd: String) {
@@ -387,6 +419,7 @@ runOnUiThread {
 appendOutput(reply + "\n")
 busy = false
 sendButton.isClickable = true; sendButton.alpha = 1f
+sendButton.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
 }
 }
 }
@@ -438,6 +471,7 @@ flushAi()
 }
 
 private fun addUserBubble(content: String) {
+hideEmpty()
 val row = LinearLayout(this).apply {
 orientation = LinearLayout.HORIZONTAL
 gravity = Gravity.END
@@ -454,13 +488,21 @@ setBackgroundResource(R.drawable.bg_bubble_user)
 setPadding(dp(14), dp(10), dp(14), dp(10))
 maxWidth = dp(280)
 setTextIsSelectable(true)
+isClickable = true
+isLongClickable = true
+}
+bubble.setOnLongClickListener { v ->
+v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+showBubbleMenu(v, row, content, true)
+true
 }
 row.addView(bubble)
 chatContainer.addView(row)
-        row.post { bounceIn(row) }
+row.post { bounceIn(row) }
 }
 
 private fun addAiBubble(content: String) {
+hideEmpty()
 val row = LinearLayout(this).apply {
 orientation = LinearLayout.HORIZONTAL
 gravity = Gravity.START
@@ -477,10 +519,47 @@ setBackgroundResource(R.drawable.bg_bubble_ai)
 setPadding(dp(14), dp(10), dp(14), dp(10))
 maxWidth = dp(300)
 setTextIsSelectable(true)
+isClickable = true
+isLongClickable = true
+}
+bubble.setOnLongClickListener { v ->
+v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+showBubbleMenu(v, row, content, false)
+true
 }
 row.addView(bubble)
 chatContainer.addView(row)
-        row.post { bounceIn(row) }
+row.post { bounceIn(row) }
+}
+
+private fun showBubbleMenu(anchor: View, row: View, content: String, isUser: Boolean) {
+val popup = PopupMenu(this, anchor)
+popup.menu.add(0, 1, 0, "复制")
+if (isUser) popup.menu.add(0, 2, 1, "重新发送")
+popup.menu.add(0, 3, 2, "删除")
+popup.setOnMenuItemClickListener { item ->
+when (item.itemId) {
+1 -> { copyText(content); true }
+2 -> {
+appendOutput("你> " + content + "\n")
+sendCommand(content)
+true
+}
+3 -> {
+chatContainer.removeView(row)
+if (chatContainer.childCount <= 1) emptyState.visibility = View.VISIBLE
+true
+}
+else -> false
+}
+}
+popup.show()
+}
+
+private fun copyText(t: String) {
+val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+cm.setPrimaryClip(ClipData.newPlainText("zagent", t))
+toast("已复制")
 }
 
 private fun addSystemLine(content: String) {
@@ -500,6 +579,7 @@ chatContainer.addView(tv)
 
 private fun addReasoningBox(reasoning: String) {
 if (reasoning.isEmpty()) return
+hideEmpty()
 val box = LinearLayout(this).apply {
 orientation = LinearLayout.VERTICAL
 setBackgroundResource(R.drawable.bg_reasoning_box)
@@ -509,14 +589,13 @@ LinearLayout.LayoutParams.MATCH_PARENT,
 LinearLayout.LayoutParams.WRAP_CONTENT
 ).apply { topMargin = dp(4); bottomMargin = dp(4) }
 }
-
 val header = TextView(this).apply {
 text = "▸ 思考过程（点击展开）"
 textSize = 12f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
 setPadding(dp(2), dp(2), dp(2), dp(2))
+isClickable = true
 }
-
 val body = TextView(this).apply {
 text = reasoning
 textSize = 13f
@@ -525,85 +604,131 @@ setPadding(dp(4), dp(6), dp(4), dp(2))
 setTextIsSelectable(true)
 visibility = View.GONE
 }
-
 header.setOnClickListener {
+it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
 val expanded = body.visibility == View.VISIBLE
 body.visibility = if (expanded) View.GONE else View.VISIBLE
 header.text = if (expanded) "▸ 思考过程（点击展开）" else "▾ 思考过程（点击收起）"
 }
-
 box.addView(header)
 box.addView(body)
 chatContainer.addView(box)
-        box.post { bounceIn(box) }
+box.post { bounceIn(box) }
 }
 
-    // 苹果风格倾斜入场：轻微 3D 倾斜 + 缩放 + 淡入（ease-out）
-    private fun bounceIn(view: View) {
-        view.cameraDistance = 8000f * resources.displayMetrics.density
-        view.rotationX = 8f
-        view.scaleX = 0.94f
-        view.scaleY = 0.94f
-        view.alpha = 0f
-        view.animate()
-            .rotationX(0f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .alpha(1f)
-            .setDuration(360)
-            .setInterpolator(android.view.animation.PathInterpolator(0.16f, 1f, 0.3f, 1f))
-            .start()
-    }
+private fun bounceIn(view: View) {
+view.cameraDistance = 8000f * resources.displayMetrics.density
+view.rotationX = 8f
+view.scaleX = 0.94f
+view.scaleY = 0.94f
+view.alpha = 0f
+view.animate()
+.rotationX(0f)
+.scaleX(1f)
+.scaleY(1f)
+.alpha(1f)
+.setDuration(360)
+.setInterpolator(android.view.animation.PathInterpolator(0.16f, 1f, 0.3f, 1f))
+.start()
+}
 
-// 深度思考胶囊高亮：开启时蓝字、关闭时灰字
 private fun refreshThinkChip() {
-    val color = ContextCompat.getColor(this,
-        if (thinkOn) R.color.accent else R.color.text_secondary)
-    chipThink2.setTextColor(color)
-    chipThink2.text = if (thinkOn) "✻ 深度思考 ✓" else "✻ 深度思考"
+val color = ContextCompat.getColor(this,
+if (thinkOn) R.color.accent else R.color.text_secondary)
+chipThink2.setTextColor(color)
+chipThink2.text = if (thinkOn) "✻ 深度思考 ✓" else "✻ 深度思考"
 }
 
-// Plan / Build 切换：只更新界面状态，不发消息
 private fun setAppMode(m: String) {
-    appMode = m
-    refreshSegVisual()
+if (appMode == m) return
+appMode = m
+refreshSegVisual()
 }
 
 private fun refreshSegVisual() {
-    val planOn = appMode == "plan"
-    segPlan.background = if (planOn) ContextCompat.getDrawable(this, R.drawable.bg_seg_thumb) else null
-    segPlan.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.accent else R.color.text_secondary))
-    segBuild.background = if (planOn) null else ContextCompat.getDrawable(this, R.drawable.bg_seg_thumb)
-    segBuild.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.text_secondary else R.color.accent))
+val planOn = appMode == "plan"
+segPlan.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.accent else R.color.text_secondary))
+segBuild.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.text_secondary else R.color.accent))
+layoutSegThumb(true)
 }
 
-// 处理用户选中的文件：读元数据 → 复制到 filesDir/uploads/ → 记入待发列表
+private fun layoutSegThumb(animate: Boolean) {
+val target = if (appMode == "plan") segPlan else segBuild
+if (target.width == 0) {
+segContainer.post { layoutSegThumb(false) }
+return
+}
+val targetX = segContainer.paddingLeft + target.left.toFloat()
+val targetW = target.width
+val lp = segThumb.layoutParams
+if (lp.width != targetW) { lp.width = targetW; segThumb.layoutParams = lp }
+if (!animate) { segThumb.translationX = targetX; return }
+segThumb.animate()
+.translationX(targetX)
+.setDuration(180)
+.setInterpolator(android.view.animation.PathInterpolator(0.16f, 1f, 0.3f, 1f))
+.start()
+}
+
+private fun refreshAttachRow() {
+attachRow.removeAllViews()
+if (pendingFiles.isEmpty()) {
+attachScroll.visibility = View.GONE
+return
+}
+attachScroll.visibility = View.VISIBLE
+for (p in pendingFiles) {
+val f = java.io.File(p)
+val name = f.name.substringAfter('_', f.name)
+val chip = TextView(this).apply {
+text = name + " ✕"
+textSize = 12f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+setBackgroundResource(R.drawable.bg_quick)
+setPadding(dp(10), dp(5), dp(10), dp(5))
+isClickable = true
+tag = p
+}
+val lp = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.WRAP_CONTENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+)
+lp.rightMargin = dp(6)
+chip.layoutParams = lp
+chip.setOnClickListener { v ->
+v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+pendingFiles.remove(v.tag as String)
+refreshAttachRow()
+}
+attachRow.addView(chip)
+}
+}
+
 private fun handlePickedFile(uri: Uri) {
-    threadRun {
-        try {
-            var name = "file"
-            contentResolver.query(uri, null, null, null, null)?.use { cur ->
-                val idx = cur.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (idx >= 0 && cur.moveToFirst()) name = cur.getString(idx) ?: name
-            }
-            val dir = java.io.File(filesDir, "uploads")
-            if (!dir.exists()) dir.mkdirs()
-            val safe = name.replace(Regex("[^A-Za-z0-9.-]"), "")
-            val dest = java.io.File(dir, System.currentTimeMillis().toString() + "_" + safe)
-            contentResolver.openInputStream(uri)?.use { ins ->
-                dest.outputStream().use { outs -> ins.copyTo(outs) }
-            }
-            val size = dest.length()
-            val mime = contentResolver.getType(uri) ?: "unknown"
-            runOnUiThread {
-                pendingFiles.add(dest.absolutePath)
-                toast("已附加: " + name + "（" + (size / 1024) + " KB）")
-                inputEdit.hint = "已附加 " + pendingFiles.size + " 个文件，输入消息或直接发送"
-            }
-        } catch (e: Exception) {
-            runOnUiThread { toast("读取文件失败: " + (e.message ?: "")) }
-        }
-    }
+threadRun {
+try {
+var name = "file"
+contentResolver.query(uri, null, null, null, null)?.use { cur ->
+val idx = cur.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+if (idx >= 0 && cur.moveToFirst()) name = cur.getString(idx) ?: name
+}
+val dir = java.io.File(filesDir, "uploads")
+if (!dir.exists()) dir.mkdirs()
+val safe = name.replace(Regex("[^A-Za-z0-9.-]"), "")
+val dest = java.io.File(dir, System.currentTimeMillis().toString() + "_" + safe)
+contentResolver.openInputStream(uri)?.use { ins ->
+dest.outputStream().use { outs -> ins.copyTo(outs) }
+}
+val size = dest.length()
+runOnUiThread {
+pendingFiles.add(dest.absolutePath)
+refreshAttachRow()
+toast("已附加: " + name + "（" + (size / 1024) + " KB）")
+}
+} catch (e: Exception) {
+runOnUiThread { toast("读取文件失败: " + (e.message ?: "")) }
+}
+}
 }
 
 private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
