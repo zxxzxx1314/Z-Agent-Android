@@ -1803,7 +1803,7 @@ def call_api():
     """主对话调用：用全局 messages 请求 AI 回复。
     v6.2：若响应含 reasoning_content，先打印特殊标记块供 UI 折叠显示，
     再返回正文；标记块不会污染对话历史（history 只存 reply 正文）。"""
-    content = _post(messages)
+    content = _post_stream(messages)
     if content is None:
         return None
     if _REASONING_BUF:
@@ -2684,3 +2684,76 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# ============================================================
+# 流式支持 v6.3
+# ============================================================
+_STREAM_BUF = []
+_STREAM_DONE = [False]
+_STREAM_STOP = [False]
+
+
+def _post_stream(msgs, temperature=0.3):
+    global _REASONING_BUF
+    _REASONING_BUF = ''
+    del _STREAM_BUF[:]
+    _STREAM_DONE[0] = False
+    _STREAM_STOP[0] = False
+
+    headers = {
+        'Authorization': 'Bearer ' + API_KEY.strip(),
+        'Content-Type': 'application/json',
+    }
+    payload = {'model': MODEL, 'messages': msgs,
+        'temperature': temperature, 'stream': True}
+    try:
+        resp = _HTTP_SESSION.post(BASE_URL, headers=headers, json=payload,
+            timeout=_POST_TIMEOUT, stream=True)
+    except requests.RequestException as e:
+        print('net error %s' % e)
+        _STREAM_DONE[0] = True
+        return None
+    if resp.status_code != 200:
+        print('api error %d %s' % (resp.status_code, resp.text[:500]))
+        _STREAM_DONE[0] = True
+        return None
+
+    content_parts = []
+    reasoning_parts = []
+    try:
+        import json as _json
+        for raw in resp.iter_lines(decode_unicode=True):
+            if _STREAM_STOP[0]:
+                break
+            if not raw:
+                continue
+            if not raw.startswith('data: '):
+                continue
+            data = raw[6:].strip()
+            if data == '[DONE]':
+                break
+            try:
+                obj = _json.loads(data)
+                delta = obj['choices'][0].get('delta', {}) or {}
+            except Exception:
+                continue
+            c = delta.get('content') or ''
+            r = delta.get('reasoning_content') or ''
+            if r:
+                reasoning_parts.append(r)
+                _STREAM_BUF.append(('reason', r))
+            if c:
+                content_parts.append(c)
+                _STREAM_BUF.append(('content', c))
+    except Exception as e:
+        print('stream read error %s' % e)
+    finally:
+        _STREAM_DONE[0] = True
+
+    _REASONING_BUF = ''.join(reasoning_parts)
+    return ''.join(content_parts)
+
+
+def stream_stop():
+    _STREAM_STOP[0] = True
+    return True

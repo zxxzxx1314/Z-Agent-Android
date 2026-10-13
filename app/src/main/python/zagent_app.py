@@ -663,3 +663,22 @@ def plugin_toggle(pid, enabled):
     except OSError as e:
         return json.dumps({"ok": False, "err": str(e)}, ensure_ascii=False)
     return json.dumps({"ok": True, "file": pid, "enabled": bool(enabled)}, ensure_ascii=False)
+
+def poll_stream():
+    try:
+        buf = _zag._STREAM_BUF
+        chunks = [{'t': t, 'v': v} for (t, v) in buf]
+        buf.clear()
+        done = _zag._STREAM_DONE[0]
+        return json.dumps({'ok': True, 'chunks': chunks, 'done': done},
+            ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({'ok': False, 'err': str(e)}, ensure_ascii=False)
+
+
+def stop_stream():
+    try:
+        _zag._STREAM_STOP[0] = True
+        return json.dumps({'ok': True}, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({'ok': False, 'err': str(e)}, ensure_ascii=False)

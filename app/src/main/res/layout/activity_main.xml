@@ -46,6 +46,7 @@ android:textSize="@dimen/fs_caption" />
 <!-- 主题切换（太阳/月亮）ghost -->
 <FrameLayout
 android:id="@+id/themeButton"
+android:contentDescription="切换深浅主题"
 android:layout_width="48dp"
 android:layout_height="48dp"
 android:background="?attr/selectableItemBackgroundBorderless"
@@ -62,6 +63,7 @@ android:src="@drawable/ic_moon" />
 <!-- 设置齿轮 ghost -->
 <FrameLayout
 android:id="@+id/settingsButton"
+android:contentDescription="打开设置"
 android:layout_width="48dp"
 android:layout_height="48dp"
 android:background="?attr/selectableItemBackgroundBorderless"
@@ -334,6 +336,7 @@ android:layout_weight="1" />
 
 <FrameLayout
 android:id="@+id/btnPlus"
+android:contentDescription="添加附件"
 android:layout_width="36dp"
 android:layout_height="36dp"
 android:background="@drawable/bg_circle_btn"
@@ -349,6 +352,7 @@ android:src="@drawable/ic_plus" />
 
 <FrameLayout
 android:id="@+id/sendButton"
+android:contentDescription="发送消息"
 android:layout_width="36dp"
 android:layout_height="36dp"
 android:layout_marginStart="6dp"

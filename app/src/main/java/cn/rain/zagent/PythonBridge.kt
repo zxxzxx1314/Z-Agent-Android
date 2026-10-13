@@ -283,4 +283,17 @@ object PythonBridge {
             .callAttr("plugin_toggle", pid, enabled)?.toString() ?: ""
     }
 
+    /** 轮询流式缓冲（JSON: {ok,chunks:[{t,v}],done}）*/
+    fun pollStream(context: Context): String {
+        ensureBootstrapped(context)
+        return Python.getInstance().getModule("zagent_app")
+            .callAttr("poll_stream")?.toString() ?: ""
+    }
+
+    /** 请求停止当前流式输出 */
+    fun stopStream(context: Context): String {
+        ensureBootstrapped(context)
+        return Python.getInstance().getModule("zagent_app")
+            .callAttr("stop_stream")?.toString() ?: ""
+    }
 }

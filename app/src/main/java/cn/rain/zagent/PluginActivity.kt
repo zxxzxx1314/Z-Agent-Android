@@ -235,7 +235,7 @@ class PluginActivity : AppCompatActivity() {
             sw.setOnCheckedChangeListener { _, checked ->
                 togglePlugin(item, checked)
             }
-            sw.setOnClickListener { it.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY) }
+            sw.setOnClickListener { HapticTokens.tap(it) }
             return v
         }
     }

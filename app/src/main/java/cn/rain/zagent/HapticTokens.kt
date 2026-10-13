@@ -21,6 +21,11 @@ object HapticTokens {
         }
     }
 
+    // 长按：气泡菜单 / 思考过程
+    fun longPress(v: View) {
+        v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+    }
+
     // 警告：开启自动执行 / 清空会话
     fun warn(v: View) {
         if (Build.VERSION.SDK_INT >= 30) {

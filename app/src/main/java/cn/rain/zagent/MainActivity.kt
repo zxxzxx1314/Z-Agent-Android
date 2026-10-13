@@ -12,7 +12,6 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.view.Gravity
-import android.view.HapticFeedbackConstants
 import android.view.View
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -73,6 +72,15 @@ private lateinit var attachRow: LinearLayout
 
 private var busy = false
 private var stopRequested = false
+
+// 流式渲染状态
+private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
+private var streamPolling = false
+private var streamingBubble: TextView? = null
+private var streamingSb = StringBuilder()
+private var cursorOn = true
+private var loadingDotsView: TextView? = null
+private var settingsSheet: BottomSheetDialog? = null
 private var thinkOn = false
 private var appMode = "build"
 
@@ -193,13 +201,13 @@ findViewById<View>(R.id.emptyChip4).setOnClickListener { haptic(it); fillInput("
 themeButton.setOnClickListener { haptic(it); toggleTheme() }
 
  autoSwitch.setOnCheckedChangeListener { v, checked ->
- v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+ HapticTokens.tap(v)
  refreshAutoSwitch(checked)
  }
  refreshAutoSwitch(autoSwitch.isChecked)
 
 autoSwitch.setOnCheckedChangeListener { v, checked ->
-v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+HapticTokens.tap(v)
 threadRun {
 safeBridge { PythonBridge.setAuto(this@MainActivity, checked) }
 }
@@ -243,7 +251,7 @@ inputCard.setOnClickListener { inputEdit.requestFocus() }
 
 segContainer.post { layoutSegThumb(false) }
 
-appendOutput("Z-Agent APK 启动中……\n")
+// appendOutput("Z-Agent APK 启动中……\n")
 threadRun {
 try {
 val st = PythonBridge.status(this@MainActivity)
@@ -257,7 +265,7 @@ runOnUiThread { appendOutput("[设置] 模型名同步失败：" + (e.message ?:
 }
 runOnUiThread {
 showStatus(st)
-appendOutput("输入消息开始对话；点下方按钮直达功能。\n")
+// appendOutput("输入消息开始对话；点下方按钮直达功能。\n")
 }
 } catch (e: Exception) {
 runOnUiThread {
@@ -271,7 +279,7 @@ requestNotifyPermission()
 }
 
 private fun haptic(v: View) {
-v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+HapticTokens.tap(v)
 }
 
 private fun fillInput(t: String) {
@@ -358,6 +366,7 @@ private fun showSettingsTransform() {
 
 private fun showSettings(originX: Float = -1f, originY: Float = -1f) {
 val sheet = BottomSheetDialog(this)
+    settingsSheet = sheet
 val root = LinearLayout(this).apply {
 orientation = LinearLayout.VERTICAL
 setBackgroundResource(R.drawable.bg_sheet)
@@ -664,6 +673,9 @@ private fun onSend() {
         // 生成中点击 = 请求停止
         stopRequested = true
         toast("正在停止……")
+        threadRun {
+            try { PythonBridge.stopStream(this@MainActivity) } catch (e: Exception) { }
+        }
         return
     }
 val text = inputEdit.text.toString().trim()
@@ -683,24 +695,122 @@ sendCommand(payload)
 inputEdit.hint = "输入消息..."
 }
 
+// ============ 流式渲染 ============
+private val cursorBlink = object : Runnable {
+    override fun run() {
+        cursorOn = !cursorOn
+        streamingBubble?.let { renderStreamText(it) }
+        uiHandler.postDelayed(this, 500)
+    }
+}
+
+private val streamPoll = object : Runnable {
+    override fun run() {
+        if (!streamPolling) return
+        var done = false
+        try {
+            val json = PythonBridge.pollStream(this@MainActivity)
+            if (json.isNotBlank()) {
+                val o = JSONObject(json)
+                if (o.optBoolean("ok")) {
+                    val arr = o.optJSONArray("chunks")
+                    if (arr != null) {
+                        for (i in 0 until arr.length()) {
+                            val c = arr.optJSONObject(i) ?: continue
+                            if (c.optString("t") == "content") appendStream(c.optString("v"))
+                        }
+                    }
+                    done = o.optBoolean("done", false)
+                }
+            }
+        } catch (e: Exception) { }
+        if (done) { streamPolling = false; return }
+        uiHandler.postDelayed(this, 60)
+    }
+}
+
+private fun renderStreamText(tv: TextView) {
+    tv.text = if (cursorOn) streamingSb.toString() + "▌" else streamingSb.toString()
+}
+
+private fun beginStreaming() {
+    streamingSb = StringBuilder()
+    cursorOn = true
+    hideEmpty()
+    loadingDotsView = showLoadingDots()
+    val row = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.START
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(4); bottomMargin = dp(4) }
+    }
+    val bubble = TextView(this).apply {
+        textSize = 15f
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+        setBackgroundResource(R.drawable.bg_bubble_ai)
+        setPadding(dp(14), dp(10), dp(14), dp(10))
+        maxWidth = dp(300)
+        setTextIsSelectable(true)
+    }
+    row.addView(bubble)
+    val wrapped = wrapWithTime(row, false)
+    chatContainer.addView(wrapped)
+    wrapped.post { bounceIn(wrapped) }
+    streamingBubble = bubble
+    uiHandler.removeCallbacks(cursorBlink)
+    uiHandler.postDelayed(cursorBlink, 500)
+}
+
+private fun appendStream(t: String) {
+    if (t.isEmpty()) return
+    if (streamingSb.isEmpty()) { hideLoadingDots(loadingDotsView); loadingDotsView = null }
+    streamingSb.append(t)
+    streamingBubble?.let { renderStreamText(it) }
+    outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+}
+
+private fun endStreaming(): Boolean {
+    uiHandler.removeCallbacks(cursorBlink)
+    val had = streamingSb.isNotEmpty()
+    streamingBubble?.let { it.text = streamingSb.toString() }
+    streamingBubble = null
+    streamingSb = StringBuilder()
+    return had
+}
+
 private fun sendCommand(cmd: String) {
     if (busy) return
     busy = true
     stopRequested = false
     refreshSendButton()
+    beginStreaming()
+    streamPolling = true
+    uiHandler.post(streamPoll)
     threadRun {
         safeBridge {
             val reply = PythonBridge.runAgent(this@MainActivity, cmd)
             runOnUiThread {
-                if (stopRequested) {
-                    appendOutput("[已停止]\n")
-                } else {
-                    appendOutput(reply + "\n")
+                streamPolling = false
+                uiHandler.removeCallbacks(streamPoll)
+                val had = endStreaming()
+                hideLoadingDots(loadingDotsView)
+                loadingDotsView = null
+                val wasStopped = stopRequested
+                if (!had) {
+                    val fb = if (wasStopped) "[已停止]\n" else reply + "\n"
+                    appendOutput(fb)
                 }
                 busy = false
                 stopRequested = false
                 refreshSendButton()
                 HapticTokens.tap(sendButton)
+                val failed = wasStopped
+                        || reply.contains("[API错误")
+                        || reply.contains("[网络错误")
+                        || reply.contains("[流读取中断]")
+                if (failed) addErrorBar(cmd, extractErrorReason(reply, wasStopped))
             }
         }
     }
@@ -794,7 +904,7 @@ isClickable = true
 isLongClickable = true
 }
 bubble.setOnLongClickListener { v ->
-v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+HapticTokens.longPress(v)
 showBubbleMenu(v, row, content, true)
 true
 }
@@ -826,7 +936,7 @@ isClickable = true
 isLongClickable = true
 }
 bubble.setOnLongClickListener { v ->
-v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+HapticTokens.longPress(v)
 showBubbleMenu(v, row, content, false)
 true
 }
@@ -850,14 +960,172 @@ sendCommand(content)
 true
 }
 3 -> {
-(row.parent as? View)?.let { chatContainer.removeView(it) } ?: chatContainer.removeView(row)
-if (chatContainer.childCount <= 1) emptyState.visibility = View.VISIBLE
-true
+    val target = (row.parent as? View) ?: row
+    AlertDialog.Builder(this)
+        .setTitle("删除消息")
+        .setMessage("确定删除这条消息？")
+        .setPositiveButton("删除") { _, _ ->
+            chatContainer.removeView(target)
+            if (chatContainer.childCount <= 1) emptyState.visibility = View.VISIBLE
+        }
+        .setNegativeButton("取消", null)
+        .show()
+    true
 }
 else -> false
 }
 }
 popup.show()
+}
+
+// 失败/中断后追加行内重试按钮
+// 从回复中提取错误原因
+private fun extractErrorReason(reply: String, stopped: Boolean): String {
+    if (stopped) return "已手动停止"
+    if (reply.contains("[网络错误")) return "网络连接失败，请检查网络或 API 地址"
+    if (reply.contains("[API错误")) {
+        val m = Regex("\[API错误 (\d+)\]").find(reply)
+        val code = m?.groupValues?.getOrNull(1) ?: ""
+        if (code == "401") return "API Key 无效或已过期"
+        if (code == "429") return "请求过于频繁，稍后重试"
+        if (code.startsWith("5")) return "服务端错误（" + code + "）"
+        return "API 错误（" + code + "）"
+    }
+    if (reply.contains("[流读取中断]")) return "连接中断"
+    return "生成失败"
+}
+
+// 错误态：行内提示条（原因 + 去设置 + 重试）
+private fun addErrorBar(cmd: String, reason: String) {
+    hideEmpty()
+    val card = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setBackgroundResource(R.drawable.bg_reasoning_box)
+        setPadding(dp(14), dp(10), dp(14), dp(10))
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(4); bottomMargin = dp(8) }
+    }
+    val msgTv = TextView(this).apply {
+        text = "⚠ " + reason
+        textSize = 13f
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.danger))
+    }
+    card.addView(msgTv)
+    val btnRow = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.END
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(8) }
+    }
+    val settingsBtn = TextView(this).apply {
+        text = "去设置"
+        textSize = 13f
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+        setPadding(dp(12), dp(6), dp(12), dp(6))
+        isClickable = true
+        setBackgroundResource(R.drawable.bg_quick)
+    }
+    settingsBtn.setOnClickListener {
+        HapticTokens.tap(it)
+        showSettingsTransform()
+    }
+    val retryBtn = TextView(this).apply {
+        text = "↻ 重试"
+        textSize = 13f
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+        setPadding(dp(12), dp(6), dp(12), dp(6))
+        isClickable = true
+        setBackgroundResource(R.drawable.bg_quick)
+    }
+    val lp2 = LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.WRAP_CONTENT,
+        LinearLayout.LayoutParams.WRAP_CONTENT
+    ).apply { marginStart = dp(8) }
+    retryBtn.layoutParams = lp2
+    retryBtn.setOnClickListener {
+        HapticTokens.tap(it)
+        chatContainer.removeView(card)
+        appendOutput("你> " + cmd + "\n")
+        sendCommand(cmd)
+    }
+    btnRow.addView(settingsBtn)
+    btnRow.addView(retryBtn)
+    card.addView(btnRow)
+    chatContainer.addView(card)
+    outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+}
+
+// 加载态：3 点跳动
+private fun showLoadingDots(): TextView {
+    val tv = TextView(this).apply {
+        text = "●○○"
+        textSize = 18f
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+        setPadding(dp(14), dp(8), dp(14), dp(8))
+        setBackgroundResource(R.drawable.bg_bubble_ai)
+    }
+    val row = LinearLayout(this).apply {
+        gravity = Gravity.START
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(4); bottomMargin = dp(4) }
+    }
+    row.addView(tv)
+    tv.tag = row
+    chatContainer.addView(row)
+    val phases = arrayOf("●○○", "○●○", "○○●")
+    var idx = 0
+    val r = object : Runnable {
+        override fun run() {
+            if (tv.parent == null) return
+            idx = (idx + 1) % 3
+            tv.text = phases[idx]
+            tv.postDelayed(this, 350)
+        }
+    }
+    tv.postDelayed(r, 350)
+    tv.setTag(R.id.tag_press_scale, r)
+    return tv
+}
+
+private fun hideLoadingDots(tv: TextView?) {
+    tv ?: return
+    val r = tv.getTag(R.id.tag_press_scale) as? Runnable
+    if (r != null) tv.removeCallbacks(r)
+    val row = tv.tag as? View
+    if (row != null) chatContainer.removeView(row)
+}
+
+private fun addRetryRow(cmd: String) {
+    val tv = TextView(this).apply {
+        text = "↻ 重试"
+        textSize = 13f
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+        setPadding(dp(14), dp(6), dp(14), dp(6))
+        isClickable = true
+        setBackgroundResource(R.drawable.bg_quick)
+    }
+    val wrap = LinearLayout(this).apply {
+        gravity = Gravity.START
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(2); bottomMargin = dp(8) }
+    }
+    wrap.addView(tv)
+    tv.setOnClickListener {
+        HapticTokens.tap(it)
+        chatContainer.removeView(wrap)
+        appendOutput("你> " + cmd + "\n")
+        sendCommand(cmd)
+    }
+    chatContainer.addView(wrap)
+    outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
 }
 
 private fun copyText(t: String) {
@@ -909,7 +1177,7 @@ setTextIsSelectable(true)
 visibility = View.GONE
 }
 header.setOnClickListener {
-it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+HapticTokens.tap(it)
 val expanded = body.visibility == View.VISIBLE
 body.visibility = if (expanded) View.GONE else View.VISIBLE
 header.text = if (expanded) "▸ 思考过程（点击展开）" else "▾ 思考过程（点击收起）"
@@ -1014,7 +1282,7 @@ LinearLayout.LayoutParams.WRAP_CONTENT
 lp.rightMargin = dp(6)
 chip.layoutParams = lp
 chip.setOnClickListener { v ->
-v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+HapticTokens.tap(v)
 pendingFiles.remove(v.tag as String)
 refreshAttachRow()
 }
@@ -1099,6 +1367,24 @@ sendButton.isClickable = true; sendButton.alpha = 1f
 private fun toast(msg: String) {
 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 }
+
+    // Predictive back：Sheet 打开时先收 Sheet，再次返回才退出
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        val s = settingsSheet
+        if (s != null && s.isShowing) {
+            s.dismiss()
+            settingsSheet = null
+            return
+        }
+        if (busy) {
+            stopRequested = true
+            threadRun { try { PythonBridge.stopStream(this@MainActivity) } catch (e: Exception) { } }
+            toast("正在停止……")
+            return
+        }
+        super.onBackPressed()
+    }
 
 private fun requestNotifyPermission() {
 if (Build.VERSION.SDK_INT >= 33) {
