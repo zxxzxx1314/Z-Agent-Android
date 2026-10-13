@@ -27,6 +27,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.widget.PopupMenu
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import androidx.dynamicanimation.animation.SpringAnimation
 import android.widget.ImageView
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -169,7 +170,7 @@ true
 applyTopInset()
 applySavedTheme()
 
-findViewById<View>(R.id.settingsButton).setOnClickListener { haptic(it); showSettings() }
+findViewById<View>(R.id.settingsButton).setOnClickListener { haptic(it); showSettingsTransform() }
 findViewById<View>(R.id.btnClear).setOnClickListener { haptic(it); sendCommand("/clear") }
 findViewById<View>(R.id.btnContract).setOnClickListener { haptic(it); sendCommand("/contract") }
 findViewById<View>(R.id.btnHelp).setOnClickListener { haptic(it); sendCommand("/help") }
@@ -224,6 +225,10 @@ if (hasFocus) R.drawable.bg_input_card_focus else R.drawable.bg_input_card
 )
 }
 inputCard.setOnClickListener { inputEdit.requestFocus() }
+
+    // 圆形按钮按下缩放
+    btnPlus.pressScale()
+    sendButton.pressScale()
 
 segContainer.post { layoutSegThumb(false) }
 
@@ -317,7 +322,13 @@ autoLabel.setTextColor(if (on) accent else off)
 autoLabel.setTypeface(null, if (on) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
 }
 
-private fun showSettings() {
+private fun showSettingsTransform() {
+    val loc = IntArray(2)
+    themeButton.getLocationInWindow(loc)
+    showSettings(loc[0] + themeButton.width / 2f, loc[1] + themeButton.height / 2f)
+}
+
+private fun showSettings(originX: Float = -1f, originY: Float = -1f) {
 val sheet = BottomSheetDialog(this)
 val root = LinearLayout(this).apply {
 orientation = LinearLayout.VERTICAL
@@ -362,6 +373,25 @@ runOnUiThread { showStatus(st) }
 
 sheet.setContentView(root)
 sheet.show()
+
+    val sv = sheet.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)
+    if (sv != null && originX > 0f && originY > 0f) {
+        sv.setBackgroundResource(R.drawable.bg_sheet)
+        val screenW = resources.displayMetrics.widthPixels.toFloat()
+        val startScale = 44f * resources.displayMetrics.density / screenW
+        sv.pivotX = 0f
+        sv.pivotY = sv.height.toFloat()
+        sv.scaleX = startScale
+        sv.scaleY = 0.4f
+        sv.translationX = originX - screenW / 2f
+        sv.alpha = 0.5f
+        sv.post {
+            SpringAnimation(sv, SpringAnimation.SCALE_X, 1f).setSpring(MotionTokens.sheet()).start()
+            SpringAnimation(sv, SpringAnimation.SCALE_Y, 1f).setSpring(MotionTokens.sheet()).start()
+            SpringAnimation(sv, SpringAnimation.TRANSLATION_X, 0f).setSpring(MotionTokens.sheet()).start()
+            sv.animate().alpha(1f).setDuration(MotionTokens.FADE_MS).start()
+        }
+    }
 
 // 拉一次状态刷新摘要
 threadRun { safeBridge {
@@ -839,20 +869,37 @@ chatContainer.addView(box)
 box.post { bounceIn(box) }
 }
 
+private var bubbleBatchStart = 0L
+private var bubbleIndex = 0
+
 private fun bounceIn(view: View) {
-view.cameraDistance = 8000f * resources.displayMetrics.density
-view.rotationX = 8f
-view.scaleX = 0.94f
-view.scaleY = 0.94f
-view.alpha = 0f
-view.animate()
-.rotationX(0f)
-.scaleX(1f)
-.scaleY(1f)
-.alpha(1f)
-.setDuration(360)
-.setInterpolator(android.view.animation.PathInterpolator(0.16f, 1f, 0.3f, 1f))
-.start()
+    // 批次判定：200ms 内视为同一批，序号递增触发 stagger
+    val now = System.currentTimeMillis()
+    if (now - bubbleBatchStart > 200L) {
+        bubbleIndex = 0
+        bubbleBatchStart = now
+    }
+    val delay = minOf(bubbleIndex * MotionTokens.STAGGER_MS, MotionTokens.STAGGER_CAP_MS)
+    bubbleIndex++
+
+    // 起始态
+    view.cameraDistance = 8000f * resources.displayMetrics.density
+    view.rotationX = 8f
+    view.translationY = 14f * resources.displayMetrics.density
+    view.scaleX = 0.94f
+    view.scaleY = 0.94f
+    view.alpha = 0f
+
+    view.postDelayed({
+        // 位移/缩放 spring（可打断）
+        view.springY(0f, MotionTokens.appear())
+        view.springScale(1f, MotionTokens.appear())
+        // 倾斜 + 透明度 tween
+        view.animate().rotationX(0f).setDuration(360)
+            .setInterpolator(android.view.animation.PathInterpolator(0.16f, 1f, 0.3f, 1f)).start()
+        view.animate().alpha(1f).setDuration(MotionTokens.FADE_MS)
+            .setInterpolator(android.view.animation.PathInterpolator(0.4f, 0f, 0.2f, 1f)).start()
+    }, delay)
 }
 
 private fun refreshThinkChip() {
@@ -886,11 +933,8 @@ val targetW = target.width
 val lp = segThumb.layoutParams
 if (lp.width != targetW) { lp.width = targetW; segThumb.layoutParams = lp }
 if (!animate) { segThumb.translationX = targetX; return }
-segThumb.animate()
-.translationX(targetX)
-.setDuration(180)
-.setInterpolator(android.view.animation.PathInterpolator(0.16f, 1f, 0.3f, 1f))
-.start()
+    // 滑块位移 spring（可打断，连续点击从当前速度继续）
+    segThumb.springX(targetX, MotionTokens.seg())
 }
 
 private fun refreshAttachRow() {
