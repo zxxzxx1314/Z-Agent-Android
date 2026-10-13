@@ -1340,7 +1340,7 @@ val input = EditText(this).apply { hint = "插件名" }
 AlertDialog.Builder(this)
 .setTitle("存为插件")
 .setView(input)
-.setPositiveButton("保存") { , _ ->
+.setPositiveButton("保存") { _, _ ->
 val nm = input.text.toString().trim().ifBlank { "code" + System.currentTimeMillis() }
 sendCommand("/zsave " + b64(nm) + " " + b64(code))
 }
@@ -1455,7 +1455,7 @@ val body = card.findViewWithTag<TextView>("body")
 val chev = card.findViewWithTag<TextView>("chev")
 val okc = ContextCompat.getColor(this@MainActivity, R.color.ok)
 val dng = ContextCompat.getColor(this@MainActivity, R.color.danger)
-val m = Regex("\[退出码 (\d+)\]").find(output)
+val m = Regex("\\[退出码 (\\d+)\\]").find(output)
 val code = m?.groupValues?.getOrNull(1)?.toIntOrNull()
 val isErr = output.contains("[运行异常]") || (code != null && code != 0)
 val secs = elapsedMs / 1000.0
@@ -1473,8 +1473,8 @@ HapticTokens.success(card)
 }
 meta?.text = metaTxt
 var bodyTxt = output
-bodyTxt = bodyTxt.replace(Regex("^\[运行\] 开始执行…\n"), "")
-bodyTxt = bodyTxt.replace(Regex("\[退出码 \d+\]\n?"), "")
+bodyTxt = bodyTxt.replace(Regex("^\\[运行\\] 开始执行…\\n"), "")
+bodyTxt = bodyTxt.replace(Regex("\\[退出码 \\d+\\]\\n?"), "")
 bodyTxt = bodyTxt.trim()
 if (bodyTxt.isEmpty()) bodyTxt = "（无输出）"
 body?.text = maskSecret(bodyTxt)
