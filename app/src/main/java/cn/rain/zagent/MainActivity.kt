@@ -1089,7 +1089,7 @@ private fun sendCommand(cmd: String) {
                         || reply.contains("[网络错误")
                         || reply.contains("[流读取中断]")
         if (failed) HapticTokens.warn(sendButton) else HapticTokens.success(sendButton)
-                if (failed) addErrorBar(cmd, extractErrorReason(reply, wasStopped), reply)
+                if (failed) addErrorBar(cmd, extractErrorReason(reply, wasStopped), reply, classifyError(reply, wasStopped))
             }
         }
     }
@@ -1400,9 +1400,24 @@ private fun extractErrorReason(reply: String, stopped: Boolean): String {
     if (reply.contains("[流读取中断]")) return "连接中断"
     return "生成失败"
 }
+private fun classifyError(reply: String, stopped: Boolean): String {
+if (stopped) return "other"
+if (reply.contains("[网络错误")) return "network"
+if (reply.contains("[流读取中断]")) return "network"
+if (reply.contains("[API错误")) {
+        val m = Regex("\\[API错误 (\\d+)\\]").find(reply)
+val code = m?.groupValues?.getOrNull(1) ?: ""
+if (code == "401" || code == "403") return "auth"
+if (code == "429") return "other"
+if (code.startsWith("5")) return "server"
+return "other"
+}
+return "other"
+}
+
 
 // 错误态：行内提示条（原因 + 去设置 + 重试）
-private fun addErrorBar(cmd: String, reason: String, detail: String = "") {
+private fun addErrorBar(cmd: String, reason: String, detail: String = "", category: String = "other") {
 hideEmpty()
 val card = LinearLayout(this).apply {
 orientation = LinearLayout.VERTICAL
@@ -1478,6 +1493,7 @@ btnRow.addView(detailBtn)
 btnRow.addView(retryBtn)
 card.addView(btnRow)
 
+if (category == "auth" || category == "config") {
 val setRow = LinearLayout(this).apply {
 orientation = LinearLayout.HORIZONTAL
 gravity = Gravity.END
@@ -1499,10 +1515,12 @@ showSettingsTransform()
 }
 setRow.addView(settingsBtn)
 card.addView(setRow)
+}
 
 chatContainer.addView(card)
 outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
 }
+
 
 
 // 加载态：3 点跳动
