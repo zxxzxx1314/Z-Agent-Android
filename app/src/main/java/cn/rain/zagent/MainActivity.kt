@@ -76,6 +76,7 @@ private lateinit var attachRow: LinearLayout
  private lateinit var scrollBottomBtn: FrameLayout
 
 private var busy = false
+private var reportedStartup = false
 private var stopRequested = false
 
 // 流式渲染状态
@@ -120,6 +121,19 @@ sp = getSharedPreferences("zagent", Context.MODE_PRIVATE)
 
 
 // Predictive back：设置 Sheet 打开时先收 Sheet，再次返回才退出
+
+override fun onResume() {
+ super.onResume()
+ if (!reportedStartup) {
+ val ms = AppStartup.elapsed()
+ if (ms in 1..30000) {
+ reportedStartup = true
+ statusText.text = "冷启动 " + ms + "ms"
+ uiHandler.postDelayed({ refreshStatusQuiet() }, 4000)
+ }
+ }
+}
+
 onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
 override fun handleOnBackPressed() {
 val s = settingsSheet

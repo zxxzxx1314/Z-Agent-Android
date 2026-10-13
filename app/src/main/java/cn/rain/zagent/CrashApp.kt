@@ -13,6 +13,7 @@ import java.util.Locale
 class CrashApp : Application() {
 override fun onCreate() {
 super.onCreate()
+ AppStartup.mark()
 val prev = Thread.getDefaultUncaughtExceptionHandler()
 Thread.setDefaultUncaughtExceptionHandler { t, e ->
 try {
