@@ -1227,8 +1227,8 @@ val input = EditText(this).apply { hint = "插件名" }
 AlertDialog.Builder(this)
 .setTitle("存为插件")
 .setView(input)
-.setPositiveButton("保存") { , _ ->
-val nm = input.text.toString().trim().ifBlank { "code" + System.currentTimeMillis() }
+            .setPositiveButton("保存") { _, _ ->
+val nm = input.text.toString().trim().ifBlank { "code_" + System.currentTimeMillis() }
 sendCommand("/zsave " + b64(nm) + " " + b64(code))
 }
 .setNegativeButton("取消", null)
@@ -1267,7 +1267,8 @@ LinearLayout.LayoutParams.MATCH_PARENT,
 LinearLayout.LayoutParams.WRAP_CONTENT
 ).apply { topMargin = dp(4); bottomMargin = dp(4) }
 }
-val open = "" + "`" val close = "" + "`"
+    val open = "``" + "`"
+    val close = "``" + "`"
 var idx = 0
 while (idx < content.length) {
 val a = content.indexOf(open, idx)
