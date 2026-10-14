@@ -1393,6 +1393,7 @@ private fun sendCommand(cmd: String) {
                         || reply.contains("[网络错误")
                         || reply.contains("[流读取中断]")
         if (failed) HapticTokens.warn(sendButton) else HapticTokens.success(sendButton)
+if (!failed) sendButton.animateFinish()
                 if (failed) addErrorBar(cmd, extractErrorReason(reply, wasStopped), reply, classifyError(reply, wasStopped))
             }
         }
@@ -2060,6 +2061,7 @@ card.addView(setRow)
 }
 
 chatContainer.addView(card)
+card.animateErrorCard()
 outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
 }
 
@@ -2094,7 +2096,8 @@ private fun showLoadingDots(): TextView {
             tv.postDelayed(this, 350)
         }
     }
-    tv.postDelayed(r, 350)
+    tv.thinkingPulseOnce()
+tv.postDelayed(r, 350)
     tv.setTag(R.id.tag_press_scale, r)
     return tv
 }
