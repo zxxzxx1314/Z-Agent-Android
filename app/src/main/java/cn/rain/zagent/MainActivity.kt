@@ -225,6 +225,35 @@ true
 
 // 输入草稿自动保存 / 恢复
 inputEdit.setText(sp.getString(KEY_DRAFT, "") ?: "")
+
+// ── 空状态 Prompt 卡片：点击填入输入框 ──
+findViewById<View>(R.id.promptCard1)?.setOnClickListener {
+haptic(it)
+inputEdit.setText("帮我写一份本周工作周报，按「本周进展 / 遇到的问题 / 下周计划」结构组织")
+inputEdit.setSelection(inputEdit.text.length)
+setAppMode("plan")
+}
+findViewById<View>(R.id.promptCard2)?.setOnClickListener {
+haptic(it)
+inputEdit.setText("解释下面这段代码的逻辑，指出关键控制流和潜在问题：\n")
+inputEdit.setSelection(inputEdit.text.length)
+setAppMode("build")
+}
+findViewById<View>(R.id.promptCard3)?.setOnClickListener {
+haptic(it)
+inputEdit.setText("深度分析并总结下面这篇文档的核心论点：\n")
+inputEdit.setSelection(inputEdit.text.length)
+if (!thinkOn) { thinkOn = true; refreshThinkChip() }
+}
+
+// ── 发送键状态色：空置灰、有字高亮 ──
+inputEdit.addTextChangedListener(object : android.text.TextWatcher {
+override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+override fun afterTextChanged(s: android.text.Editable?) {
+refreshSendButton()
+}
+})
 inputEdit.setSelection(inputEdit.text.length)
 // 输入框 Enter = 发送（多行视觉但仍走 IME_ACTION_SEND）
 inputEdit.setOnEditorActionListener { _, actionId, event ->
@@ -992,14 +1021,16 @@ sendCommand("/save " + n)
 
 // 发送键状态：空 → 灰；有内容 → accent 实心；生成中 → 停止按钮
 private fun refreshSendButton() {
-    if (busy) {
-        sendIcon.setImageResource(R.drawable.ic_stop)
-        sendButton.alpha = 1f
-        return
-    }
-    val has = inputEdit.text?.isNotEmpty() == true || pendingFiles.isNotEmpty()
-    sendButton.alpha = if (has) 1f else 0.4f
-    sendIcon.setImageResource(R.drawable.ic_send_arrow)
+ if (busy) {
+ sendIcon.setImageResource(R.drawable.ic_stop)
+ sendButton.alpha = 1f
+ sendButton.setBackgroundResource(R.drawable.bg_circle_send)
+ return
+ }
+ val has = inputEdit.text?.isNotEmpty() == true || pendingFiles.isNotEmpty()
+ sendButton.alpha = 1f
+ sendButton.setBackgroundResource(if (has) R.drawable.bg_circle_send else R.drawable.bg_circle_send_disabled)
+ sendIcon.setImageResource(R.drawable.ic_arrow_up)
 }
 
 private fun onSend() {
@@ -2138,37 +2169,85 @@ chatContainer.addView(tv)
 }
 
 private fun addAlertLine(content: String, warnMode: Boolean) {
+// 错误卡：浅红底，无粗边框，保留分级（图标+颜色深浅），文案精简
+hideEmpty()
 val row = LinearLayout(this).apply {
-orientation = LinearLayout.HORIZONTAL
-gravity = Gravity.CENTER_VERTICAL
-setBackgroundResource(R.drawable.bg_alert_card)
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_error_soft)
 layoutParams = LinearLayout.LayoutParams(
 LinearLayout.LayoutParams.MATCH_PARENT,
 LinearLayout.LayoutParams.WRAP_CONTENT
 ).apply { topMargin = dp(6); bottomMargin = dp(6) }
-setPadding(dp(12), dp(10), dp(12), dp(10))
+setPadding(dp(14), dp(12), dp(14), dp(12))
+}
+val headRow = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.CENTER_VERTICAL
 }
 val tint = ContextCompat.getColor(this@MainActivity,
 if (warnMode) R.color.warn else R.color.danger)
 val icon = TextView(this).apply {
-text = if (warnMode) "警告" else "严重"
-textSize = 12f
+text = if (warnMode) "⚠" else "⛔"
+textSize = 14f
 setTextColor(tint)
 setPadding(0, 0, dp(8), 0)
-setTypeface(null, android.graphics.Typeface.BOLD)
 }
+// 文案精简：只取第一句、去掉"严重/警告"这类前缀词
+val short = content
+.removePrefix("严重").removePrefix("警告")
+.removePrefix("：").removePrefix(":").trim()
+.let { if (it.length > 60) it.substring(0, 60) + "…" else it }
 val tv = TextView(this).apply {
-text = content
+text = short
 textSize = 13f
 setTextColor(tint)
 setTypeface(null, android.graphics.Typeface.BOLD)
 setTextIsSelectable(true)
 }
-row.addView(icon); row.addView(tv)
+headRow.addView(icon); headRow.addView(tv)
+row.addView(headRow)
+
+// 首句短提示 + 去设置按钮（仅 auth/config 类）
+val low = content.lowercase()
+val isKeyIssue = low.contains("key") || low.contains("401") || low.contains("auth") ||
+content.contains("密钥") || content.contains("未配置")
+if (isKeyIssue) {
+val btnRow = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.END
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { topMargin = dp(8) }
+}
+val settingsBtn = TextView(this).apply {
+text = "去设置 →"
+textSize = 12f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+setPadding(dp(12), dp(6), dp(12), dp(6))
+isClickable = true
+setBackgroundResource(R.drawable.bg_quick)
+}
+settingsBtn.setOnClickListener {
+HapticTokens.tap(it)
+showSettingsTransform()
+}
+btnRow.addView(settingsBtn)
+row.addView(btnRow)
+}
 chatContainer.addView(row)
+// 进场动效：淡入 + 从下浮起 6dp
+if (!MotionPrefs.reduceMotion(row)) {
+row.alpha = 0f
+row.translationY = dp(6).toFloat()
+row.animate().alpha(1f).translationY(0f).setDuration(200)
+.setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+}
+outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
 }
 
 private fun addLogLine(content: String) {
+// 系统日志独立样式语言：灰底 + 左竖线 + 等宽 + 小一号，视觉权重远低于对话
 if (logBox == null) {
 val wrap = LinearLayout(this).apply {
 orientation = LinearLayout.VERTICAL
@@ -2178,24 +2257,54 @@ LinearLayout.LayoutParams.WRAP_CONTENT
 ).apply { topMargin = dp(2); bottomMargin = dp(4) }
 }
 val head = TextView(this).apply {
-text = "运行日志（点击展开）"
-textSize = 11f
+text = "▸ 运行日志"
+textSize = 10f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.log_text))
 typeface = android.graphics.Typeface.MONOSPACE
-setPadding(dp(8), dp(6), dp(8), dp(6))
+setPadding(dp(10), dp(4), dp(10), dp(4))
 isClickable = true
+alpha = 0.75f
 }
 val bb = LinearLayout(this).apply {
 orientation = LinearLayout.VERTICAL
-setBackgroundResource(R.drawable.bg_log_card)
-setPadding(dp(8), dp(6), dp(8), dp(6))
+setBackgroundResource(R.drawable.bg_log_line)
+setPadding(dp(10), dp(6), dp(10), dp(6))
 visibility = View.GONE
 }
 head.setOnClickListener {
 HapticTokens.tap(it)
-val expanded = bb.visibility == View.VISIBLE
-bb.visibility = if (expanded) View.GONE else View.VISIBLE
-head.text = if (expanded) "运行日志（点击展开）" else "运行日志（点击收起）"
+val willExpand = bb.visibility != View.VISIBLE
+if (willExpand) {
+// 展开：先量高再撑开（动效）
+bb.visibility = View.VISIBLE
+bb.measure(
+View.MeasureSpec.makeMeasureSpec(resources.displayMetrics.widthPixels, View.MeasureSpec.AT_MOST),
+View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+val h = bb.measuredHeight
+if (h > 0 && !MotionPrefs.reduceMotion(bb)) {
+val lp = bb.layoutParams
+lp.height = 0
+bb.layoutParams = lp
+val a = android.animation.ValueAnimator.ofInt(0, h)
+a.duration = 180
+a.interpolator = android.view.animation.DecelerateInterpolator()
+a.addUpdateListener { va ->
+lp.height = va.animatedValue as Int
+bb.layoutParams = lp
+}
+a.addListener(object : android.animation.AnimatorListenerAdapter() {
+override fun onAnimationEnd(animation: android.animation.Animator) {
+lp.height = LinearLayout.LayoutParams.WRAP_CONTENT
+bb.layoutParams = lp
+}
+})
+a.start()
+}
+head.text = "▾ 运行日志"
+} else {
+bb.visibility = View.GONE
+head.text = "▸ 运行日志"
+}
 }
 wrap.addView(head); wrap.addView(bb)
 chatContainer.addView(wrap)
@@ -2203,10 +2312,11 @@ logHead = head; logBox = bb
 }
 val tv = TextView(this).apply {
 text = content
-textSize = 11f
+textSize = 10f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.log_text))
 typeface = android.graphics.Typeface.MONOSPACE
 setPadding(0, dp(1), 0, dp(1))
+alpha = 0.85f
 setTextIsSelectable(true)
 }
 logBox?.addView(tv)
@@ -2383,22 +2493,28 @@ runOnUiThread { toast("读取文件失败: " + (e.message ?: "")) }
 private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
 private fun showStatus(json: String) {
+// 顶栏只显示模型名（可点切换）；版本号/Key 状态收进设置页
 val tv = statusText
 try {
 val o = JSONObject(json)
-val version = if (o.isNull("version")) "?" else (o.opt("version")?.toString() ?: "?")
-val gen = if (o.isNull("gen")) "?" else (o.opt("gen")?.toString() ?: "?")
 val keyOk = o.optBoolean("api_key_set", false)
-val turns = o.optInt("turns", 0)
 val model = if (o.isNull("model")) "" else (o.optString("model", ""))
+tv.text = if (model.isNotBlank()) model else "未选择模型"
+// Key 未配置时用 accent 提示，已配置用常规灰
+val col = if (keyOk) R.color.text_tertiary else R.color.warn
+tv.setTextColor(ContextCompat.getColor(this@MainActivity, col))
+// 长按复制全部状态（保留调试能力）
+tv.setOnLongClickListener {
 val sb = StringBuilder()
-.append("v").append(version)
-.append(" / Gen-").append(gen)
-.append(" ｜ ").append(if (keyOk) "Key 已配置" else "Key 未配置")
-if (model.isNotBlank()) sb.append(" ｜ ").append(model)
-tv.text = sb.toString()
+sb.append("v").append(o.opt("version")?.toString() ?: "?")
+sb.append(" / Gen-").append(o.opt("gen")?.toString() ?: "?")
+sb.append(" | ").append(if (keyOk) "Key 已配置" else "Key 未配置")
+if (model.isNotBlank()) sb.append(" | ").append(model)
+copyText(sb.toString())
+true
+}
 } catch (e: Exception) {
-tv.text = "状态不可用: " + (e.message ?: "")
+tv.text = "状态不可用"
 }
 }
 
