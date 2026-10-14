@@ -121,6 +121,44 @@ SHADOW_TIMEOUT = 300        # v6.0 影子沙箱单次验证超时（秒）
 
 # ===== 元认知层（soft 默认；META_LEVEL=off 一键关闭）=====
 META_LEVEL = "soft"
+
+# 权限分级（P1）
+L0_OBSERVE = 0 # 观察：只读，零副作用
+L1_ADVISE = 1 # 建议：可输出建议，不能执行
+L2_SEMI = 2 # 半自主：低风险执行，事后审计
+L3_AUTO = 3 # 自主：高风险执行，事前签名
+
+GRANT_LEVEL = 2 # 当前授予等级，默认 L2 半自主
+GRANT_TS = 0 # 授予时间戳
+GRANT_TTL = 3600 # 授予有效期（秒）；0=永久；过期自动降回默认
+
+
+def grant_level(level, reason='', ttl=3600, actor='human:local'):
+    global GRANT_LEVEL, GRANT_TS, GRANT_TTL
+    GRANT_LEVEL = int(level)
+    GRANT_TS = int(time.time())
+    GRANT_TTL = int(ttl)
+    append_meta_log('grant', {
+        'level': GRANT_LEVEL, 'reason': reason, 'ttl': GRANT_TTL},
+        actor=actor)
+    return GRANT_LEVEL
+
+
+def current_level():
+    global GRANT_LEVEL, GRANT_TS, GRANT_TTL
+    if GRANT_TTL > 0 and GRANT_TS > 0:
+        if (time.time() - GRANT_TS) > GRANT_TTL:
+            GRANT_LEVEL = 2 # 过期降回 L2
+            GRANT_TS = int(time.time())
+    return GRANT_LEVEL
+
+
+def required_level(action):
+    lv = classify_action(action)
+    if lv == 'HIGH': return 3
+    if lv == 'MED': return 2
+    return 1
+
 MAX_SECONDS = 600
 MAX_LLM_CALLS = 30
 MAX_SUB_PROC = 50
@@ -1739,8 +1777,15 @@ def build_system_prompt() -> str:
         pb_text = ("\n\n【待自主探索的问题队列（%d 个，/idle 时领取）】"
                    % len(problems) + "".join("\n- " + p for p in problems[:20]))
     _meta_text = ''
+    try:
+        _lvl = current_level()
+        _chainok, _ = chain_verify()
+        _meta_text = _meta_text + chr(10) + '[权限] GRANT_LEVEL=' + str(_lvl) + ' (0=观察/1=建议/2=半自主/3=自主)'
+        _meta_text = _meta_text + chr(10) + '[审计] 链式日志 verify=' + ('OK' if _chainok else 'TAMPERED') + ' ; 路径 mind/audit-chain.jsonl'
+    except Exception:
+        pass
     if META_LEVEL != 'off':
-        _meta_text = (chr(10) + chr(10) + '【元认知协议】' + chr(10) + '下结论必须四元组：' + chr(10) + ' [claim] 命题' + chr(10) + ' [confidence] static|dynamic|inferred' + chr(10) + ' [basis] ev-id 列表或 无' + chr(10) + ' [unknowns] 无法检测的部分' + chr(10) + '置信度不得高于其最弱依据。' + chr(10) + 'META_LEVEL=' + META_LEVEL)
+        _meta_text = _meta_text + (chr(10) + chr(10) + '【元认知协议】' + chr(10) + '下结论必须四元组：' + chr(10) + ' [claim] 命题' + chr(10) + ' [confidence] static|dynamic|inferred' + chr(10) + ' [basis] ev-id 列表或 无' + chr(10) + ' [unknowns] 无法检测的部分' + chr(10) + '置信度不得高于其最弱依据。' + chr(10) + 'META_LEVEL=' + META_LEVEL)
     return (_meta_text + load_identity() + "\n" + BASE_PROMPT + mode_text + skills_text
             + plugins_text + pb_text
             + "\n\n【自身状态】当前基因版本 v%s，代数 Gen-%d。"
@@ -2808,7 +2853,37 @@ def _post_stream(msgs, temperature=0.3):
 
 def stream_stop():
     _STREAM_STOP[0] = True
-    return True
+    try:
+        append_meta_log('abort', {
+            'reason': 'user-stop', 'in_flight': bool(_STREAM_BUF)},
+            actor='human:local')
+    except Exception:
+        pass
+    return {
+        'stopped': True, 'pending_chunks': len(_STREAM_BUF),
+        'ts': int(time.time())}
+
+
+def resume_from_abort():
+    ok, recs, _errs = chain_verify(return_records=True)
+    if not ok:
+        return {'ok': False, 'err': _errs}
+    last_abort = None
+    for r in reversed(recs):
+        if r.get('kind') == 'abort':
+            last_abort = r
+            break
+    if not last_abort:
+        return {'ok': True, 'abort': None, 'note': 'no abort point'}
+    # 复位 STOP，让下一轮可继续
+    try:
+        _STREAM_STOP[0] = False
+    except Exception:
+        pass
+    return {
+        'ok': True, 'abort': last_abort,
+        'ts': last_abort.get('ts'), 'seq': last_abort.get('seq')}
+
 
 # ============================================================
 # 元认知层：不确定性协议 / 元推理闸门 / 预算守卫 / 反事实预演 / 审计
@@ -2864,17 +2939,117 @@ def classify_action(action):
     return 'LOW'
 
 
-def append_meta_log(kind, payload):
-    _logp = META_LOG or os.path.join(HOME, 'mind', 'meta-log.jsonl')
+def _chain_path():
+    return os.path.join(HOME, 'mind', 'audit-chain.jsonl')
+
+
+def _chain_last_hash(logp=None):
+    logp = logp or _chain_path()
+    if not os.path.exists(logp):
+        return '', 0
+    last = ''
+    n = 0
     try:
-        d = os.path.dirname(_logp)
-        os.makedirs(d, exist_ok=True)
-        rec = {'ts': int(time.time()), 'kind': kind}
-        rec.update(payload or {})
-        with open(_logp, 'a', encoding='utf-8') as f:
-            f.write(_meta_json.dumps(rec, ensure_ascii=False) + chr(10))
+        with open(logp, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    o = _meta_json.loads(line)
+                    last = o.get('this_hash', last)
+                    n = int(o.get('seq', n + 1))
+                except Exception:
+                    continue
     except Exception:
         pass
+    return last, n
+
+
+def _chain_hash(prev_hash, seq, ts, kind, payload, actor):
+    import hashlib as _h
+    base = '|'.join([str(prev_hash), str(seq), str(ts), str(kind), _meta_json.dumps(payload or {}, ensure_ascii=False, sort_keys=True), str(actor)])
+    return _h.sha256(base.encode('utf-8')).hexdigest()
+
+
+def append_meta_log(kind, payload, actor='ai'):
+    logp = _chain_path()
+    try:
+        d = os.path.dirname(logp)
+        os.makedirs(d, exist_ok=True)
+        prev_hash, last_seq = _chain_last_hash(logp)
+        seq = last_seq + 1
+        ts = int(time.time())
+        this_hash = _chain_hash(prev_hash, seq, ts, kind, payload, actor)
+        rec = {'seq': seq, 'ts': ts, 'kind': kind, 'payload': payload or {}, 'actor': actor, 'prev_hash': prev_hash, 'this_hash': this_hash}
+        with open(logp, 'a', encoding='utf-8') as f:
+            f.write(_meta_json.dumps(rec, ensure_ascii=False, sort_keys=True) + chr(10))
+    except Exception:
+        pass
+
+
+def chain_verify(logp=None, return_records=False):
+    logp = logp or _chain_path()
+    errs = []
+    recs = []
+    prev = ''
+    seq_expected = 1
+    if not os.path.exists(logp):
+        if return_records:
+            return True, recs, 'no chain'
+        return True, ''
+    try:
+        with open(logp, 'r', encoding='utf-8') as f:
+            for lineno, line in enumerate(f, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    o = _meta_json.loads(line)
+                except Exception as e:
+                    errs.append('line %d: JSON err %r' % (lineno, e))
+                    continue
+                seq = o.get('seq')
+                if seq != seq_expected:
+                    errs.append('line %d: seq expect %d got %s' % (lineno, seq_expected, seq))
+                ph = o.get('prev_hash', '')
+                if ph != prev:
+                    errs.append('line %d: prev mismatch' % lineno)
+                th_calc = _chain_hash(ph, seq, o.get('ts'), o.get('kind'), o.get('payload'), o.get('actor'))
+                th_actual = o.get('this_hash', '')
+                if th_calc != th_actual:
+                    errs.append('line %d: this hash mismatch' % lineno)
+                prev = th_actual
+                seq_expected = seq + 1
+                recs.append(o)
+    except Exception as e:
+        errs.append('read err: %r' % e)
+    ok = len(errs) == 0
+    if return_records:
+        return ok, recs, (chr(10).join(errs) if errs else '')
+    return ok, (chr(10).join(errs) if errs else '')
+
+
+def export_audit_pack(out_dir=None):
+    logp = _chain_path()
+    if not os.path.exists(logp):
+        return None
+    out_dir = out_dir or os.path.join(HOME, 'exports')
+    try:
+        os.makedirs(out_dir, exist_ok=True)
+    except Exception:
+        pass
+    ok, recs, errs = chain_verify(logp, return_records=True)
+    pack = {'type': 'dreamcore-audit-pack', 'created': int(time.time()), 'chain_path': logp, 'records': recs, 'verify_ok': ok, 'verify_errors': errs}
+    outp = os.path.join(out_dir, 'audit-pack-%d.json' % int(time.time()))
+    try:
+        with open(outp, 'w', encoding='utf-8') as f:
+            _meta_json.dump(pack, f, ensure_ascii=False, indent=1)
+    except Exception:
+        return None
+    return outp
+
+
 def meta_gate(action, ctx=None):
     if META_LEVEL == 'off':
         return True, ''
@@ -2883,9 +3058,16 @@ def meta_gate(action, ctx=None):
     evn = int(ctx.get('evidence', 0))
     rev = ctx.get('reversible', True)
     auto = bool(ctx.get('auto', AUTO_EXECUTE))
+    req = required_level(action)
+    cur = current_level()
+    need_sig = (req > cur and req >= 3)
     ask = (level == 'HIGH' and not auto and not rev)
-    rep = ('[meta-reason]' + chr(10) + ' - action: ' + str(action) + chr(10) + ' - level: ' + level + chr(10) + ' - 证据数: ' + str(evn) + chr(10) + ' - AUTO_EXECUTE: ' + str(auto) + chr(10) + ' - 可逆: ' + str(rev) + chr(10) + ' - 该问人: ' + ('yes' if ask else 'no'))
-    append_meta_log('meta-gate', {'action': action, 'level': level, 'ask': ask})
+    rep = ('[meta-reason]' + chr(10) + ' - action: ' + str(action) + chr(10) + ' - level: ' + level + chr(10) + ' - req/cur: ' + str(req) + '/' + str(cur) + chr(10) + ' - 证据数: ' + str(evn) + chr(10) + ' - AUTO_EXECUTE: ' + str(auto) + chr(10) + ' - 可逆: ' + str(rev) + chr(10) + ' - 需签名: ' + ('yes' if need_sig else 'no') + chr(10) + ' - 该问人: ' + ('yes' if ask else 'no'))
+    append_meta_log('meta-gate', {'action': action, 'level': level, 'req': req, 'cur': cur, 'ask': ask, 'need_sig': need_sig})
+    # 人类在环：LEVEL3 动作需授权签名，soft 模式下也阻塞
+    if need_sig:
+        return False, rep
+    # hard 模式：HIGH 动作也需确认
     if META_LEVEL == 'hard' and ask:
         return False, rep
     return True, rep
