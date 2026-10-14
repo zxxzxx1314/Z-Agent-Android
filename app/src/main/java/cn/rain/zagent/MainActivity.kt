@@ -2845,28 +2845,60 @@ private fun expandQuick() {
 // 打断旧动画
 quickRowWrap.animate().cancel()
 quickToggleCollapsed.animate().cancel()
+for (i in 0 until quickRow.childCount) quickRow.getChildAt(i).animate().cancel()
 quickExpanded = true
 quickToggleCollapsed.visibility = View.GONE
 quickBarContainer.visibility = View.VISIBLE
 quickRowWrap.visibility = View.VISIBLE
-if (MotionPrefs.reduceMotion(quickRowWrap)) {
 quickRowWrap.alpha = 1f
+
+if (MotionPrefs.reduceMotion(quickRowWrap)) {
+val lp0 = quickRowWrap.layoutParams
+lp0.height = LinearLayout.LayoutParams.WRAP_CONTENT
+quickRowWrap.layoutParams = lp0
 quickRowWrap.translationY = 0f
-quickRowWrap.scaleX = 1f; quickRowWrap.scaleY = 1f
+for (i in 0 until quickRow.childCount) {
+quickRow.getChildAt(i).alpha = 1f
+quickRow.getChildAt(i).translationY = 0f
+}
 return
 }
-// 整排一次动画：上滑 + 淡入 + 微缩放。单属性一次 animate 链，避免每帧重排
-quickRowWrap.alpha = 0f
-quickRowWrap.translationY = dp(10).toFloat()
-quickRowWrap.scaleX = 0.96f; quickRowWrap.scaleY = 0.96f
-quickRowWrap.animate()
-.alpha(1f)
-.translationY(0f)
-.scaleX(1f).scaleY(1f)
-.setDuration(220)
+
+// 先量出目标高度（避免 visible 后一帧闪动）
+val lp = quickRowWrap.layoutParams
+lp.height = LinearLayout.LayoutParams.WRAP_CONTENT
+quickRowWrap.layoutParams = lp
+val wSpec = View.MeasureSpec.makeMeasureSpec(
+resources.displayMetrics.widthPixels, View.MeasureSpec.EXACTLY)
+val hSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+quickRowWrap.measure(wSpec, hSpec)
+val targetH = quickRowWrap.measuredHeight
+if (targetH <= 0) { lp.height = LinearLayout.LayoutParams.WRAP_CONTENT; quickRowWrap.layoutParams = lp; return }
+// 先塌到 0，再撑开
+lp.height = 0
+quickRowWrap.layoutParams = lp
+
+// 胶囊：从下往上 10dp 浮入，错开 35ms
+for (i in 0 until quickRow.childCount) {
+val v = quickRow.getChildAt(i)
+v.animate().cancel()
+v.alpha = 0f
+v.translationY = dp(10).toFloat()
+v.animate().alpha(1f).translationY(0f)
+.setStartDelay(i * 35L)
+.setDuration(280)
 .setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
-.withEndAction { quickRowWrap.scaleX = 1f; quickRowWrap.scaleY = 1f }
 .start()
+}
+// 高度 300ms 平滑撑开（输入框被顶上去）
+val anim = android.animation.ValueAnimator.ofInt(0, targetH)
+anim.duration = 300
+anim.interpolator = android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f)
+anim.addUpdateListener { a ->
+lp.height = a.animatedValue as Int
+quickRowWrap.layoutParams = lp
+}
+anim.start()
 }
 
 private fun collapseQuick() {
@@ -2874,34 +2906,63 @@ quickRowWrap.animate().cancel()
 quickToggleCollapsed.animate().cancel()
 quickExpanded = false
 if (MotionPrefs.reduceMotion(quickRowWrap)) {
+val lp0 = quickRowWrap.layoutParams
+lp0.height = LinearLayout.LayoutParams.WRAP_CONTENT
+quickRowWrap.layoutParams = lp0
 quickBarContainer.visibility = View.GONE
 quickToggleCollapsed.visibility = View.VISIBLE
 quickToggleCollapsed.alpha = 1f
 quickToggleCollapsed.scaleX = 1f; quickToggleCollapsed.scaleY = 1f
 return
 }
-// 整排一次动画：下滑 + 淡出 + 微缩放，180ms 干净利落
-quickRowWrap.animate()
-.alpha(0f)
-.translationY(dp(8).toFloat())
-.scaleX(0.96f).scaleY(0.96f)
-.setDuration(180)
-.setInterpolator(android.view.animation.PathInterpolator(0.4f, 0f, 0.7f, 0.2f))
-.withEndAction {
-if (quickExpanded) return@withEndAction
-quickBarContainer.visibility = View.GONE
-quickRowWrap.translationY = 0f
-quickRowWrap.scaleX = 1f; quickRowWrap.scaleY = 1f
+// 第一步：胶囊快速消失（无错开，110ms）
+for (i in 0 until quickRow.childCount) {
+val v = quickRow.getChildAt(i)
+v.animate().cancel()
+v.animate().alpha(0f).translationY(dp(6).toFloat())
+.setDuration(110)
+.setInterpolator(android.view.animation.AccelerateInterpolator())
+.start()
+}
+// 第二步：高度收回（60ms 延迟 + 150ms）
+val lp = quickRowWrap.layoutParams
+val startH = if (quickRowWrap.height > 0) quickRowWrap.height else lp.height
+if (startH <= 0) { finishCollapse(); return }
+val anim = android.animation.ValueAnimator.ofInt(startH, 0)
+anim.duration = 150
+anim.startDelay = 60
+anim.interpolator = android.view.animation.PathInterpolator(0.4f, 0f, 0.7f, 0.2f)
+anim.addUpdateListener { a ->
+lp.height = a.animatedValue as Int
+quickRowWrap.layoutParams = lp
+}
+anim.addListener(object : android.animation.AnimatorListenerAdapter() {
+override fun onAnimationEnd(animation: android.animation.Animator) {
+if (quickExpanded) return
+finishCollapse()
+}
+})
+anim.start()
+}
+
+private fun finishCollapse() {
+if (quickExpanded) return
+val lp = quickRowWrap.layoutParams
+lp.height = LinearLayout.LayoutParams.WRAP_CONTENT
+quickRowWrap.layoutParams = lp
 quickRowWrap.alpha = 1f
+for (i in 0 until quickRow.childCount) {
+val v = quickRow.getChildAt(i)
+v.alpha = 1f
+v.translationY = 0f
+}
+quickBarContainer.visibility = View.GONE
 quickToggleCollapsed.visibility = View.VISIBLE
 quickToggleCollapsed.alpha = 0f
 quickToggleCollapsed.scaleX = 0.7f; quickToggleCollapsed.scaleY = 0.7f
-quickToggleCollapsed.animate()
-.alpha(1f).scaleX(1f).scaleY(1f)
+quickToggleCollapsed.animate().alpha(1f).scaleX(1f).scaleY(1f)
 .setDuration(220)
 .setInterpolator(android.view.animation.PathInterpolator(0.34f, 1.3f, 0.64f, 1f))
-.start()
-}
 .start()
 }
 
