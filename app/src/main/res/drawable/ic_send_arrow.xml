@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-
-<!-- 发送图标 · 1.5dp 线性上箭头 -->
-
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="19dp" android:height="19dp" android:viewportWidth="24" android:viewportHeight="24">
-<path android:pathData="M12,19 L12,5 M5,12 L12,5 L19,12" android:strokeColor="@color/on_accent" android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+<!-- 发送箭头图标（白色） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M8,5 L19,12 L8,19 Z" />
 </vector>

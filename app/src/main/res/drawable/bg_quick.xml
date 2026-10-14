@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 小胶囊：subtle 底，无描边，扁平 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
 <solid android:color="@color/bg_subtle" />
-<corners android:radius="@dimen/radius_sm" />
+<corners android:radius="10dp" />
 </shape>
