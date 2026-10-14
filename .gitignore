@@ -1,33 +1,7 @@
-# ── 敏感信息（绝不提交）──
-local.properties
-keystore.properties
-*.jks
-*.keystore
-*.p12
-*.pem
-
-── 构建产物 ──
-
+.pyc
+pycache/
+.bak
+.bak_
 .gradle/
 build/
-app/build/
-captures/
-.externalNativeBuild/
-.cxx/
-
-── Python 缓存 ──
-
-__pycache__/
-*.pyc
-*.pyo
-
-── IDE ──
-
-.idea/
-*.iml
-.vscode/
-
-── 系统 ──
-
-.DS_Store
-Thumbs.db
+local.properties
