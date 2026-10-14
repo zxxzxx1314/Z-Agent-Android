@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 贴右缘竖条胶囊：左两角圆，右两角直角 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+ <item android:top="1dp" android:bottom="1dp">
+ <shape android:shape="rectangle">
+ <solid android:color="#14000000" />
+ <corners android:topLeftRadius="24dp" android:bottomLeftRadius="24dp" android:topRightRadius="0dp" android:bottomRightRadius="0dp" />
+ </shape>
+ </item>
+ <item android:top="0dp" android:bottom="2dp">
+ <shape android:shape="rectangle">
+ <solid android:color="@color/bg_elevated" />
+ <corners android:topLeftRadius="24dp" android:bottomLeftRadius="24dp" android:topRightRadius="0dp" android:bottomRightRadius="0dp" />
+ <stroke android:width="0.5dp" android:color="@color/accent_line" />
+ </shape>
+ </item>
+</layer-list>
