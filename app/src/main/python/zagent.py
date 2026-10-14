@@ -1574,6 +1574,18 @@ BASE_PROMPT = """你是 Z-Agent，一个运行在 Android 手机 Termux 终端�
 3.【程序员】输出代码：[script:]...可直接运行的 Python...[script]
   每段脚本前必须有一行 [desc]一句话目的[/desc]。
 
+【交互卡片协议（可选）】
+- 需要用户做选择/填参数/确认时，在回复里输出一个 [ui]...[/ui] 块，
+ 内容是一段合法 JSON（半角双引号）：
+ [ui]{"type":"form","title":"标题","components":[
+ {"type":"select","name":"pick","label":"选哪个","options":[
+ {"value":"a","label":"选项一"},{"value":"b","label":"选项二"}]},
+ {"type":"input","name":"notes","label":"备注"},
+ {"type":"button","label":"执行","action":"go"}]}[/ui]
+- 宿主渲染成卡片，用户点击后以 JSON 回传。
+- 组件类型：text / input / select / switch / button。
+- 只在真正需要用户决策时用；纯汇报或能自己判断的，直接干活别问。
+
 【字面区协议（v6.1+，重要）】
 - 需要展示标签的字面形态（解释协议、教学示例、贴片段）时，用
   [literal]...[/literal] 包裹：区内一切字符（包括 [script:]、
@@ -1832,6 +1844,7 @@ def _display_body(text):
     """显示美化函数体：进化/脚本剥离 + 标签美化，返回纯文本。
     v6.1 从 display_reply 拆出，供字面区分段渲染复用。"""
     text = strip_evolution(text)
+    text = _strip_ui(text)
     try:
         blocks = _script_blocks(text)
     except ValueError:
@@ -2199,6 +2212,8 @@ def agent_loop(first_reply=None):
         control = _without_scripts(text, blocks) if blocks else text
 
         display_reply(reply)
+        for _s, _e, _spec in _ui_blocks(reply):
+            emit_ui(_spec.strip())
         update_todos(control)
         render_todos()
 
@@ -2716,6 +2731,44 @@ def emit_step(idx, total, label, status, elapsed_ms=None):
         _STREAM_BUF.append(("step", _j.dumps(obj, ensure_ascii=False)))
     except Exception:
         pass
+
+
+def emit_ui(spec_json):
+    try:
+        _STREAM_BUF.append(("ui", str(spec_json)))
+    except Exception:
+        pass
+
+
+def _ui_blocks(text):
+    out = []
+    cursor = 0
+    OPEN = "[ui]"
+    CLOSE = "[/ui]"
+    while True:
+        s = text.find(OPEN, cursor)
+        if s < 0:
+            return out
+        e = text.find(CLOSE, s + len(OPEN))
+        if e < 0:
+            return out
+        out.append((s, e + len(CLOSE), text[s + len(OPEN):e]))
+        cursor = e + len(CLOSE)
+
+
+def _strip_ui(text):
+    blocks = _ui_blocks(text)
+    if not blocks:
+        return text
+    out = []
+    pos = 0
+    for s, e, _b in blocks:
+        out.append(text[pos:s])
+        out.append("\n[已渲染交互卡片]")
+        pos = e
+    out.append(text[pos:])
+    return "".join(out)
+
 
 
 def _post_stream(msgs, temperature=0.3):

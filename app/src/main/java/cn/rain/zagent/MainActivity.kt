@@ -1035,6 +1035,7 @@ private val streamPoll = object : Runnable {
                             when (c.optString("t")) {
                                 "content" -> appendStream(c.optString("v"))
                                 "step" -> onStepEvent(c.optString("v"))
+ "ui" -> onUiEvent(c.optString("v"))
                             }
                         }
                     }
@@ -2225,6 +2226,197 @@ requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
 }
 }
 }
+
+// ── AI 交互卡片：解析 [ui] JSON，渲染与主 UI 同源的 Material 风卡片 ──
+private fun onUiEvent(json: String) {
+val o = try { JSONObject(json) } catch (e: Exception) { return }
+hideEmpty()
+val card = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_step_body)
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { topMargin = dp(6); bottomMargin = dp(6) }
+setPadding(dp(14), dp(12), dp(14), dp(12))
+}
+val title = o.optString("title", "")
+if (title.isNotEmpty()) {
+card.addView(TextView(this).apply {
+text = title
+textSize = 14f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+setTypeface(null, android.graphics.Typeface.BOLD)
+setPadding(0, 0, 0, dp(8))
+})
+}
+val fields = LinkedHashMap<String, () -> Any>()
+val arr = o.optJSONArray("components")
+var submitAction = ""
+var submitLabel = "提交"
+var hasButton = false
+if (arr != null) {
+for (ci in 0 until arr.length()) {
+val c = arr.optJSONObject(ci) ?: continue
+val t = c.optString("type", "")
+when (t) {
+"text" -> {
+val txt = c.optString("text", "")
+if (txt.isNotEmpty()) {
+card.addView(TextView(this).apply {
+text = txt
+textSize = 13f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+setPadding(0, dp(2), 0, dp(6))
+})
+}
+}
+"input" -> {
+val name = c.optString("name", "input_" + ci)
+val label = c.optString("label", "")
+if (label.isNotEmpty()) {
+card.addView(TextView(this).apply {
+text = label
+textSize = 12f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+setPadding(0, dp(4), 0, dp(4))
+})
+}
+val et = EditText(this).apply {
+hint = c.optString("placeholder", "")
+setText(c.optString("value", ""))
+textSize = 14f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+setHintTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+setBackgroundResource(R.drawable.bg_input_card)
+setPadding(dp(12), dp(10), dp(12), dp(10))
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { bottomMargin = dp(8) }
+}
+card.addView(et)
+fields[name] = { et.text.toString() }
+}
+"select" -> {
+val name = c.optString("name", "select_" + ci)
+val label = c.optString("label", "")
+if (label.isNotEmpty()) {
+card.addView(TextView(this).apply {
+text = label
+textSize = 12f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+setPadding(0, dp(4), 0, dp(4))
+})
+}
+val row = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { bottomMargin = dp(8) }
+}
+val opts = c.optJSONArray("options")
+val selected = arrayOf("")
+if (opts != null) {
+for (oj in 0 until opts.length()) {
+val op = opts.optJSONObject(oj) ?: continue
+val v = op.optString("value", "")
+val lab = op.optString("label", v)
+val chip = TextView(this).apply {
+text = lab
+textSize = 13f
+setPadding(dp(12), dp(8), dp(12), dp(8))
+isClickable = true
+setBackgroundResource(R.drawable.bg_quick)
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { bottomMargin = dp(4) }
+}
+chip.setOnClickListener {
+HapticTokens.tap(it)
+selected[0] = v
+for (k in 0 until row.childCount) {
+val ch = row.getChildAt(k) as? TextView ?: continue
+val cv = (ch.tag as? String) ?: ""
+if (cv == v) {
+ch.setBackgroundResource(R.drawable.bg_mini_pill)
+ch.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+ch.setTypeface(null, android.graphics.Typeface.BOLD)
+} else {
+ch.setBackgroundResource(R.drawable.bg_quick)
+ch.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+ch.setTypeface(null, android.graphics.Typeface.NORMAL)
+}
+}
+}
+chip.tag = v
+row.addView(chip)
+}
+}
+card.addView(row)
+fields[name] = { selected[0] }
+}
+"switch" -> {
+val name = c.optString("name", "switch_" + ci)
+val sw = android.widget.Switch(this).apply {
+text = c.optString("label", name)
+textSize = 13f
+isChecked = c.optBoolean("value", false)
+setPadding(0, dp(6), 0, dp(6))
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+}
+card.addView(sw)
+fields[name] = { sw.isChecked }
+}
+"button" -> {
+submitLabel = c.optString("label", "提交")
+submitAction = c.optString("action", "")
+hasButton = true
+}
+}
+}
+}
+if (hasButton || fields.isNotEmpty()) {
+val btnRow = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.END
+setPadding(0, dp(6), 0, 0)
+}
+val btn = TextView(this).apply {
+text = submitLabel
+textSize = 14f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.on_accent))
+setBackgroundResource(R.drawable.bg_circle_send)
+setPadding(dp(22), dp(10), dp(22), dp(10))
+isClickable = true
+setTypeface(null, android.graphics.Typeface.BOLD)
+}
+btn.setOnClickListener { v ->
+HapticTokens.success(v)
+val payload = JSONObject()
+if (submitAction.isNotEmpty()) payload.put("action", submitAction)
+for ((k, getter) in fields) {
+try {
+payload.put(k, getter())
+} catch (e: Exception) { }
+}
+v.isEnabled = false
+v.alpha = 0.45f
+val msg = payload.toString()
+appendOutput("你> " + msg + "\n")
+sendCommand(msg)
+}
+btnRow.addView(btn)
+card.addView(btnRow)
+}
+chatContainer.addView(card)
+outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+card.post { bounceIn(card) }
+}
+
 
 companion object {
 private const val KEY_MODEL_NAME = "model_name"
