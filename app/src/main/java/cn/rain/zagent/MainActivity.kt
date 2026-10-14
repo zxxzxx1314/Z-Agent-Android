@@ -2842,57 +2842,67 @@ b.action.startsWith("cmd:") -> sendCommand(b.action.removePrefix("cmd:"))
 }
 
 private fun expandQuick() {
-for (v in quickAnimating) v.animate().cancel()
-quickAnimating.clear()
+// 打断旧动画
+quickRowWrap.animate().cancel()
+quickToggleCollapsed.animate().cancel()
 quickExpanded = true
-quickBarContainer.visibility = View.VISIBLE
 quickToggleCollapsed.visibility = View.GONE
+quickBarContainer.visibility = View.VISIBLE
 quickRowWrap.visibility = View.VISIBLE
 if (MotionPrefs.reduceMotion(quickRowWrap)) {
 quickRowWrap.alpha = 1f
-for (i in 0 until quickRow.childCount) quickRow.getChildAt(i).alpha = 1f
+quickRowWrap.translationY = 0f
+quickRowWrap.scaleX = 1f; quickRowWrap.scaleY = 1f
 return
 }
+// 整排一次动画：上滑 + 淡入 + 微缩放。单属性一次 animate 链，避免每帧重排
 quickRowWrap.alpha = 0f
-quickRowWrap.animate().alpha(1f).setDuration(160).start()
-for (i in 0 until quickRow.childCount) {
-val v = quickRow.getChildAt(i)
-v.animate().cancel()
-v.alpha = 0f
-v.scaleX = 0.85f; v.scaleY = 0.85f
-v.animate().alpha(1f).scaleX(1f).scaleY(1f)
-.setStartDelay(i * 30L).setDuration(300)
-.setInterpolator(android.view.animation.DecelerateInterpolator()).start()
-quickAnimating.add(v)
-}
+quickRowWrap.translationY = dp(10).toFloat()
+quickRowWrap.scaleX = 0.96f; quickRowWrap.scaleY = 0.96f
+quickRowWrap.animate()
+.alpha(1f)
+.translationY(0f)
+.scaleX(1f).scaleY(1f)
+.setDuration(220)
+.setInterpolator(android.view.animation.PathInterpolator(0.22f, 1f, 0.36f, 1f))
+.withEndAction { quickRowWrap.scaleX = 1f; quickRowWrap.scaleY = 1f }
+.start()
 }
 
 private fun collapseQuick() {
-for (v in quickAnimating) v.animate().cancel()
-quickAnimating.clear()
+quickRowWrap.animate().cancel()
+quickToggleCollapsed.animate().cancel()
 quickExpanded = false
 if (MotionPrefs.reduceMotion(quickRowWrap)) {
 quickBarContainer.visibility = View.GONE
 quickToggleCollapsed.visibility = View.VISIBLE
 quickToggleCollapsed.alpha = 1f
+quickToggleCollapsed.scaleX = 1f; quickToggleCollapsed.scaleY = 1f
 return
 }
-for (i in 0 until quickRow.childCount) {
-val v = quickRow.getChildAt(i)
-v.animate().cancel()
-v.animate().alpha(0f).scaleX(0.85f).scaleY(0.85f)
-.setDuration(250)
-.setInterpolator(android.view.animation.AccelerateInterpolator()).start()
-quickAnimating.add(v)
-}
-quickRowWrap.postDelayed({
-if (quickExpanded) return@postDelayed
+// 整排一次动画：下滑 + 淡出 + 微缩放，180ms 干净利落
+quickRowWrap.animate()
+.alpha(0f)
+.translationY(dp(8).toFloat())
+.scaleX(0.96f).scaleY(0.96f)
+.setDuration(180)
+.setInterpolator(android.view.animation.PathInterpolator(0.4f, 0f, 0.7f, 0.2f))
+.withEndAction {
+if (quickExpanded) return@withEndAction
 quickBarContainer.visibility = View.GONE
+quickRowWrap.translationY = 0f
+quickRowWrap.scaleX = 1f; quickRowWrap.scaleY = 1f
+quickRowWrap.alpha = 1f
 quickToggleCollapsed.visibility = View.VISIBLE
 quickToggleCollapsed.alpha = 0f
-quickToggleCollapsed.scaleX = 0.9f
-quickToggleCollapsed.animate().alpha(1f).scaleX(1f).setDuration(160).start()
-}, 250)
+quickToggleCollapsed.scaleX = 0.7f; quickToggleCollapsed.scaleY = 0.7f
+quickToggleCollapsed.animate()
+.alpha(1f).scaleX(1f).scaleY(1f)
+.setDuration(220)
+.setInterpolator(android.view.animation.PathInterpolator(0.34f, 1.3f, 0.64f, 1f))
+.start()
+}
+.start()
 }
 
 private fun startShakeAll() {
