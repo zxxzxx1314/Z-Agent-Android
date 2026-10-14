@@ -294,7 +294,7 @@ findViewById<View>(R.id.settingsButton).setOnClickListener { haptic(it); showSet
 themeButton.setOnClickListener { haptic(it); toggleTheme() }
 
 initQuickBar()
-refreshAutoSwitch(sp.getBoolean(KEY_AUTO_EXEC, true))
+refreshAutoSwitch(sp.getBoolean(KEY_AUTO_EXEC, false))
 
 
 sendButton.setOnClickListener { haptic(it); onSend() }
@@ -479,7 +479,7 @@ sheetRows["auto"]?.text = if (on) "已开启" else "已关闭"
 
 // 设置页里点「免确认执行」→ 二次确认
 private fun toggleAutoExec() {
-val cur = sp.getBoolean(KEY_AUTO_EXEC, true)
+val cur = sp.getBoolean(KEY_AUTO_EXEC, false)
 if (cur) {
 confirmSheet(
 title = "关闭免确认执行？",
@@ -546,7 +546,7 @@ root.addView(settingsRow(R.drawable.ic_key, "API Key", apiKeySummary) { promptAp
 root.addView(settingsRow(R.drawable.ic_globe, "API 地址", baseUrlSummary) { promptBaseUrl() })
 root.addView(settingsRow(R.drawable.ic_model, "模型名称", modelSummary) { promptModel() })
 root.addView(settingsRow(R.drawable.ic_refresh, "测试连接", "检查 API 地址与 Key") { testConnection() })
-root.addView(settingsRow(R.drawable.ic_refresh, "免确认执行", "已开启") { toggleAutoExec() })
+root.addView(settingsRow(R.drawable.ic_refresh, "免确认执行", if (sp.getBoolean(KEY_AUTO_EXEC, false)) "已开启" else "已关闭") { toggleAutoExec() })
 
 // 分组：会话
 root.addView(groupLabel("会话"))
@@ -2787,7 +2787,7 @@ QuickBtn("rea", "REA", "cmd:/rea help")
 )
 
 private fun defaultQuickButtons(): MutableList<QuickBtn> {
-val ids = listOf("idle", "contract", "versions", "plugins", "save", "clear")
+val ids = listOf("idle", "rea", "contract", "versions", "plugins", "save", "clear")
 val out = mutableListOf<QuickBtn>()
 for (id in ids) {
 val b = allQuickCommands.firstOrNull { it.id == id }
