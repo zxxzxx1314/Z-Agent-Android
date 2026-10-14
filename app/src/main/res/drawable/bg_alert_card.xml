@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<-- 异常态卡片：左警示条 + 淡红底 -->
+<!-- 异常态卡片：左警示条 + 淡红底 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
  <item>
  <shape android:shape="rectangle">
