@@ -53,10 +53,10 @@ def _make_printer(buf):
         try:
             s = sep.join(str(a) for a in args) + end
             try:
-                from zcore.mask import scrub as msk
-                s = msk(s)
+             from zcore.mask import scrub as msk
+             s = msk(s)
             except Exception:
-                pass
+             pass
             buf.append(s)
         except Exception:
             pass
@@ -303,6 +303,7 @@ def _deploy_factory_genome(home):
 def bootstrap(home_path):
     """Java 传入口私有目录；必须在任何 zagent 导入之前调用（路径常量
     在导入期定型）。返回 JSON 状态字符串。"""
+
     if _state["ready"]:
         return get_status()
     _state["home"] = os.path.abspath(home_path)
@@ -370,8 +371,6 @@ def bootstrap(home_path):
         zag.messages.extend(_restored)
     try:
         zag.install_bundled_plugins()
-        zag.sync_external_plugins()
-        zag.seed_external_plugins()
         zag.selfcheck_plugins()
     except Exception as e:
         boot_buf.append("[插件] 初始化告警：%r\n" % e)
@@ -386,6 +385,13 @@ def bootstrap(home_path):
 def run_agent(user_input):
     """一轮交互：命令 → handle_command；对话 → agent_loop。
     返回本轮捕获的全部输出（含 bootstrap 首轮横幅）。"""
+    _u0 = (user_input or "").strip()
+    if _u0.startswith("/rea"):
+        try:
+            import rea_core as _rea
+            return _rea.handle_command(_u0)
+        except Exception as _e:
+            return "[REA 异常] " + repr(_e) + chr(10)
     if not _state["ready"]:
         return ("[FATAL] 未就绪：%s\n请重装应用或回 Termux 环境修复。"
                 % (_state["err"] or "bootstrap 未完成"))

@@ -2779,7 +2779,8 @@ QuickBtn("save", "存插件", "saveplugin"),
 QuickBtn("plugins", "插件", "plugin"),
 QuickBtn("clear", "清屏", "cmd:/clear"),
 QuickBtn("restart", "重启", "cmd:/restart")
-)
+
+ QuickBtn("rea", "REA", "cmd:/rea help"),)
 
 private fun defaultQuickButtons(): MutableList<QuickBtn> {
 val ids = listOf("idle", "contract", "versions", "plugins", "save", "clear")
