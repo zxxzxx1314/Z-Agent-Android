@@ -227,8 +227,9 @@ class PluginActivity : AppCompatActivity() {
             val desc = v.findViewById<TextView>(R.id.pluginDesc)
             desc.text = if (item.desc.isEmpty()) "（无描述）" else item.desc
             desc.visibility = if (item.desc.isEmpty()) View.GONE else View.VISIBLE
+            val szTxt = if (item.size < 1024) item.size.toString() + " B" else (item.size / 1024).toString() + " KB"
             v.findViewById<TextView>(R.id.pluginMeta).text =
-                "${item.size / 1024} KB · 单击看源码 · 长按删除"
+                szTxt + " · 单击看源码 · 长按删除"
             val sw = v.findViewById<android.widget.Switch>(R.id.pluginSwitch)
             sw.setOnCheckedChangeListener(null)
             sw.isChecked = item.enabled
