@@ -69,3 +69,75 @@ def device_info():
         return json.loads(api.getDeviceInfo())
     except Exception as e:
         return {"error": repr(e)}
+#
+# v2 扩展（Java 侧 AndroidAPI.kt 补的方法）
+#
+
+def vibrate(ms=500):
+    """振动 ms 毫秒（0-60000）。"""
+    api = _java()
+    if api is None:
+        return {"ok": False, "error": "AndroidAPI 不可用"}
+    try:
+        api.vibrate(int(ms))
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": repr(e)}
+
+
+def clipboard_get():
+    """读剪贴板文本。"""
+    api = _java()
+    if api is None:
+        return {"ok": False, "error": "AndroidAPI 不可用"}
+    try:
+        return {"ok": True, "text": api.clipboardGet()}
+    except Exception as e:
+        return {"ok": False, "error": repr(e)}
+
+
+def clipboard_set(text):
+    """写剪贴板。"""
+    api = _java()
+    if api is None:
+        return {"ok": False, "error": "AndroidAPI 不可用"}
+    try:
+        api.clipboardSet(str(text))
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": repr(e)}
+
+
+def volume():
+    """读媒体音量 {music, max}。"""
+    api = _java()
+    if api is None:
+        return {"ok": False, "error": "AndroidAPI 不可用"}
+    try:
+        return {"ok": True, "data": json.loads(api.getVolume())}
+    except Exception as e:
+        return {"ok": False, "error": repr(e)}
+
+
+def set_volume(level):
+    """设媒体音量（0-15）。"""
+    api = _java()
+    if api is None:
+        return {"ok": False, "error": "AndroidAPI 不可用"}
+    try:
+        api.setVolume(int(level))
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": repr(e)}
+
+
+def open_url(url):
+    """系统浏览器打开 URL。"""
+    api = _java()
+    if api is None:
+        return {"ok": False, "error": "AndroidAPI 不可用"}
+    try:
+        api.openUrl(str(url))
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": repr(e)}

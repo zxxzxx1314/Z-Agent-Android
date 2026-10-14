@@ -3,6 +3,8 @@ package cn.rain.zagent
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
@@ -86,4 +88,84 @@ object AndroidAPI {
             // Toast 失败静默
         }
     }
+
+// ── v2 扩展：振动 / 剪贴板 / 音量 / 打开链接 / 机型 ──
+
+fun vibrate(ms: Int) {
+try {
+val ctx = appContext ?: return
+val v = ctx.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator ?: return
+val isO = java.lang.Math.max(android.os.Build.VERSION.SDK_INT, android.os.Build.VERSION_CODES.O) == android.os.Build.VERSION.SDK_INT
+if (isO) {
+v.vibrate(android.os.VibrationEffect.createOneShot(ms.toLong(), android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+} else {
+@Suppress("DEPRECATION")
+v.vibrate(ms.toLong())
+}
+} catch (e: Exception) { }
+}
+
+fun getDeviceInfo(): String {
+return try {
+JSONObject()
+.put("brand", Build.BRAND)
+.put("model", Build.MODEL)
+.put("manufacturer", Build.MANUFACTURER)
+.put("android", Build.VERSION.RELEASE)
+.put("sdk", Build.VERSION.SDK_INT)
+.toString()
+} catch (e: Exception) {
+JSONObject().put("error", e.toString()).toString()
+}
+}
+
+fun clipboardGet(): String {
+return try {
+val ctx = appContext ?: return ""
+val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager ?: return ""
+cm.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+} catch (e: Exception) { "" }
+}
+
+fun clipboardSet(text: String) {
+try {
+val ctx = appContext ?: return
+val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager ?: return
+cm.setPrimaryClip(android.content.ClipData.newPlainText("zagent", text))
+} catch (e: Exception) { }
+}
+
+fun getVolume(): String {
+return try {
+val ctx = appContext
+?: return JSONObject().put("error", "no ctx").toString()
+val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+?: return JSONObject().put("error", "no am").toString()
+JSONObject()
+.put("music", am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC))
+.put("max", am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC))
+.toString()
+} catch (e: Exception) {
+JSONObject().put("error", e.toString()).toString()
+}
+}
+
+fun setVolume(level: Int) {
+try {
+val ctx = appContext ?: return
+val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager ?: return
+val max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, level.coerceIn(0, max), 0)
+} catch (e: Exception) { }
+}
+
+fun openUrl(url: String) {
+try {
+val ctx = appContext ?: return
+val i = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+ctx.startActivity(i)
+} catch (e: Exception) { }
+}
+
 }
