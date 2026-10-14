@@ -2432,7 +2432,7 @@ card.post { bounceIn(card) }
             .setMessage("为了从 /sdcard/Download/zagent_plugins/ 热加载插件，需要「管理所有文件」权限。不授予也能用，只是插件走内置目录。")
             .setPositiveButton("去设置") { _, _ ->
                 try {
-                    startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_SETTINGS,
+                    startActivity(Intent("android.settings.MANAGE_ALL_FILES_ACCESS_SETTINGS",
                         android.net.Uri.parse("package:" + packageName)))
                 } catch (e: Exception) { }
             }
