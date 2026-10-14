@@ -159,43 +159,32 @@ android:textStyle="bold" />
 </FrameLayout>
 </FrameLayout>
 
-<!-- 快捷条（带右渐隐） -->
-<FrameLayout
-android:layout_width="match_parent"
-android:layout_height="wrap_content"
-android:background="@color/bg_elevated">
+<!-- 快捷条（可收起/展开/自定义） -->
+<FrameLayout android:id="@+id/quickBarContainer" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/bg_elevated" android:minHeight="60dp">
 
-<HorizontalScrollView
-android:id="@+id/quickScroll"
-android:layout_width="match_parent"
-android:layout_height="wrap_content"
-android:overScrollMode="never"
-android:scrollbars="none">
-<LinearLayout
-android:layout_width="wrap_content"
-android:layout_height="wrap_content"
-android:orientation="horizontal"
-android:paddingStart="16dp"
-android:paddingTop="8dp"
-android:paddingEnd="16dp"
-android:paddingBottom="8dp">
-<TextView android:id="@+id/btnIdle" style="@style/QuickChip" android:text="自主" />
-<TextView android:id="@+id/btnContract" style="@style/QuickChip" android:text="合同" />
-<TextView android:id="@+id/btnVersions" style="@style/QuickChip" android:text="版本" />
-<TextView android:id="@+id/btnHelp" style="@style/QuickChip" android:text="帮助" />
-<TextView android:id="@+id/btnPlugins" style="@style/QuickChip" android:text="插件" />
-<TextView android:id="@+id/btnSavePlugin" style="@style/QuickChip" android:text="存插件" />
-<TextView android:id="@+id/btnClear" style="@style/QuickChip" android:text="清屏" />
-</LinearLayout>
+<!-- 收起态：56dp 圆钮 -->
+
+<FrameLayout android:id="@+id/quickToggleCollapsed" android:layout_width="56dp" android:layout_height="56dp" android:layout_gravity="end|center_vertical" android:layout_marginTop="6dp" android:layout_marginEnd="16dp" android:layout_marginBottom="6dp" android:background="@drawable/bg_quick_toggle" android:clickable="true" android:focusable="true" android:foreground="@drawable/ripple_circle" android:visibility="gone">
+<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="center" android:text="/" android:textColor="@color/accent" android:textSize="26sp" android:textStyle="bold" />
+</FrameLayout>
+
+<!-- 展开态 -->
+
+<LinearLayout android:id="@+id/quickRowWrap" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:minHeight="56dp" android:orientation="horizontal" android:paddingStart="8dp" android:paddingTop="6dp" android:paddingEnd="8dp" android:paddingBottom="6dp">
+
+<HorizontalScrollView android:id="@+id/quickScroll" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:overScrollMode="never" android:scrollbars="none">
+<LinearLayout android:id="@+id/quickRow" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingStart="8dp" android:paddingEnd="8dp" />
 </HorizontalScrollView>
 
-<!-- 右渐隐 mask -->
-<View
-android:id="@+id/quickScrim"
-android:layout_width="24dp"
-android:layout_height="40dp"
-android:layout_gravity="end"
-android:background="@drawable/scrim_right" />
+<TextView android:id="@+id/quickCollapse" android:layout_width="40dp" android:layout_height="40dp" android:layout_marginStart="4dp" android:background="@drawable/bg_quick" android:clickable="true" android:focusable="true" android:foreground="@drawable/ripple_pill" android:gravity="center" android:text="▾" android:textColor="@color/text_primary" android:textSize="16sp" />
+</LinearLayout>
+
+<!-- 编辑提示条 -->
+
+<LinearLayout android:id="@+id/quickEditBar" android:layout_width="match_parent" android:layout_height="36dp" android:layout_gravity="bottom" android:background="@color/bg_subtle" android:gravity="center_vertical" android:orientation="horizontal" android:paddingStart="16dp" android:paddingEnd="12dp" android:visibility="gone">
+<TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="拖动排序 · 点×移除 · 点＋添加" android:textColor="@color/text_secondary" android:textSize="11sp" />
+<TextView android:id="@+id/quickEditDone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="12dp" android:paddingEnd="4dp" android:text="完成" android:textColor="@color/accent" android:textSize="13sp" android:textStyle="bold" />
+</LinearLayout>
 </FrameLayout>
 
 <!-- 输入区 -->

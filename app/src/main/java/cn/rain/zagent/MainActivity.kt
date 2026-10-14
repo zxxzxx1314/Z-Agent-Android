@@ -74,6 +74,14 @@ private lateinit var chipSearch: TextView
 private lateinit var attachScroll: HorizontalScrollView
 private lateinit var attachRow: LinearLayout
  private lateinit var scrollBottomBtn: FrameLayout
+ // ── 快捷条（可收起/展开/自定义）──
+ private var quickButtons: MutableList<QuickBtn> = mutableListOf()
+ private var quickEditMode = false
+ private var quickExpanded = true
+ private var quickEditRow: LinearLayout? = null
+ private var quickDragFrom = -1
+ private val quickAnimating = mutableSetOf<android.view.View>()
+
 
 private var busy = false
 private var reportedStartup = false
@@ -250,19 +258,11 @@ applyTopInset()
 applySavedTheme()
 
 findViewById<View>(R.id.settingsButton).setOnClickListener { haptic(it); showSettingsTransform() }
-findViewById<View>(R.id.btnClear).setOnClickListener { haptic(it); sendCommand("/clear") }
-findViewById<View>(R.id.btnContract).setOnClickListener { haptic(it); sendCommand("/contract") }
-findViewById<View>(R.id.btnHelp).setOnClickListener { haptic(it); sendCommand("/help") }
-findViewById<View>(R.id.btnIdle).setOnClickListener { haptic(it); sendCommand("/idle") }
-findViewById<View>(R.id.btnVersions).setOnClickListener { haptic(it); sendCommand("/versions") }
-findViewById<View>(R.id.btnPlugins).setOnClickListener {
-haptic(it); startActivity(Intent(this, PluginActivity::class.java))
-}
-findViewById<View>(R.id.btnSavePlugin).setOnClickListener { haptic(it); promptSavePlugin() }
 
 
 themeButton.setOnClickListener { haptic(it); toggleTheme() }
 
+initQuickBar()
 refreshAutoSwitch(sp.getBoolean(KEY_AUTO_EXEC, true))
 
 
@@ -2631,6 +2631,393 @@ card.post { bounceIn(card) }
 }
 
 
+// ══════ 快捷条：可收起/展开/自定义 ══════
+data class QuickBtn(val id: String, val label: String, val action: String)
+
+private lateinit var quickRow: LinearLayout
+private lateinit var quickRowWrap: View
+private lateinit var quickToggleCollapsed: View
+private lateinit var quickCollapse: View
+private lateinit var quickEditBar: View
+private lateinit var quickBarContainer: View
+private val quickShakeAnims = mutableListOf<android.animation.ObjectAnimator>()
+
+private val allQuickCommands = listOf(
+QuickBtn("idle", "自主", "cmd:/idle"),
+QuickBtn("think", "深思", "cmd:/think"),
+QuickBtn("contract", "合同", "cmd:/contract"),
+QuickBtn("versions", "版本", "cmd:/versions"),
+QuickBtn("evolve", "进化", "cmd:/evolve"),
+QuickBtn("rollback", "回滚", "cmd:/rollback"),
+QuickBtn("plan", "计划", "cmd:/plan"),
+QuickBtn("build", "构建", "cmd:/build"),
+QuickBtn("auto", "免确认", "cmd:/auto"),
+QuickBtn("skill", "技能", "cmd:/skill list"),
+QuickBtn("save", "存插件", "saveplugin"),
+QuickBtn("plugins", "插件", "plugin"),
+QuickBtn("clear", "清屏", "cmd:/clear"),
+QuickBtn("restart", "重启", "cmd:/restart")
+)
+
+private fun defaultQuickButtons(): MutableList<QuickBtn> {
+val ids = listOf("idle", "contract", "versions", "plugins", "save", "clear")
+val out = mutableListOf<QuickBtn>()
+for (id in ids) {
+val b = allQuickCommands.firstOrNull { it.id == id }
+if (b != null) out.add(b)
+}
+return out
+}
+
+private fun loadQuickButtons(): MutableList<QuickBtn> {
+val raw = sp.getString(KEY_QUICK_BUTTONS, "") ?: ""
+if (raw.isEmpty()) return defaultQuickButtons()
+return try {
+val arr = org.json.JSONArray(raw)
+val list = mutableListOf<QuickBtn>()
+for (i in 0 until arr.length()) {
+val o = arr.getJSONObject(i)
+val id = o.optString("id", "")
+if (id.isEmpty()) continue
+val known = allQuickCommands.firstOrNull { it.id == id } ?: continue
+list.add(known)
+}
+if (list.isEmpty()) defaultQuickButtons() else list
+} catch (e: Exception) {
+defaultQuickButtons()
+}
+}
+
+private fun saveQuickButtons() {
+try {
+val arr = org.json.JSONArray()
+for (b in quickButtons) {
+val o = org.json.JSONObject()
+o.put("id", b.id)
+arr.put(o)
+}
+sp.edit().putString(KEY_QUICK_BUTTONS, arr.toString()).apply()
+} catch (e: Exception) { }
+}
+
+private fun initQuickBar() {
+quickRow = findViewById(R.id.quickRow)
+quickRowWrap = findViewById(R.id.quickRowWrap)
+quickToggleCollapsed = findViewById(R.id.quickToggleCollapsed)
+quickCollapse = findViewById(R.id.quickCollapse)
+quickEditBar = findViewById(R.id.quickEditBar)
+quickBarContainer = findViewById(R.id.quickBarContainer)
+
+quickButtons = loadQuickButtons()
+rebuildQuickRow()
+
+quickToggleCollapsed.setOnClickListener { haptic(it); expandQuick() }
+quickCollapse.setOnClickListener { haptic(it); collapseQuick() }
+findViewById<View>(R.id.quickEditDone).setOnClickListener { haptic(it); exitQuickEdit() }
+quickBarContainer.setOnClickListener { if (quickEditMode) exitQuickEdit() }
+}
+
+private fun rebuildQuickRow() {
+quickRow.removeAllViews()
+for ((idx, b) in quickButtons.withIndex()) {
+quickRow.addView(makeQuickChip(b, idx))
+}
+if (quickEditMode) quickRow.addView(makePlusChip())
+quickRowWrap.visibility = if (quickExpanded) View.VISIBLE else View.GONE
+quickToggleCollapsed.visibility = if (quickExpanded) View.GONE else View.VISIBLE
+}
+
+private fun makeQuickChip(b: QuickBtn, idx: Int): View {
+val wrapper = FrameLayout(this).apply {
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.WRAP_CONTENT, dp(40)
+).apply { marginStart = dp(8) }
+}
+val tv = TextView(this).apply {
+text = b.label
+textSize = 14f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+gravity = Gravity.CENTER
+setPadding(dp(14), 0, dp(14), 0)
+setBackgroundResource(if (quickEditMode) R.drawable.bg_quick_chip_edit else R.drawable.bg_quick)
+layoutParams = FrameLayout.LayoutParams(
+FrameLayout.LayoutParams.WRAP_CONTENT, dp(40)
+)
+isClickable = true
+isFocusable = true
+}
+tv.setOnClickListener {
+if (quickEditMode) return@setOnClickListener
+HapticTokens.tap(it)
+dispatchQuick(b)
+}
+tv.setOnLongClickListener {
+if (quickEditMode) {
+HapticTokens.longPress(it)
+val data = ClipData.newPlainText("qi", idx.toString())
+val shadow = android.view.View.DragShadowBuilder(tv)
+tv.startDragAndDrop(data, shadow, wrapper, 0)
+} else {
+HapticTokens.longPress(it)
+enterQuickEdit()
+}
+true
+}
+wrapper.addView(tv)
+
+if (quickEditMode) {
+val del = TextView(this).apply {
+text = "×"
+textSize = 12f
+setTextColor(0xFFFFFFFF.toInt())
+gravity = Gravity.CENTER
+setBackgroundResource(R.drawable.bg_quick_del)
+layoutParams = FrameLayout.LayoutParams(dp(18), dp(18)).apply {
+gravity = Gravity.TOP or Gravity.END
+topMargin = -dp(4)
+marginEnd = -dp(4)
+}
+isClickable = true
+}
+del.setOnClickListener {
+HapticTokens.warn(it)
+if (idx in quickButtons.indices) {
+quickButtons.removeAt(idx)
+saveQuickButtons()
+rebuildQuickRow()
+startShakeAll()
+}
+}
+wrapper.addView(del)
+}
+
+wrapper.setOnDragListener { _, event ->
+when (event.action) {
+android.view.DragEvent.ACTION_DRAG_ENTERED -> wrapper.alpha = 0.5f
+android.view.DragEvent.ACTION_DRAG_EXITED -> wrapper.alpha = 1f
+android.view.DragEvent.ACTION_DROP -> {
+wrapper.alpha = 1f
+val from = event.clipData.getItemAt(0).text.toString().toIntOrNull() ?: -1
+if (from >= 0 && from != idx && from in quickButtons.indices && idx in quickButtons.indices) {
+val moved = quickButtons.removeAt(from)
+quickButtons.add(idx, moved)
+saveQuickButtons()
+rebuildQuickRow()
+startShakeAll()
+}
+}
+}
+true
+}
+return wrapper
+}
+
+private fun makePlusChip(): View {
+val wrapper = FrameLayout(this).apply {
+layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginStart = dp(8) }
+}
+val tv = TextView(this).apply {
+text = "＋"
+textSize = 16f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+gravity = Gravity.CENTER
+setBackgroundResource(R.drawable.bg_quick_chip_edit)
+layoutParams = FrameLayout.LayoutParams(dp(40), dp(40))
+isClickable = true
+}
+tv.setOnClickListener {
+HapticTokens.tap(it)
+showAddQuickSheet()
+}
+wrapper.addView(tv)
+return wrapper
+}
+
+private fun dispatchQuick(b: QuickBtn) {
+when {
+b.action == "plugin" -> startActivity(Intent(this, PluginActivity::class.java))
+b.action == "saveplugin" -> promptSavePlugin()
+b.action.startsWith("cmd:") -> sendCommand(b.action.removePrefix("cmd:"))
+}
+}
+
+private fun expandQuick() {
+for (v in quickAnimating) v.animate().cancel()
+quickAnimating.clear()
+quickExpanded = true
+quickToggleCollapsed.visibility = View.GONE
+quickRowWrap.visibility = View.VISIBLE
+if (MotionPrefs.reduceMotion(quickRowWrap)) {
+quickRowWrap.alpha = 1f
+for (i in 0 until quickRow.childCount) quickRow.getChildAt(i).alpha = 1f
+return
+}
+quickRowWrap.alpha = 0f
+quickRowWrap.animate().alpha(1f).setDuration(160).start()
+for (i in 0 until quickRow.childCount) {
+val v = quickRow.getChildAt(i)
+v.animate().cancel()
+v.alpha = 0f
+v.scaleX = 0.85f; v.scaleY = 0.85f
+v.animate().alpha(1f).scaleX(1f).scaleY(1f)
+.setStartDelay(i * 30L).setDuration(300)
+.setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+quickAnimating.add(v)
+}
+}
+
+private fun collapseQuick() {
+for (v in quickAnimating) v.animate().cancel()
+quickAnimating.clear()
+quickExpanded = false
+if (MotionPrefs.reduceMotion(quickRowWrap)) {
+quickRowWrap.visibility = View.GONE
+quickToggleCollapsed.visibility = View.VISIBLE
+quickToggleCollapsed.alpha = 1f
+return
+}
+for (i in 0 until quickRow.childCount) {
+val v = quickRow.getChildAt(i)
+v.animate().cancel()
+v.animate().alpha(0f).scaleX(0.85f).scaleY(0.85f)
+.setDuration(250)
+.setInterpolator(android.view.animation.AccelerateInterpolator()).start()
+quickAnimating.add(v)
+}
+quickRowWrap.postDelayed({
+if (quickExpanded) return@postDelayed
+quickRowWrap.visibility = View.GONE
+quickToggleCollapsed.visibility = View.VISIBLE
+quickToggleCollapsed.alpha = 0f
+quickToggleCollapsed.scaleX = 0.9f
+quickToggleCollapsed.animate().alpha(1f).scaleX(1f).setDuration(160).start()
+}, 250)
+}
+
+private fun startShakeAll() {
+stopShakeAll()
+if (MotionPrefs.reduceMotion(quickRow)) return
+for (i in 0 until quickRow.childCount) {
+val v = quickRow.getChildAt(i)
+val anim = android.animation.ObjectAnimator.ofFloat(v, "rotation", -1.5f, 1.5f).apply {
+duration = 160
+repeatCount = android.animation.ValueAnimator.INFINITE
+repeatMode = android.animation.ValueAnimator.REVERSE
+}
+anim.start()
+quickShakeAnims.add(anim)
+}
+}
+
+private fun stopShakeAll() {
+for (a in quickShakeAnims) a.cancel()
+quickShakeAnims.clear()
+for (i in 0 until quickRow.childCount) {
+quickRow.getChildAt(i).rotation = 0f
+}
+}
+
+private fun enterQuickEdit() {
+if (quickEditMode) return
+quickEditMode = true
+quickEditBar.visibility = View.VISIBLE
+rebuildQuickRow()
+startShakeAll()
+}
+
+private fun exitQuickEdit() {
+if (!quickEditMode) return
+quickEditMode = false
+stopShakeAll()
+quickEditBar.visibility = View.GONE
+saveQuickButtons()
+rebuildQuickRow()
+}
+
+private fun showAddQuickSheet() {
+val sheet = BottomSheetDialog(this)
+val root = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_sheet)
+setPadding(0, dp(8), 0, dp(24))
+}
+root.addView(View(this).apply {
+setBackgroundResource(R.drawable.bg_handle)
+layoutParams = LinearLayout.LayoutParams(dp(36), dp(4)).apply {
+gravity = Gravity.CENTER_HORIZONTAL
+topMargin = dp(6); bottomMargin = dp(14)
+}
+})
+root.addView(TextView(this).apply {
+text = "添加按钮"
+textSize = 18f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+setTypeface(null, android.graphics.Typeface.BOLD)
+setPadding(dp(22), 0, dp(22), dp(8))
+})
+val checks = mutableMapOf<String, android.widget.CheckBox>()
+for (c in allQuickCommands) {
+val row = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.CENTER_VERTICAL
+setBackgroundResource(R.drawable.bg_sheet_row)
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT, dp(52)
+).apply { marginStart = dp(10); marginEnd = dp(10) }
+setPadding(dp(16), 0, dp(16), 0)
+isClickable = true
+}
+val cb = android.widget.CheckBox(this).apply {
+isChecked = quickButtons.any { it.id == c.id }
+isClickable = false
+isFocusable = false
+}
+val tv = TextView(this).apply {
+text = c.label
+textSize = 15f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+marginStart = dp(14)
+}
+}
+row.addView(cb); row.addView(tv)
+row.setOnClickListener {
+HapticTokens.tap(row)
+cb.isChecked = !cb.isChecked
+}
+checks[c.id] = cb
+root.addView(row)
+}
+val save = TextView(this).apply {
+text = "确定"
+textSize = 15f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.on_accent))
+setBackgroundResource(R.drawable.bg_circle_send)
+gravity = Gravity.CENTER
+setPadding(dp(22), dp(10), dp(22), dp(10))
+isClickable = true
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { topMargin = dp(12); gravity = Gravity.END; marginEnd = dp(16) }
+}
+save.setOnClickListener {
+HapticTokens.success(it)
+val newList = mutableListOf<QuickBtn>()
+for (c in allQuickCommands) {
+if (checks[c.id]?.isChecked == true) newList.add(c)
+}
+quickButtons = if (newList.isEmpty()) defaultQuickButtons() else newList
+saveQuickButtons()
+rebuildQuickRow()
+if (quickEditMode) startShakeAll()
+sheet.dismiss()
+}
+root.addView(save)
+sheet.setContentView(root)
+sheet.show()
+}
+
+
     // -- 外部插件目录授权（方案 A）--
     private fun ensureExternalAccess() {
         if (android.os.Build.VERSION.SDK_INT < 30) return
@@ -2655,6 +3042,7 @@ companion object {
 private const val KEY_MODEL_NAME = "model_name"
 private const val KEY_LIGHT_THEME = "light_theme"
  private const val KEY_AUTO_EXEC = "auto_exec"
+ private const val KEY_QUICK_BUTTONS = "quick_buttons_v1"
 private const val KEY_DRAFT = "input_draft"
 private const val BEG = "===REASONING_BEGIN==="
 private const val END = "===REASONING_END==="
