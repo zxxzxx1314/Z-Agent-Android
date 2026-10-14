@@ -10,6 +10,9 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -41,6 +44,14 @@ class PluginActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_plugin)
+ WindowCompat.setDecorFitsSystemWindows(window, false)
+        val topBar = findViewById<View>(R.id.pluginTopBar)
+        ViewCompat.setOnApplyWindowInsetsListener(topBar) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+            v.setPadding(v.paddingLeft, bars.top, v.paddingRight, v.paddingBottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(topBar)
 
         countText = findViewById(R.id.countText)
         emptyText = findViewById(R.id.emptyText)
