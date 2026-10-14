@@ -3266,7 +3266,7 @@ private fun uriToPath(uri: android.net.Uri): String? {
 return try {
 if (uri.scheme == "file") uri.path
 else {
-val f = java.io.File(cacheDir, "analyze" + U .. "tmp" + U .. "" + System.currentTimeMillis())
+val f = java.io.File(cacheDir, "analyze_tmp_" + System.currentTimeMillis())
 contentResolver.openInputStream(uri)?.use { ins ->
 f.outputStream().use { outs -> ins.copyTo(outs) }
 }
@@ -3437,16 +3437,16 @@ sub.text = "会话：" + sid
 val items = o.optJSONArray("items")
 val n = if (items != null) items.length() else 0
 for (i in 0 until n) {
-val it = items.getJSONObject(i)
+val item = items.getJSONObject(i)
 val row = TextView(this).apply {
-text = " · " + it.optString("id") + " " + it.optString("type") + " (" + it.optString("backend") + ") " + it.optInt("content_len") + "B"
+text = " · " + item.optString("id") + " " + item.optString("type") + " (" + item.optString("backend") + ") " + item.optInt("content_len") + "B"
 textSize = 12f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
 setPadding(0, dp(2), 0, dp(2))
 }
 row.isClickable = true
 row.setOnClickListener {
-showEvidenceDetail(sid, it.optString("id"))
+showEvidenceDetail(sid, item.optString("id"))
 }
 steps.addView(row)
 }
@@ -3479,7 +3479,7 @@ sub.text = "解析失败：" + (e.message ?: "?")
 }
 private fun showEvidenceDetail(sid: String, eid: String) {
 threadRun { safeBridge {
-val arg = "{"sid":"" + sid + "","eid":"" + eid + ""}"
+val arg = org.json.JSONObject().put("sid", sid).put("eid", eid).toString()
 val res = PythonBridge.analyzeAction(this@MainActivity, "show", arg)
 runOnUiThread { renderEvidenceDetail(sid, eid, res) }
 } }
