@@ -83,6 +83,8 @@ private lateinit var attachRow: LinearLayout
  private val quickAnimating = mutableSetOf<android.view.View>()
 
 
+private var lastBubbleTs = 0L
+private var lastBubbleIsUser = false
 private var busy = false
 private var reportedStartup = false
 private var stopRequested = false
@@ -420,31 +422,26 @@ if (emptyState.visibility != View.GONE) emptyState.visibility = View.GONE
 }
 
 private fun applyTopInset() {
-    ViewCompat.setOnApplyWindowInsetsListener(topBar) { v, insets ->
-        val bars = insets.getInsets(WindowInsetsCompat.Type.statusBars())
-        v.setPadding(v.paddingLeft, bars.top, v.paddingRight, v.paddingBottom)
-        insets
-    }
-    val root = findViewById<View>(R.id.rootView)
-
-    // IME inset：键盘弹出时输入卡贴键盘上沿跟手上移（不瞬移）
-    ViewCompat.setWindowInsetsAnimationCallback(root,
-        object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
-            override fun onProgress(
-                insets: WindowInsetsCompat,
-                runningAnimations: MutableList<WindowInsetsAnimationCompat>
-            ): WindowInsetsCompat {
-                applyImePadding(insets)
-                return insets
-            }
-        })
-
-    ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
-        applyImePadding(insets)
-        insets
-    }
-    ViewCompat.requestApplyInsets(topBar)
-    ViewCompat.requestApplyInsets(root)
+ val root = findViewById<View>(R.id.rootView)
+ // 状态栏 padding 加到根视图顶部（避免局部 view 首次布局时 insets 未分发）
+ ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+ val bars = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+ v.setPadding(v.paddingLeft, bars.top, v.paddingRight, v.paddingBottom)
+ applyImePadding(insets)
+ insets
+ }
+ // IME inset：键盘弹出时输入卡贴键盘上沿跟手上移（不瞬移）
+ ViewCompat.setWindowInsetsAnimationCallback(root,
+ object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+ override fun onProgress(
+ insets: WindowInsetsCompat,
+ runningAnimations: MutableList<WindowInsetsAnimationCompat>
+ ): WindowInsetsCompat {
+ applyImePadding(insets)
+ return insets
+ }
+ })
+ ViewCompat.requestApplyInsets(root)
 }
 
 // 计算并应用 IME + 导航栏 padding（带范围保护）
@@ -1537,25 +1534,34 @@ card.post { bounceIn(card) }
 outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
 }
 
- private fun wrapWithTime(bubbleRow: View, alignEnd: Boolean): LinearLayout {
-val col = LinearLayout(this).apply {
-orientation = LinearLayout.VERTICAL
-layoutParams = LinearLayout.LayoutParams(
-LinearLayout.LayoutParams.MATCH_PARENT,
-LinearLayout.LayoutParams.WRAP_CONTENT
-)
-gravity = if (alignEnd) Gravity.END else Gravity.START
-}
-val time = TextView(this).apply {
-text = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-.format(java.util.Date())
-textSize = 11f
-setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
-setPadding(dp(6), dp(2), dp(6), 0)
-}
-col.addView(time)
-col.addView(bubbleRow)
-return col
+private fun wrapWithTime(bubbleRow: View, alignEnd: Boolean): LinearLayout {
+ val col = LinearLayout(this).apply {
+ orientation = LinearLayout.VERTICAL
+ layoutParams = LinearLayout.LayoutParams(
+ LinearLayout.LayoutParams.MATCH_PARENT,
+ LinearLayout.LayoutParams.WRAP_CONTENT
+ )
+ gravity = if (alignEnd) Gravity.END else Gravity.START
+ }
+ // 时间戳节流：仅首条 / 间隔>=5分钟 / 发送方切换 时显示
+ val now = System.currentTimeMillis()
+ val showTime = lastBubbleTs == 0L
+ || (now - lastBubbleTs) >= 5 * 60 * 1000L
+ || lastBubbleIsUser != alignEnd
+ if (showTime) {
+ val time = TextView(this).apply {
+ text = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+ .format(java.util.Date(now))
+ textSize = 11f
+ setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+ setPadding(dp(6), dp(2), dp(6), 0)
+ }
+ col.addView(time)
+ }
+ col.addView(bubbleRow)
+ lastBubbleTs = now
+ lastBubbleIsUser = alignEnd
+ return col
 }
 
 private fun addUserBubble(content: String) {
