@@ -24,4 +24,5 @@
 <dimen name="pad_bubble_h">15dp</dimen> <!-- 气泡左右 -->
 <dimen name="pad_bubble_v">11dp</dimen> <!-- 气泡上下 -->
 <dimen name="pad_card">16dp</dimen> <!-- 卡片内边距 -->
+<dimen name="fs_log">11sp</dimen>
 </resources>

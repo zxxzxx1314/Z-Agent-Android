@@ -39,7 +39,7 @@
 <item name="android:gravity">center</item>
 <item name="android:paddingStart">@dimen/pad_pill_h</item>
 <item name="android:paddingEnd">@dimen/pad_pill_h</item>
-<item name="android:textColor">@color/text_secondary</item>
+<item name="android:textColor">@color/text_primary</item>
 <item name="android:textSize">@dimen/fs_label</item>
 <item name="android:clickable">true</item>
 <item name="android:focusable">true</item>

@@ -40,4 +40,10 @@
 <color name="send_pressed">@color/accent</color>
 <color name="text_on_accent">@color/on_accent</color>
 <color name="btn_shadow">#00000000</color> <!-- 投影已废弃，置透明 -->
+<!-- ===== 警示/日志（本次新增）===== -->
+<color name="alert_bg">#1AC62828</color>
+<color name="alert_line">#4DC62828</color>
+<color name="warn_bg">#1AB26A00</color>
+<color name="warn_line">#4DB26A00</color>
+<color name="log_text">#5A5A68</color>
 </resources>

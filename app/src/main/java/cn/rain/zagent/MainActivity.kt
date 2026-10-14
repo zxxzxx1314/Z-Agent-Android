@@ -60,11 +60,9 @@ private lateinit var inputEdit: EditText
 private lateinit var inputCard: LinearLayout
 private lateinit var sendButton: FrameLayout
 private lateinit var sendIcon: android.widget.ImageView
-private lateinit var autoSwitch: android.widget.Switch
 private lateinit var topBar: LinearLayout
 private lateinit var themeButton: View
  private lateinit var themeIcon: ImageView
- private lateinit var autoLabel: TextView
 private lateinit var inputBar: LinearLayout
 private lateinit var segContainer: FrameLayout
 private lateinit var segThumb: View
@@ -180,11 +178,9 @@ inputEdit = findViewById(R.id.inputEdit)
 inputCard = findViewById(R.id.inputCard)
 sendButton = findViewById(R.id.sendButton)
     sendIcon = sendButton.getChildAt(0) as android.widget.ImageView
-autoSwitch = findViewById(R.id.autoSwitch)
 topBar = findViewById(R.id.topBar)
 themeButton = findViewById(R.id.themeButton)
  themeIcon = findViewById(R.id.themeIcon)
- autoLabel = findViewById(R.id.autoLabel)
 inputBar = findViewById(R.id.inputBar)
 segContainer = findViewById(R.id.segContainer)
 segThumb = findViewById(R.id.segThumb)
@@ -267,12 +263,7 @@ findViewById<View>(R.id.btnSavePlugin).setOnClickListener { haptic(it); promptSa
 
 themeButton.setOnClickListener { haptic(it); toggleTheme() }
 
- autoSwitch.setOnCheckedChangeListener { v, checked ->
- if (checked) HapticTokens.warn(v) else HapticTokens.tap(v)
- refreshAutoSwitch(checked)
-threadRun { safeBridge { try { PythonBridge.setAuto(this@MainActivity, checked) } catch (e: Exception) { } } }
- }
- refreshAutoSwitch(autoSwitch.isChecked)
+refreshAutoSwitch(sp.getBoolean(KEY_AUTO_EXEC, true))
 
 
 sendButton.setOnClickListener { haptic(it); onSend() }
@@ -455,14 +446,38 @@ else AppCompatDelegate.MODE_NIGHT_YES)
 themeIcon.setImageResource(if (!light) R.drawable.ic_moon else R.drawable.ic_sun)
 }
 
+// 免确认执行：不再放主界面，仅在设置页内切换
 private fun refreshAutoSwitch(on: Boolean) {
-val accent = ContextCompat.getColor(this, R.color.accent)
-val off = ContextCompat.getColor(this, R.color.text_tertiary)
-val white = ContextCompat.getColor(this, R.color.bg_elevated)
-autoSwitch.thumbTintList = android.content.res.ColorStateList.valueOf(white)
-autoSwitch.trackTintList = android.content.res.ColorStateList.valueOf(if (on) accent else off)
-autoLabel.setTextColor(if (on) accent else off)
-autoLabel.setTypeface(null, if (on) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+sheetRows["auto"]?.text = if (on) "已开启" else "已关闭"
+}
+
+// 设置页里点「免确认执行」→ 二次确认
+private fun toggleAutoExec() {
+val cur = sp.getBoolean(KEY_AUTO_EXEC, true)
+if (cur) {
+confirmSheet(
+title = "关闭免确认执行？",
+message = "关闭后，Agent 每次操作都会先询问你确认。",
+confirmLabel = "关闭"
+) {
+sp.edit().putBoolean(KEY_AUTO_EXEC, false).apply()
+threadRun { safeBridge { try { PythonBridge.setAuto(this@MainActivity, false) } catch (e: Exception) { } } }
+refreshAutoSwitch(false)
+toast("已关闭免确认")
+}
+} else {
+confirmSheet(
+title = "开启免确认执行？",
+message = "开启后 Agent 操作不再逐条询问，可能直接改动文件或应用。仅在你完全信任当前任务时开启。",
+confirmLabel = "开启",
+danger = true
+) {
+sp.edit().putBoolean(KEY_AUTO_EXEC, true).apply()
+threadRun { safeBridge { try { PythonBridge.setAuto(this@MainActivity, true) } catch (e: Exception) { } } }
+refreshAutoSwitch(true)
+toast("已开启免确认")
+}
+}
 }
 
 private fun showSettingsTransform() {
@@ -505,6 +520,7 @@ root.addView(settingsRow(R.drawable.ic_key, "API Key", apiKeySummary) { promptAp
 root.addView(settingsRow(R.drawable.ic_globe, "API 地址", baseUrlSummary) { promptBaseUrl() })
 root.addView(settingsRow(R.drawable.ic_model, "模型名称", modelSummary) { promptModel() })
 root.addView(settingsRow(R.drawable.ic_refresh, "测试连接", "检查 API 地址与 Key") { testConnection() })
+root.addView(settingsRow(R.drawable.ic_refresh, "免确认执行", "已开启") { toggleAutoExec() })
 
 // 分组：会话
 root.addView(groupLabel("会话"))
@@ -642,6 +658,7 @@ when (title) {
 "清空会话" -> sheetRows["turns"] = vl
 "查看状态" -> sheetRows["status"] = vl
 "测试连接" -> sheetRows["test"] = vl
+ "免确认执行" -> sheetRows["auto"] = vl
 }
 return row
 }
@@ -1262,41 +1279,50 @@ private fun renderStreamText(tv: TextView) {
 }
 
 private fun beginStreaming() {
-    streamingSb = StringBuilder()
-    cursorOn = true
-    hideEmpty()
-    loadingDotsView = showLoadingDots()
-    val row = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.START
-        layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(4); bottomMargin = dp(4) }
-    }
-    val bubble = TextView(this).apply {
-        textSize = 15f
-        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
-        setBackgroundResource(R.drawable.bg_bubble_ai)
-        setPadding(dp(14), dp(10), dp(14), dp(10))
-        maxWidth = dp(300)
-        setTextIsSelectable(true)
-    }
-    row.addView(bubble)
-    val wrapped = wrapWithTime(row, false)
-    chatContainer.addView(wrapped)
-    wrapped.post { bounceIn(wrapped) }
-    streamingBubble = bubble
-    uiHandler.removeCallbacks(cursorBlink)
-    uiHandler.postDelayed(cursorBlink, 500)
+ streamingSb = StringBuilder()
+ cursorOn = true
+ hideEmpty()
+ // 不预建空气泡，避免加载时白块；首次 chunk 到达再创建
+ streamingBubble = null
+ loadingDotsView = showLoadingDots()
+ uiHandler.removeCallbacks(cursorBlink)
+}
+
+// 惰性创建流式气泡：appendStream 首次调用时执行
+private fun ensureStreamBubble(): TextView {
+ streamingBubble?.let { return it }
+ val row = LinearLayout(this).apply {
+ orientation = LinearLayout.HORIZONTAL
+ gravity = Gravity.START
+ layoutParams = LinearLayout.LayoutParams(
+ LinearLayout.LayoutParams.MATCH_PARENT,
+ LinearLayout.LayoutParams.WRAP_CONTENT
+ ).apply { topMargin = dp(4); bottomMargin = dp(4) }
+ }
+ val bubble = TextView(this).apply {
+ textSize = 15f
+ setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+ setBackgroundResource(R.drawable.bg_bubble_ai)
+ setPadding(dp(14), dp(10), dp(14), dp(10))
+ maxWidth = dp(300)
+ setTextIsSelectable(true)
+ }
+ row.addView(bubble)
+ val wrapped = wrapWithTime(row, false)
+ chatContainer.addView(wrapped)
+ wrapped.post { bounceIn(wrapped) }
+ streamingBubble = bubble
+ uiHandler.postDelayed(cursorBlink, 500)
+ return bubble
 }
 
 private fun appendStream(t: String) {
-    if (t.isEmpty()) return
-    if (streamingSb.isEmpty()) { hideLoadingDots(loadingDotsView); loadingDotsView = null }
-    streamingSb.append(t)
-    streamingBubble?.let { renderStreamText(it) }
-    outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+ if (t.isEmpty()) return
+ if (streamingSb.isEmpty()) { hideLoadingDots(loadingDotsView); loadingDotsView = null }
+ streamingSb.append(t)
+ val b = ensureStreamBubble()
+ renderStreamText(b)
+ outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
 }
 
 private fun endStreaming(): Boolean {
@@ -1381,6 +1407,10 @@ line.startsWith("[") -> {
 flushAi()
 addSystemLine(line)
 }
+isApiErrorLine(line) -> {
+flushAi()
+addLocalizedError(line)
+}
 else -> {
 if (buf.isNotEmpty()) buf.append('\n')
 buf.append(line)
@@ -1388,6 +1418,92 @@ buf.append(line)
 }
 }
 flushAi()
+}
+
+// 识别裸英文报错行（api error / error / failed）
+private fun isApiErrorLine(line: String): Boolean {
+val t = line.trim()
+if (t.isEmpty()) return false
+val low = t.lowercase()
+if (t.startsWith("api error") || t.startsWith("http ") || t.startsWith("error:")) return true
+if (low.contains("authentication fails")) return true
+if (low.contains("auth header format")) return true
+if (low.contains("connection refused") || low.contains("timed out")) return true
+return false
+}
+
+// 英文报错中文化：主文案 + 折叠原文
+private fun addLocalizedError(raw: String) {
+hideEmpty()
+val low = raw.lowercase()
+val cn: String
+val tip: String
+when {
+low.contains("401") || low.contains("authentication fails") || low.contains("auth header") -> {
+cn = "API Key 无效或未配置"
+tip = "请在设置 → API Key 中填写正确的 Key（sk- 开头）"
+}
+low.contains("403") -> {
+cn = "API Key 无权限"
+tip = "请确认该 Key 已开通对应模型权限"
+}
+low.contains("429") -> { cn = "请求过于频繁"; tip = "稍等几秒后重试" }
+low.contains("timeout") || low.contains("timed out") -> { cn = "网络超时"; tip = "请检查网络或 API 地址" }
+low.contains("connection refused") || low.contains("failed to connect") -> { cn = "无法连接到服务器"; tip = "请检查网络或 API 地址" }
+raw.contains("5") && (low.contains("500") || low.contains("502") || low.contains("503")) -> {
+cn = "服务端错误"; tip = "稍后重试，或换用其它模型"
+}
+else -> { cn = "请求失败"; tip = "点下方按钮查看详情" }
+}
+
+val card = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_alert_card)
+setPadding(dp(12), dp(10), dp(12), dp(10))
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { topMargin = dp(6); bottomMargin = dp(6) }
+}
+val danger = ContextCompat.getColor(this@MainActivity, R.color.danger)
+val title = TextView(this).apply {
+text = "⚠ " + cn
+textSize = 14f
+setTextColor(danger)
+setTypeface(null, android.graphics.Typeface.BOLD)
+}
+val tipTv = TextView(this).apply {
+text = tip
+textSize = 12f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+setPadding(0, dp(4), 0, 0)
+}
+val detail = TextView(this).apply {
+text = maskSecret(raw.trim())
+textSize = 11f
+typeface = android.graphics.Typeface.MONOSPACE
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.log_text))
+setPadding(dp(2), dp(6), dp(2), dp(2))
+setTextIsSelectable(true)
+visibility = View.GONE
+}
+val toggle = TextView(this).apply {
+text = "查看原文"
+textSize = 12f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+setPadding(0, dp(6), 0, 0)
+isClickable = true
+}
+toggle.setOnClickListener {
+HapticTokens.tap(it)
+val expanded = detail.visibility == View.VISIBLE
+detail.visibility = if (expanded) View.GONE else View.VISIBLE
+toggle.text = if (expanded) "查看原文" else "收起原文"
+}
+card.addView(title); card.addView(tipTv); card.addView(toggle); card.addView(detail)
+chatContainer.addView(card)
+card.post { bounceIn(card) }
+outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
 }
 
  private fun wrapWithTime(bubbleRow: View, alignEnd: Boolean): LinearLayout {
@@ -1987,9 +2103,26 @@ cm.setPrimaryClip(ClipData.newPlainText("zagent", t))
 toast("已复制")
 }
 
+private var logBox: LinearLayout? = null
+private var logHead: TextView? = null
+
 private fun addSystemLine(content: String) {
+val raw = maskSecret(content)
+val low = raw.lowercase()
+val isAlert = raw.contains("异常") || raw.contains("错误") || raw.contains("失败") ||
+raw.contains("[API") || raw.contains("[网络") || raw.contains("[流读取") ||
+low.contains("error") || low.contains("fail")
+val isWarn = !isAlert && (raw.contains("警告") || raw.contains("注意") || low.contains("warn"))
+val isLog = raw.startsWith("[bootstrap]") || raw.startsWith("[boot_guard]") ||
+raw.startsWith("[boot]") || raw.startsWith("[设置]") ||
+raw.startsWith("[会话]") || raw.startsWith("[桥接")
+when {
+isAlert -> addAlertLine(raw, false)
+isWarn -> addAlertLine(raw, true)
+isLog -> addLogLine(raw)
+else -> {
 val tv = TextView(this).apply {
-text = maskSecret(content)
+text = raw
 textSize = 13f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
 gravity = Gravity.CENTER
@@ -2000,6 +2133,83 @@ LinearLayout.LayoutParams.WRAP_CONTENT
 )
 }
 chatContainer.addView(tv)
+}
+}
+}
+
+private fun addAlertLine(content: String, warnMode: Boolean) {
+val row = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.CENTER_VERTICAL
+setBackgroundResource(R.drawable.bg_alert_card)
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { topMargin = dp(6); bottomMargin = dp(6) }
+setPadding(dp(12), dp(10), dp(12), dp(10))
+}
+val tint = ContextCompat.getColor(this@MainActivity,
+if (warnMode) R.color.warn else R.color.danger)
+val icon = TextView(this).apply {
+text = if (warnMode) "警告" else "严重"
+textSize = 12f
+setTextColor(tint)
+setPadding(0, 0, dp(8), 0)
+setTypeface(null, android.graphics.Typeface.BOLD)
+}
+val tv = TextView(this).apply {
+text = content
+textSize = 13f
+setTextColor(tint)
+setTypeface(null, android.graphics.Typeface.BOLD)
+setTextIsSelectable(true)
+}
+row.addView(icon); row.addView(tv)
+chatContainer.addView(row)
+}
+
+private fun addLogLine(content: String) {
+if (logBox == null) {
+val wrap = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { topMargin = dp(2); bottomMargin = dp(4) }
+}
+val head = TextView(this).apply {
+text = "运行日志（点击展开）"
+textSize = 11f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.log_text))
+typeface = android.graphics.Typeface.MONOSPACE
+setPadding(dp(8), dp(6), dp(8), dp(6))
+isClickable = true
+}
+val bb = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_log_card)
+setPadding(dp(8), dp(6), dp(8), dp(6))
+visibility = View.GONE
+}
+head.setOnClickListener {
+HapticTokens.tap(it)
+val expanded = bb.visibility == View.VISIBLE
+bb.visibility = if (expanded) View.GONE else View.VISIBLE
+head.text = if (expanded) "运行日志（点击展开）" else "运行日志（点击收起）"
+}
+wrap.addView(head); wrap.addView(bb)
+chatContainer.addView(wrap)
+logHead = head; logBox = bb
+}
+val tv = TextView(this).apply {
+text = content
+textSize = 11f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.log_text))
+typeface = android.graphics.Typeface.MONOSPACE
+setPadding(0, dp(1), 0, dp(1))
+setTextIsSelectable(true)
+}
+logBox?.addView(tv)
 }
 
 private fun addReasoningBox(reasoning: String) {
@@ -2444,6 +2654,7 @@ card.post { bounceIn(card) }
 companion object {
 private const val KEY_MODEL_NAME = "model_name"
 private const val KEY_LIGHT_THEME = "light_theme"
+ private const val KEY_AUTO_EXEC = "auto_exec"
 private const val KEY_DRAFT = "input_draft"
 private const val BEG = "===REASONING_BEGIN==="
 private const val END = "===REASONING_END==="
