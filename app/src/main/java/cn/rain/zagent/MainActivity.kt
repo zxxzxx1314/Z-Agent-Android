@@ -2723,8 +2723,8 @@ for ((idx, b) in quickButtons.withIndex()) {
 quickRow.addView(makeQuickChip(b, idx))
 }
 if (quickEditMode) quickRow.addView(makePlusChip())
-quickRowWrap.visibility = if (quickExpanded) View.VISIBLE else View.GONE
-quickToggleCollapsed.visibility = if (quickExpanded) View.GONE else View.VISIBLE
+if (quickExpanded) { quickBarContainer.visibility = View.VISIBLE; quickRowWrap.visibility = View.VISIBLE; quickToggleCollapsed.visibility = View.GONE } else { quickBarContainer.visibility = View.GONE; quickToggleCollapsed.visibility = View.VISIBLE }
+
 }
 
 private fun makeQuickChip(b: QuickBtn, idx: Int): View {
@@ -2845,6 +2845,7 @@ private fun expandQuick() {
 for (v in quickAnimating) v.animate().cancel()
 quickAnimating.clear()
 quickExpanded = true
+quickBarContainer.visibility = View.VISIBLE
 quickToggleCollapsed.visibility = View.GONE
 quickRowWrap.visibility = View.VISIBLE
 if (MotionPrefs.reduceMotion(quickRowWrap)) {
@@ -2871,7 +2872,7 @@ for (v in quickAnimating) v.animate().cancel()
 quickAnimating.clear()
 quickExpanded = false
 if (MotionPrefs.reduceMotion(quickRowWrap)) {
-quickRowWrap.visibility = View.GONE
+quickBarContainer.visibility = View.GONE
 quickToggleCollapsed.visibility = View.VISIBLE
 quickToggleCollapsed.alpha = 1f
 return
@@ -2886,7 +2887,7 @@ quickAnimating.add(v)
 }
 quickRowWrap.postDelayed({
 if (quickExpanded) return@postDelayed
-quickRowWrap.visibility = View.GONE
+quickBarContainer.visibility = View.GONE
 quickToggleCollapsed.visibility = View.VISIBLE
 quickToggleCollapsed.alpha = 0f
 quickToggleCollapsed.scaleX = 0.9f
