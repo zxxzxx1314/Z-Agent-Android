@@ -119,75 +119,24 @@ MAX_OUTPUT_CHARS = 24000  # 回传给 AI 的单段输出截断上限（头尾保
 MAX_SOURCE_BYTES = 2 * 1024 * 1024   # 进化候选源码大小上限
 SHADOW_TIMEOUT = 300        # v6.0 影子沙箱单次验证超时（秒）
 
+# ===== 元认知层（soft 默认；META_LEVEL=off 一键关闭）=====
+META_LEVEL = "soft"
+MAX_SECONDS = 600
+MAX_LLM_CALLS = 30
+MAX_SUB_PROC = 50
+META_LOG = '' # 惰性：首次使用时按 HOME 计算
+META_BUDGET = {"t0": 0, "llm": 0, "proc": 0, "active": False}
+
+def meta_level():
+	return META_LEVEL
+
+
 HOME = os.path.expanduser("~")
 SKILLS_DIR = os.path.join(HOME, "skills")       # 表型记忆（经验笔记）
 PLUGINS_DIR = os.path.join(HOME, "plugins")     # 插件（能力器官）
 
 # -- plugin enable state --
 PLUGINS_STATE = os.path.join(PLUGINS_DIR, ".state.json")
-EXTERNAL_PLUGINS_DIRS = [
-    os.environ.get("ZAGENT_EXTERNAL_PLUGINS_DIRS", ""),
-    "/sdcard/Download/zagent_plugins",
-    "/storage/emulated/0/Download/zagent_plugins",
-    os.path.join(HOME, "plugins_external"),
-]
-
-
-def sync_external_plugins():
-    """扫描外部目录，字节有变才覆盖到 PLUGINS_DIR。"""
-    synced = []
-    for ext in EXTERNAL_PLUGINS_DIRS:
-        if not ext or not os.path.isdir(ext):
-            continue
-        try:
-            names = os.listdir(ext)
-        except Exception:
-            continue
-        for fn in names:
-            if (not fn.endswith(".py")) or fn.startswith("_"):
-                continue
-            src = os.path.join(ext, fn)
-            dst = os.path.join(PLUGINS_DIR, fn)
-            try:
-                data = open(src, "rb").read()
-                cur = open(dst, "rb").read() if os.path.exists(dst) else None
-                if cur != data:
-                    open(dst, "wb").write(data)
-                    synced.append(fn)
-            except Exception:
-                pass
-    return synced
-
-
-def seed_external_plugins():
-    """首次启动：把内嵌种子写入外部目录。"""
-    target = None
-    for ext in EXTERNAL_PLUGINS_DIRS:
-        if not ext:
-            continue
-        if ext.startswith("/sdcard/") or ext.startswith("/storage/"):
-            target = ext
-            break
-    if target is None:
-        target = os.path.join(HOME, "plugins_external")
-    try:
-        os.makedirs(target, exist_ok=True)
-    except Exception:
-        return []
-    import base64
-    seeded = []
-    for pname, b64 in BUNDLED_PLUGINS.items():
-        dst = os.path.join(target, pname + ".py")
-        if os.path.exists(dst):
-            continue
-        try:
-            open(dst, "wb").write(base64.b64decode(b64))
-            seeded.append(pname)
-        except Exception:
-            pass
-    return seeded
-
-
 
 
 def _load_plugin_state():
@@ -1205,6 +1154,11 @@ def settle_contract(passed, reply_text):
         return "ok"
     c["verify_attempts"] += 1
     if passed:
+        _cl = extract_claims(reply_text or '')
+        _cok, _crep = validate_claims(_cl)
+        if not _cok and _cl:
+            print('[claim 校验失败] ' + _crep)
+            append_meta_log('claim-fail', {'reason': _crep})
         c["status"] = "passed"
         save_contract(c)
         append_journal("验收通过", c["task"])
@@ -1637,18 +1591,6 @@ BASE_PROMPT = """你是 Z-Agent，一个运行在 Android 手机 Termux 终端�
 3.【程序员】输出代码：[script:]...可直接运行的 Python...[script]
   每段脚本前必须有一行 [desc]一句话目的[/desc]。
 
-【交互卡片协议（可选）】
-- 需要用户做选择/填参数/确认时，在回复里输出一个 [ui]...[/ui] 块，
- 内容是一段合法 JSON（半角双引号）：
- [ui]{"type":"form","title":"标题","components":[
- {"type":"select","name":"pick","label":"选哪个","options":[
- {"value":"a","label":"选项一"},{"value":"b","label":"选项二"}]},
- {"type":"input","name":"notes","label":"备注"},
- {"type":"button","label":"执行","action":"go"}]}[/ui]
-- 宿主渲染成卡片，用户点击后以 JSON 回传。
-- 组件类型：text / input / select / switch / button。
-- 只在真正需要用户决策时用；纯汇报或能自己判断的，直接干活别问。
-
 【字面区协议（v6.1+，重要）】
 - 需要展示标签的字面形态（解释协议、教学示例、贴片段）时，用
   [literal]...[/literal] 包裹：区内一切字符（包括 [script:]、
@@ -1796,7 +1738,10 @@ def build_system_prompt() -> str:
     if problems:
         pb_text = ("\n\n【待自主探索的问题队列（%d 个，/idle 时领取）】"
                    % len(problems) + "".join("\n- " + p for p in problems[:20]))
-    return (load_identity() + "\n" + BASE_PROMPT + mode_text + skills_text
+    _meta_text = ''
+    if META_LEVEL != 'off':
+        _meta_text = (chr(10) + chr(10) + '【元认知协议】' + chr(10) + '下结论必须四元组：' + chr(10) + ' [claim] 命题' + chr(10) + ' [confidence] static|dynamic|inferred' + chr(10) + ' [basis] ev-id 列表或 无' + chr(10) + ' [unknowns] 无法检测的部分' + chr(10) + '置信度不得高于其最弱依据。' + chr(10) + 'META_LEVEL=' + META_LEVEL)
+    return (_meta_text + load_identity() + "\n" + BASE_PROMPT + mode_text + skills_text
             + plugins_text + pb_text
             + "\n\n【自身状态】当前基因版本 v%s，代数 Gen-%d。"
             % (VERSION, get_gen()))
@@ -1907,7 +1852,6 @@ def _display_body(text):
     """显示美化函数体：进化/脚本剥离 + 标签美化，返回纯文本。
     v6.1 从 display_reply 拆出，供字面区分段渲染复用。"""
     text = strip_evolution(text)
-    text = _strip_ui(text)
     try:
         blocks = _script_blocks(text)
     except ValueError:
@@ -2100,6 +2044,11 @@ def _run_process(argv, timeout, env=None):
 
 def run_python_code(code: str):
     """子进程执行脚本，返回 (退出码, stdout, stderr)（已截断）。"""
+    _ok, _rep = meta_gate('run_python_code', {'reversible': False})
+    if _rep: print(_rep)
+    if not _ok:
+        return 1, '', '[meta-gate 拒绝] ' + _rep
+    budget_tick('proc')
     rc, out, err, timed_out = _run_process(
         [sys.executable, "-c", code], EXEC_TIMEOUT)
     if timed_out:
@@ -2249,6 +2198,8 @@ def agent_loop(first_reply=None):
     evolve_fails = 0          # 进化连续失败计数
 
     for _round in range(MAX_ROUNDS):
+        _bhit, _brep = budget_tick('llm')
+        if _brep: print(_brep)
         if first_reply is not None:
             reply = first_reply
             first_reply = None
@@ -2275,8 +2226,6 @@ def agent_loop(first_reply=None):
         control = _without_scripts(text, blocks) if blocks else text
 
         display_reply(reply)
-        for _s, _e, _spec in _ui_blocks(reply):
-            emit_ui(_spec.strip())
         update_todos(control)
         render_todos()
 
@@ -2736,8 +2685,6 @@ def main():
     skill_files = [f for f in os.listdir(SKILLS_DIR)
                    if f.endswith(".md") or f.endswith(".txt")]
     _installed_pl = install_bundled_plugins()
-    ext_synced = sync_external_plugins()
-    seed_external_plugins()
     _ok_pl, _bad_pl = selfcheck_plugins()
     plugins, _p = scan_plugins()
     print("═" * 50)
@@ -2796,44 +2743,6 @@ def emit_step(idx, total, label, status, elapsed_ms=None):
         _STREAM_BUF.append(("step", _j.dumps(obj, ensure_ascii=False)))
     except Exception:
         pass
-
-
-def emit_ui(spec_json):
-    try:
-        _STREAM_BUF.append(("ui", str(spec_json)))
-    except Exception:
-        pass
-
-
-def _ui_blocks(text):
-    out = []
-    cursor = 0
-    OPEN = "[ui]"
-    CLOSE = "[/ui]"
-    while True:
-        s = text.find(OPEN, cursor)
-        if s < 0:
-            return out
-        e = text.find(CLOSE, s + len(OPEN))
-        if e < 0:
-            return out
-        out.append((s, e + len(CLOSE), text[s + len(OPEN):e]))
-        cursor = e + len(CLOSE)
-
-
-def _strip_ui(text):
-    blocks = _ui_blocks(text)
-    if not blocks:
-        return text
-    out = []
-    pos = 0
-    for s, e, _b in blocks:
-        out.append(text[pos:s])
-        out.append("\n[已渲染交互卡片]")
-        pos = e
-    out.append(text[pos:])
-    return "".join(out)
-
 
 
 def _post_stream(msgs, temperature=0.3):
@@ -2900,3 +2809,121 @@ def _post_stream(msgs, temperature=0.3):
 def stream_stop():
     _STREAM_STOP[0] = True
     return True
+
+# ============================================================
+# 元认知层：不确定性协议 / 元推理闸门 / 预算守卫 / 反事实预演 / 审计
+# ============================================================
+
+import json as _meta_json
+
+
+def extract_claims(text):
+    out = []
+    cur = None
+    LB = chr(91)
+    RB = chr(93)
+    for raw in (text or '').split(chr(10)):
+        ln = raw.strip()
+        if ln.startswith(LB + 'claim' + RB):
+            if cur: out.append(cur)
+            cur = {'claim': ln[len(LB)+6:].strip(), 'confidence': '', 'basis': [], 'unknowns': ''}
+        elif cur is not None and ln.startswith(LB + 'confidence' + RB):
+            cur['confidence'] = ln[len(LB)+11:].strip()
+        elif cur is not None and ln.startswith(LB + 'basis' + RB):
+            bs = ln[len(LB)+6:].strip()
+            cur['basis'] = [x.strip() for x in bs.split(chr(44)) if x.strip()]
+        elif cur is not None and ln.startswith(LB + 'unknowns' + RB):
+            cur['unknowns'] = ln[len(LB)+9:].strip()
+    if cur: out.append(cur)
+    return out
+
+
+def validate_claims(claims):
+    OK = {'static': 3, 'dynamic': 2, 'inferred': 1}
+    if not claims:
+        return True, ''
+    for i, c in enumerate(claims):
+        conf = (c.get('confidence') or '').strip().lower()
+        if not conf:
+            return False, 'claim ' + str(i) + ' 缺 [confidence]'
+        if conf not in OK:
+            return False, 'claim ' + str(i) + ' confidence 非法: ' + conf
+        basis = c.get('basis') or []
+        if conf == 'inferred' and not basis:
+            return False, 'inferred 结论必须有 [basis]'
+    return True, ''
+
+
+def classify_action(action):
+    if not action: return 'LOW'
+    a = action.lower()
+    for k in ('run', 'exec', 'evolve', 'shell', 'write', 'rm', 'erase'):
+        if k in a: return 'HIGH'
+    for k in ('read', 'list', 'search', 'fetch'):
+        if k in a: return 'MED'
+    return 'LOW'
+
+
+def append_meta_log(kind, payload):
+    _logp = META_LOG or os.path.join(HOME, 'mind', 'meta-log.jsonl')
+    try:
+        d = os.path.dirname(_logp)
+        os.makedirs(d, exist_ok=True)
+        rec = {'ts': int(time.time()), 'kind': kind}
+        rec.update(payload or {})
+        with open(_logp, 'a', encoding='utf-8') as f:
+            f.write(_meta_json.dumps(rec, ensure_ascii=False) + chr(10))
+    except Exception:
+        pass
+def meta_gate(action, ctx=None):
+    if META_LEVEL == 'off':
+        return True, ''
+    level = classify_action(action)
+    ctx = ctx or {}
+    evn = int(ctx.get('evidence', 0))
+    rev = ctx.get('reversible', True)
+    auto = bool(ctx.get('auto', AUTO_EXECUTE))
+    ask = (level == 'HIGH' and not auto and not rev)
+    rep = ('[meta-reason]' + chr(10) + ' - action: ' + str(action) + chr(10) + ' - level: ' + level + chr(10) + ' - 证据数: ' + str(evn) + chr(10) + ' - AUTO_EXECUTE: ' + str(auto) + chr(10) + ' - 可逆: ' + str(rev) + chr(10) + ' - 该问人: ' + ('yes' if ask else 'no'))
+    append_meta_log('meta-gate', {'action': action, 'level': level, 'ask': ask})
+    if META_LEVEL == 'hard' and ask:
+        return False, rep
+    return True, rep
+
+
+def budget_tick(kind):
+    b = META_BUDGET
+    if not b['active']:
+        b['active'] = True
+        b['t0'] = time.time()
+        b['llm'] = 0
+        b['proc'] = 0
+    if kind == 'llm': b['llm'] += 1
+    elif kind == 'proc': b['proc'] += 1
+    elapsed = time.time() - b['t0']
+    hit = (elapsed > MAX_SECONDS or b['llm'] > MAX_LLM_CALLS or b['proc'] > MAX_SUB_PROC)
+    if hit:
+        rep = '[budget] 超预算: %.0fs / llm=%d / proc=%d' % (elapsed, b['llm'], b['proc'])
+        append_meta_log('budget-hit', {'elapsed': elapsed})
+        return True, rep
+    return False, ''
+
+
+def budget_reset():
+    b = META_BUDGET
+    b['active'] = False
+    b['t0'] = 0
+    b['llm'] = 0
+    b['proc'] = 0
+
+
+def compare_failure_mode(expected, actual):
+    e = (expected or '').strip().lower()
+    a = (actual or '').strip().lower()
+    if not e:
+        return True, ''
+    ok = (e in a) or (a in e)
+    if not ok:
+        append_meta_log('expect-mismatch', {'expected': e, 'actual': a})
+        return False, '期望: ' + e + ' / 实得: ' + a
+    return True, ''
