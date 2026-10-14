@@ -296,4 +296,11 @@ object PythonBridge {
         return Python.getInstance().getModule("zagent_app")
             .callAttr("stop_stream")?.toString() ?: ""
     }
+ /** 分析模块 - Kotlin 直接调用，绕过命令字符串 */
+ fun analyzeAction(context: Context, action: String, arg: String): String {
+ ensureBootstrapped(context)
+ return Python.getInstance().getModule("zagent_app")
+ .callAttr("analyze_action", action, arg)?.toString() ?: ""
+ }
+
 }

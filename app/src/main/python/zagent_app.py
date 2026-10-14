@@ -722,3 +722,58 @@ def stop_stream():
         return json.dumps({'ok': True}, ensure_ascii=False)
     except Exception as e:
         return json.dumps({'ok': False, 'err': str(e)}, ensure_ascii=False)
+
+
+
+# ---------------- analyze action ----------------
+def analyze_action(action, arg):
+	'''Kotlin 直接调用的结构化接口。'''
+	import json as _j
+	try:
+		import rea_core as _rea
+	except Exception as e:
+		return _j.dumps({'ok': False, 'err': 'import rea_core 失败: ' + repr(e)}, ensure_ascii=False)
+	try:
+		if action == 'open':
+			return _j.dumps({'ok': True, 'target': arg, 'type': _rea.detect_type(arg)}, ensure_ascii=False)
+		if action == 'run':
+			sid, tt, ids = _rea.analyze(arg)
+			ev = _rea.Evidence(sid)
+			items = []
+			for eid in ids:
+				o = ev.show(eid)
+				items.append({'id': o['id'], 'type': o['type'],
+					'backend': o['backend'], 'confidence': o['confidence'],
+					'limitations': o.get('limitations', []),
+					'content_len': len(o.get('content', ''))})
+			return _j.dumps({'ok': True, 'sid': sid, 'type': tt,
+				'ids': ids, 'items': items}, ensure_ascii=False)
+		if action == 'sessions':
+			return _j.dumps({'ok': True, 'sessions': _rea.list_sessions()}, ensure_ascii=False)
+		if action == 'latest':
+			return _j.dumps({'ok': True, 'sid': _rea.latest_session()}, ensure_ascii=False)
+		if action == 'evidence':
+			ev = _rea.Evidence(arg)
+			names = [f.name for f in ev.ls()]
+			items = []
+			for n in names:
+				eid = n.replace('.json', '')
+				o = ev.show(eid)
+				items.append({'id': o['id'], 'type': o['type'],
+					'backend': o['backend'], 'confidence': o['confidence'],
+					'content_len': len(o.get('content', ''))})
+			return _j.dumps({'ok': True, 'sid': arg, 'items': items}, ensure_ascii=False)
+		if action == 'show':
+			p = _j.loads(arg)
+			o = _rea.Evidence(p['sid']).show(p['eid'])
+			if len(o.get('content', '')) > 20000:
+				o['content'] = o['content'][:20000] + '...(截断)'
+			return _j.dumps({'ok': True, 'item': o}, ensure_ascii=False)
+		if action == 'report':
+			return _j.dumps({'ok': True, 'md': _rea.report(arg)}, ensure_ascii=False)
+		if action == 'diff':
+			p = _j.loads(arg)
+			return _j.dumps({'ok': True, 'diff': _rea.diff_sessions(p['a'], p['b'])}, ensure_ascii=False)
+		return _j.dumps({'ok': False, 'err': '未知 action: ' + str(action)}, ensure_ascii=False)
+	except Exception as e:
+		return _j.dumps({'ok': False, 'err': repr(e)}, ensure_ascii=False)

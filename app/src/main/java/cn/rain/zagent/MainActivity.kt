@@ -2783,11 +2783,11 @@ QuickBtn("plugins", "插件", "plugin"),
 QuickBtn("clear", "清屏", "cmd:/clear"),
 QuickBtn("restart", "重启", "cmd:/restart"),
 
-QuickBtn("rea", "REA", "cmd:/rea help")
+QuickBtn("analyze", "分析", "analyze")
 )
 
 private fun defaultQuickButtons(): MutableList<QuickBtn> {
-val ids = listOf("idle", "rea", "contract", "versions", "plugins", "save", "clear")
+val ids = listOf("idle", "analyze", "contract", "versions", "plugins", "save", "clear")
 val out = mutableListOf<QuickBtn>()
 for (id in ids) {
 val b = allQuickCommands.firstOrNull { it.id == id }
@@ -2962,7 +2962,8 @@ return wrapper
 
 private fun dispatchQuick(b: QuickBtn) {
 when {
-b.action == "plugin" -> startActivity(Intent(this, PluginActivity::class.java))
+b.action == "analyze" -> showAnalyzePanel()
+ b.action == "plugin" -> startActivity(Intent(this, PluginActivity::class.java))
 b.action == "saveplugin" -> promptSavePlugin()
 b.action.startsWith("cmd:") -> sendCommand(b.action.removePrefix("cmd:"))
 }
@@ -3246,4 +3247,401 @@ private const val KEY_DRAFT = "input_draft"
 private const val BEG = "===REASONING_BEGIN==="
 private const val END = "===REASONING_END==="
 }
+private var analyzeTarget: String = ""
+private val analyzeFilePicker = registerForActivityResult(
+ActivityResultContracts.OpenDocument()
+) { uri ->
+if (uri != null) {
+val p = uriToPath(uri)
+if (p != null) {
+analyzeTarget = p
+toast("已选: " + p.substringAfterLast('/'))
+showAnalyzePanel()
+} else {
+toast("无法解析路径")
+}
+}
+}
+private fun uriToPath(uri: android.net.Uri): String? {
+return try {
+if (uri.scheme == "file") uri.path
+else {
+val f = java.io.File(cacheDir, "analyze" + U .. "tmp" + U .. "" + System.currentTimeMillis())
+contentResolver.openInputStream(uri)?.use { ins ->
+f.outputStream().use { outs -> ins.copyTo(outs) }
+}
+f.absolutePath
+}
+} catch (e: Exception) { null }
+}
+private fun pickAnalyzeFile() {
+analyzeFilePicker.launch(arrayOf("*/*"))
+}
+private fun pickInstalledApp() {
+threadRun {
+val pm = packageManager
+val apps = pm.getInstalledApplications(0)
+val items = mutableListOf<String>()
+for (ai in apps) {
+try {
+val label = pm.getApplicationLabel(ai).toString()
+val ap = pm.getApplicationInfo(ai.packageName, 0).sourceDir
+if (ap != null && ap.endsWith(".apk")) {
+items.add(label + "|" + ap)
+}
+} catch (e: Exception) { }
+}
+items.sort()
+runOnUiThread { showAppPicker(items) }
+}
+}
+private fun showAppPicker(items: MutableList<String>) {
+val names = Array(items.size) { i -> items[i].substringBefore('|') }
+android.app.AlertDialog.Builder(this)
+.setTitle("选择应用")
+.setItems(names) { _, i ->
+val path = items[i].substringAfter('|')
+analyzeTarget = path
+toast("已选: " + names[i])
+showAnalyzePanel()
+}
+.setNegativeButton("取消", null)
+.show()
+}
+private fun showAnalyzePanel() {
+val sheet = BottomSheetDialog(this)
+val root = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_sheet)
+setPadding(0, dp(8), 0, dp(18))
+}
+val handle = View(this).apply {
+setBackgroundResource(R.drawable.bg_handle)
+layoutParams = LinearLayout.LayoutParams(dp(36), dp(4)).apply {
+gravity = Gravity.CENTER_HORIZONTAL
+topMargin = dp(6); bottomMargin = dp(14)
+}
+}
+root.addView(handle)
+root.addView(TextView(this).apply {
+text = "分析"
+textSize = 22f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+setTypeface(null, android.graphics.Typeface.BOLD)
+setPadding(dp(22), 0, dp(22), dp(6))
+})
+val tgt = TextView(this).apply {
+text = if (analyzeTarget.isEmpty()) "未选择目标" else analyzeTarget
+textSize = 12f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+setPadding(dp(22), dp(2), dp(22), dp(10))
+setTextIsSelectable(true)
+}
+root.addView(tgt)
+root.addView(groupLabel("目标"))
+root.addView(settingsRow(R.drawable.ic_plus, "选择文件", "扫描 APK/DEX/JS/PY 等") { pickAnalyzeFile() })
+root.addView(settingsRow(R.drawable.ic_gear, "选择已装应用", "从系统应用列表选") { pickInstalledApp() })
+root.addView(groupLabel("操作"))
+root.addView(settingsRow(R.drawable.ic_arrow_up, "立即分析", "对当前目标跑一遍") {
+if (analyzeTarget.isEmpty()) {
+toast("先选目标")
+} else {
+sheet.dismiss()
+runAnalyze(analyzeTarget)
+}
+})
+root.addView(settingsRow(R.drawable.ic_refresh, "最近会话", "查看历史分析记录") {
+sheet.dismiss()
+showAnalyzeSessions()
+})
+root.addView(settingsRow(R.drawable.ic_info, "生成报告", "把最近一次分析导出为报告") {
+sheet.dismiss()
+runAnalyzeReport("")
+})
+sheet.setContentView(root)
+sheet.show()
+}
+
+private fun runAnalyze(path: String) {
+toast("分析中…")
+hideEmpty()
+val card = addAnalyzeCard(path, "running", null)
+threadRun { safeBridge {
+val res = PythonBridge.analyzeAction(this@MainActivity, "run", path)
+runOnUiThread {
+updateAnalyzeCard(card, path, res)
+}
+} }
+}
+private fun addAnalyzeCard(path: String, state: String, resJson: String?): LinearLayout {
+val card = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_card)
+setPadding(dp(14), dp(12), dp(14), dp(12))
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT,
+LinearLayout.LayoutParams.WRAP_CONTENT
+).apply { topMargin = dp(6); bottomMargin = dp(6) }
+}
+val title = TextView(this).apply {
+text = "分析 · " + path.substringAfterLast('/')
+textSize = 14f
+setTypeface(null, android.graphics.Typeface.BOLD)
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+}
+val sub = TextView(this).apply {
+text = "会话：准备中…"
+textSize = 12f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+setPadding(0, dp(4), 0, dp(6))
+}
+val steps = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+}
+val actions = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+setPadding(0, dp(6), 0, 0)
+}
+card.addView(title)
+card.addView(sub)
+card.addView(steps)
+card.addView(actions)
+card.tag = "card"
+chatContainer.addView(card)
+card.post { appearCardOnce(card) }
+outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+return card
+}
+private fun appearCardOnce(card: View) {
+if (MotionPrefs.reduceMotion(card)) return
+card.alpha = 0f
+card.translationY = 14f * resources.displayMetrics.density
+card.springY(0f, MotionTokens.appear())
+card.animate().alpha(1f).setDuration(MotionTokens.FADE_MS).start()
+}
+private fun updateAnalyzeCard(card: LinearLayout, path: String, resJson: String) {
+try {
+val o = org.json.JSONObject(resJson)
+val sub = card.getChildAt(1) as TextView
+val steps = card.getChildAt(2) as LinearLayout
+val actions = card.getChildAt(3) as LinearLayout
+steps.removeAllViews()
+actions.removeAllViews()
+if (!o.optBoolean("ok")) {
+sub.text = "失败：" + o.optString("err", "?")
+HapticTokens.warn(card)
+return
+}
+val sid = o.optString("sid", "")
+sub.text = "会话：" + sid
+val items = o.optJSONArray("items")
+val n = if (items != null) items.length() else 0
+for (i in 0 until n) {
+val it = items.getJSONObject(i)
+val row = TextView(this).apply {
+text = " · " + it.optString("id") + " " + it.optString("type") + " (" + it.optString("backend") + ") " + it.optInt("content_len") + "B"
+textSize = 12f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+setPadding(0, dp(2), 0, dp(2))
+}
+row.isClickable = true
+row.setOnClickListener {
+showEvidenceDetail(sid, it.optString("id"))
+}
+steps.addView(row)
+}
+val btnRep = TextView(this).apply {
+text = "查看报告"
+textSize = 13f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+setPadding(dp(8), dp(6), dp(8), dp(6))
+isClickable = true
+setBackgroundResource(R.drawable.bg_quick)
+}
+btnRep.setOnClickListener { HapticTokens.tap(it); runAnalyzeReport(sid) }
+val btnTrace = TextView(this).apply {
+text = "证据"
+textSize = 13f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+setPadding(dp(8), dp(6), dp(8), dp(6))
+isClickable = true
+setBackgroundResource(R.drawable.bg_quick)
+}
+btnTrace.setOnClickListener { HapticTokens.tap(it); showAnalyzeSessions() }
+actions.addView(btnRep)
+actions.addView(btnTrace)
+HapticTokens.success(card)
+outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+} catch (e: Exception) {
+val sub = card.getChildAt(1) as TextView
+sub.text = "解析失败：" + (e.message ?: "?")
+}
+}
+private fun showEvidenceDetail(sid: String, eid: String) {
+threadRun { safeBridge {
+val arg = "{"sid":"" + sid + "","eid":"" + eid + ""}"
+val res = PythonBridge.analyzeAction(this@MainActivity, "show", arg)
+runOnUiThread { renderEvidenceDetail(sid, eid, res) }
+} }
+}
+private fun renderEvidenceDetail(sid: String, eid: String, resJson: String) {
+try {
+val o = org.json.JSONObject(resJson)
+if (!o.optBoolean("ok")) { toast("读取失败"); return }
+val item = o.getJSONObject("item")
+val sheet = BottomSheetDialog(this)
+val root = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_sheet)
+setPadding(dp(20), dp(16), dp(20), dp(20))
+}
+val title = TextView(this).apply {
+text = eid + " · " + item.optString("type")
+textSize = 17f
+setTypeface(null, android.graphics.Typeface.BOLD)
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+}
+root.addView(title)
+val meta = TextView(this).apply {
+text = "backend: " + item.optString("backend") + " confidence: " + item.optString("confidence")
+textSize = 11f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+setPadding(0, dp(4), 0, dp(8))
+}
+root.addView(meta)
+val body = TextView(this).apply {
+text = item.optString("content", "")
+textSize = 11f
+typeface = android.graphics.Typeface.MONOSPACE
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+setTextIsSelectable(true)
+setPadding(0, dp(6), 0, dp(6))
+}
+val sv = android.widget.ScrollView(this).apply {
+addView(body)
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT, dp(360))
+}
+root.addView(sv)
+val copyBtn = TextView(this).apply {
+text = "复制全文"
+textSize = 13f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+setPadding(dp(8), dp(8), dp(8), dp(8))
+isClickable = true
+}
+copyBtn.setOnClickListener { HapticTokens.tap(it); copyText(item.optString("content", "")); toast("已复制") }
+root.addView(copyBtn)
+sheet.setContentView(root)
+sheet.show()
+} catch (e: Exception) { toast("异常：" + (e.message ?: "?")) }
+}
+private fun runAnalyzeReport(sid: String) {
+threadRun { safeBridge {
+val res = PythonBridge.analyzeAction(this@MainActivity, "report", sid)
+runOnUiThread { renderAnalyzeReport(sid, res) }
+} }
+}
+private fun renderAnalyzeReport(sid: String, resJson: String) {
+try {
+val o = org.json.JSONObject(resJson)
+if (!o.optBoolean("ok")) { toast("报告失败"); return }
+val md = o.optString("md", "")
+val sheet = BottomSheetDialog(this)
+val root = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_sheet)
+setPadding(dp(20), dp(16), dp(20), dp(20))
+}
+root.addView(TextView(this).apply {
+text = "分析报告"
+textSize = 20f
+setTypeface(null, android.graphics.Typeface.BOLD)
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+})
+val body = TextView(this).apply {
+text = md
+textSize = 11f
+typeface = android.graphics.Typeface.MONOSPACE
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+setTextIsSelectable(true)
+}
+val sv = android.widget.ScrollView(this).apply {
+addView(body)
+layoutParams = LinearLayout.LayoutParams(
+LinearLayout.LayoutParams.MATCH_PARENT, dp(400))
+}
+root.addView(sv)
+val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+val cp = TextView(this).apply {
+text = "复制报告"
+textSize = 13f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+setPadding(dp(8), dp(8), dp(8), dp(8))
+isClickable = true
+}
+cp.setOnClickListener { HapticTokens.tap(it); copyText(md); toast("已复制") }
+row.addView(cp)
+root.addView(row)
+sheet.setContentView(root)
+sheet.show()
+} catch (e: Exception) { toast("异常：" + (e.message ?: "?")) }
+}
+private fun showAnalyzeSessions() {
+threadRun { safeBridge {
+val res = PythonBridge.analyzeAction(this@MainActivity, "sessions", "")
+runOnUiThread { renderAnalyzeSessions(res) }
+} }
+}
+private fun renderAnalyzeSessions(resJson: String) {
+try {
+val o = org.json.JSONObject(resJson)
+if (!o.optBoolean("ok")) { toast("会话列表失败"); return }
+val arr = o.optJSONArray("sessions") ?: return
+val labels = mutableListOf<String>()
+val sids = mutableListOf<String>()
+for (i in 0 until arr.length()) {
+val s = arr.getJSONObject(i)
+sids.add(s.optString("sid"))
+labels.add(s.optString("sid") + " " + s.optString("type") + " " + s.optString("target").substringAfterLast('/'))
+}
+if (labels.isEmpty()) { toast("暂无会话"); return }
+android.app.AlertDialog.Builder(this)
+.setTitle("历史会话")
+.setItems(labels.toTypedArray()) { _, i ->
+showAnalyzeSessionDetail(sids[i])
+}
+.setNegativeButton("取消", null)
+.show()
+} catch (e: Exception) { toast("异常") }
+}
+private fun showAnalyzeSessionDetail(sid: String) {
+threadRun { safeBridge {
+val res = PythonBridge.analyzeAction(this@MainActivity, "evidence", sid)
+runOnUiThread { renderAnalyzeEvidenceList(sid, res) }
+} }
+}
+private fun renderAnalyzeEvidenceList(sid: String, resJson: String) {
+try {
+val o = org.json.JSONObject(resJson)
+if (!o.optBoolean("ok")) { toast("证据列表失败"); return }
+val arr = o.optJSONArray("items") ?: return
+val labels = mutableListOf<String>()
+val eids = mutableListOf<String>()
+for (i in 0 until arr.length()) {
+val it = arr.getJSONObject(i)
+eids.add(it.optString("id"))
+labels.add(it.optString("id") + " " + it.optString("type") + " " + it.optInt("content_len") + "B")
+}
+android.app.AlertDialog.Builder(this)
+.setTitle(sid)
+.setItems(labels.toTypedArray()) { _, i ->
+showEvidenceDetail(sid, eids[i])
+}
+.setPositiveButton("生成报告") { _, _ -> runAnalyzeReport(sid) }
+.setNegativeButton("关闭", null)
+.show()
+} catch (e: Exception) { toast("异常") }
+}
+
 }
