@@ -94,3 +94,90 @@ v.springScale(1f, MotionTokens.press())
 false
 }
 }
+// ─────────── 高层动画（第二批：错误/完成/列表/思考） ───────────
+
+// 错误抖动：Keyframe 左右衰减（一次 420ms）
+fun View.animateShake() {
+if (MotionPrefs.reduceMotion(this)) return
+val d = resources.displayMetrics.density
+val amp = 10f * d
+val kfs = arrayOf(
+android.animation.Keyframe.ofFloat(0f, 0f),
+android.animation.Keyframe.ofFloat(0.15f, amp),
+android.animation.Keyframe.ofFloat(0.30f, -amp * 0.8f),
+android.animation.Keyframe.ofFloat(0.45f, amp * 0.6f),
+android.animation.Keyframe.ofFloat(0.60f, -amp * 0.4f),
+android.animation.Keyframe.ofFloat(0.75f, amp * 0.25f),
+android.animation.Keyframe.ofFloat(1f, 0f)
+)
+val pvh = android.animation.PropertyValuesHolder.ofKeyframe(
+View.TRANSLATION_X, *kfs)
+val a = android.animation.ObjectAnimator.ofPropertyValuesHolder(this, pvh)
+a.duration = 420
+a.interpolator = PathInterpolator(0.36f, 0f, 0.66f, -0.56f)
+a.start()
+}
+
+// 错误卡片：红晕闪烁 + 抖动
+fun View.animateErrorCard() {
+if (MotionPrefs.reduceMotion(this)) return
+animateShake()
+val orig = background
+val halo = android.graphics.drawable.ColorDrawable(0x40FF4444.toInt())
+val sl = android.graphics.drawable.LayerDrawable(arrayOf(halo, orig))
+background = sl
+val a = android.animation.ObjectAnimator.ofInt(halo, "alpha", 0, 160, 0)
+a.duration = 700
+a.addListener(object : android.animation.AnimatorListenerAdapter() {
+override fun onAnimationEnd(anim: android.animation.Animator) {
+background = orig
+}
+})
+a.start()
+}
+
+// 完成：中心放大+轻微弹跳（缩放 spring + 淡入）
+fun View.animateFinish() {
+if (MotionPrefs.reduceMotion(this)) {
+alpha = 1f; scaleX = 1f; scaleY = 1f
+return
+}
+alpha = 0f
+scaleX = 0.5f; scaleY = 0.5f
+animate().alpha(1f).scaleX(1.06f).scaleY(1.06f).setDuration(160)
+.setInterpolator(PathInterpolator(0.34f, 1.2f, 0.64f, 1f)).start()
+postDelayed({
+springScale(1f, MotionTokens.appear())
+}, 160)
+}
+
+// 列表错开入场：对子 View 逐个 appearIn（默认 35ms 步进、封顶 300ms）
+fun View.animateStaggerIn(startDelayMs: Long = 0L) {
+val vg = this as? android.view.ViewGroup ?: return
+val n = vg.childCount
+for (i in 0 until n) {
+val c = vg.getChildAt(i) ?: continue
+val step = minOf(i.toLong() * MotionTokens.STAGGER_MS, MotionTokens.STAGGER_CAP_MS)
+val delay = startDelayMs + step
+c.alpha = 0f
+c.translationY = 14f * resources.displayMetrics.density
+c.postDelayed({
+c.springY(0f, MotionTokens.appear())
+c.animate().alpha(1f).setDuration(MotionTokens.FADE_MS)
+.setInterpolator(PathInterpolator(0.4f, 0f, 0.2f, 1f)).start()
+}, delay)
+}
+}
+
+// 思考中：一次呼吸（0.4 → 1.0）1.2s 一拍
+fun View.thinkingPulseOnce() {
+if (MotionPrefs.reduceMotion(this)) return
+animate().cancel()
+alpha = 1f
+animate().alpha(0.45f).setDuration(420)
+.setInterpolator(PathInterpolator(0.4f, 0f, 0.6f, 1f))
+.withEndAction {
+animate().alpha(1f).setDuration(420)
+.setInterpolator(PathInterpolator(0.4f, 0f, 0.6f, 1f)).start()
+}.start()
+}

@@ -436,12 +436,22 @@ HELP = (
     " /rea diff <sidA> <sidB> 两会话对比" + chr(10) +
     " /rea graph <sid> 证据关系图 Mermaid" + chr(10) +
     " /rea sessions 列会话" + chr(10) +
+    " /rea mcp [--port N] 起 MCP 服务" + chr(10) +
     " /rea help 本帮助")
 
 def cli(argv):
     if not argv:
         return HELP
     c = argv[0].lower()
+    if c == "mcp":
+        import rea_mcp
+        return rea_mcp.cli_mcp(argv)
+    if c == "mcp-stop":
+        import rea_mcp
+        return rea_mcp.cli_stop()
+    if c == "mcp-status":
+        import rea_mcp
+        return rea_mcp.cli_status()
     if c == "help":
         return HELP
     if c == "open":
