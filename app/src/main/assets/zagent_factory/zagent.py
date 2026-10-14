@@ -125,6 +125,69 @@ PLUGINS_DIR = os.path.join(HOME, "plugins")     # 插件（能力器官）
 
 # -- plugin enable state --
 PLUGINS_STATE = os.path.join(PLUGINS_DIR, ".state.json")
+EXTERNAL_PLUGINS_DIRS = [
+    os.environ.get("ZAGENT_EXTERNAL_PLUGINS_DIRS", ""),
+    "/sdcard/Download/zagent_plugins",
+    "/storage/emulated/0/Download/zagent_plugins",
+    os.path.join(HOME, "plugins_external"),
+]
+
+
+def sync_external_plugins():
+    """扫描外部目录，字节有变才覆盖到 PLUGINS_DIR。"""
+    synced = []
+    for ext in EXTERNAL_PLUGINS_DIRS:
+        if not ext or not os.path.isdir(ext):
+            continue
+        try:
+            names = os.listdir(ext)
+        except Exception:
+            continue
+        for fn in names:
+            if (not fn.endswith(".py")) or fn.startswith("_"):
+                continue
+            src = os.path.join(ext, fn)
+            dst = os.path.join(PLUGINS_DIR, fn)
+            try:
+                data = open(src, "rb").read()
+                cur = open(dst, "rb").read() if os.path.exists(dst) else None
+                if cur != data:
+                    open(dst, "wb").write(data)
+                    synced.append(fn)
+            except Exception:
+                pass
+    return synced
+
+
+def seed_external_plugins():
+    """首次启动：把内嵌种子写入外部目录。"""
+    target = None
+    for ext in EXTERNAL_PLUGINS_DIRS:
+        if not ext:
+            continue
+        if ext.startswith("/sdcard/") or ext.startswith("/storage/"):
+            target = ext
+            break
+    if target is None:
+        target = os.path.join(HOME, "plugins_external")
+    try:
+        os.makedirs(target, exist_ok=True)
+    except Exception:
+        return []
+    import base64
+    seeded = []
+    for pname, b64 in BUNDLED_PLUGINS.items():
+        dst = os.path.join(target, pname + ".py")
+        if os.path.exists(dst):
+            continue
+        try:
+            open(dst, "wb").write(base64.b64decode(b64))
+            seeded.append(pname)
+        except Exception:
+            pass
+    return seeded
+
+
 
 
 def _load_plugin_state():
@@ -2673,6 +2736,8 @@ def main():
     skill_files = [f for f in os.listdir(SKILLS_DIR)
                    if f.endswith(".md") or f.endswith(".txt")]
     _installed_pl = install_bundled_plugins()
+    ext_synced = sync_external_plugins()
+    seed_external_plugins()
     _ok_pl, _bad_pl = selfcheck_plugins()
     plugins, _p = scan_plugins()
     print("═" * 50)

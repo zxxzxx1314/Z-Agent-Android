@@ -370,6 +370,8 @@ def bootstrap(home_path):
         zag.messages.extend(_restored)
     try:
         zag.install_bundled_plugins()
+        zag.sync_external_plugins()
+        zag.seed_external_plugins()
         zag.selfcheck_plugins()
     except Exception as e:
         boot_buf.append("[插件] 初始化告警：%r\n" % e)

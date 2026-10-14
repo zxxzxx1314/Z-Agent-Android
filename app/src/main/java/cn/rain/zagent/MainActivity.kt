@@ -9,6 +9,8 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.view.Gravity
@@ -350,6 +352,7 @@ requestNotifyPermission()
 
 override fun onResume() {
     super.onResume()
+    ensureExternalAccess()
     if (!reportedStartup) {
         val ms = AppStartup.elapsed()
         if (ms in 1..30000) {
@@ -2416,6 +2419,26 @@ chatContainer.addView(card)
 outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
 card.post { bounceIn(card) }
 }
+
+
+    // -- 外部插件目录授权（方案 A）--
+    private fun ensureExternalAccess() {
+        if (android.os.Build.VERSION.SDK_INT < 30) return
+        if (Environment.isExternalStorageManager()) return
+        if (sp.getBoolean("ext_asked", false)) return
+        sp.edit().putBoolean("ext_asked", true).apply()
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("启用插件外部目录")
+            .setMessage("为了从 /sdcard/Download/zagent_plugins/ 热加载插件，需要「管理所有文件」权限。不授予也能用，只是插件走内置目录。")
+            .setPositiveButton("去设置") { _, _ ->
+                try {
+                    startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_SETTINGS,
+                        android.net.Uri.parse("package:" + packageName)))
+                } catch (e: Exception) { }
+            }
+            .setNegativeButton("以后再说", null)
+            .show()
+    }
 
 
 companion object {
