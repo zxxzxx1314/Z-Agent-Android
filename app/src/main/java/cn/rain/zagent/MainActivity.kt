@@ -69,13 +69,14 @@ private lateinit var segBuild: TextView
 private lateinit var btnPlus: FrameLayout
 private lateinit var chipThink2: TextView
 private lateinit var chipSearch: TextView
+private lateinit var chipMore: TextView
 private lateinit var attachScroll: HorizontalScrollView
 private lateinit var attachRow: LinearLayout
  private lateinit var scrollBottomBtn: FrameLayout
  // ── 快捷条（可收起/展开/自定义）──
  private var quickButtons: MutableList<QuickBtn> = mutableListOf()
  private var quickEditMode = false
- private var quickExpanded = false
+ private var quickExpanded = true
  private var quickEditRow: LinearLayout? = null
  private var quickDragFrom = -1
  private val quickAnimating = mutableSetOf<android.view.View>()
@@ -196,6 +197,7 @@ segBuild = findViewById(R.id.segBuild)
 btnPlus = findViewById(R.id.btnPlus)
 chipThink2 = findViewById(R.id.chipThink2)
 chipSearch = findViewById(R.id.chipSearch)
+chipMore = findViewById(R.id.chipMore)
 attachScroll = findViewById(R.id.attachScroll)
 attachRow = findViewById(R.id.attachRow)
 
@@ -312,6 +314,11 @@ refreshThinkChip()
 chipSearch.visibility = View.GONE
 refreshThinkChip()
  refreshSegVisual()
+
+chipMore.setOnClickListener {
+ haptic(it)
+ showMoreSheet()
+}
 
 inputEdit.setOnFocusChangeListener { _, hasFocus ->
     inputCard.setBackgroundResource(
@@ -2895,7 +2902,7 @@ quickBarContainer = findViewById(R.id.quickBarContainer)
 quickButtons = loadQuickButtons()
 rebuildQuickRow()
 
-quickToggleCollapsed.setOnClickListener { haptic(it); showMoreSheet() }
+quickToggleCollapsed.setOnClickListener { haptic(it); expandQuick() }
 quickCollapse.setOnClickListener { haptic(it); collapseQuick() }
 findViewById<View>(R.id.quickEditDone).setOnClickListener { haptic(it); exitQuickEdit() }
 quickBarContainer.setOnClickListener { if (quickEditMode) exitQuickEdit() }
