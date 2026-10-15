@@ -78,6 +78,8 @@ from zcore.util import _hide_artifact, _kill_process_tree, _restore_artifact, _w
 from zcore import gate as _gate
 from zcore import proc as zproc
 from zcore import checkpoint as zckpt
+from zcore import limiter as zlim
+from zcore import events as zevt
 from zcore import facts as zfacts
 
 import ast
@@ -1204,6 +1206,10 @@ def settle_contract(passed, reply_text):
             append_meta_log('claim-fail', {'reason': _crep})
         c["status"] = "passed"
         try:
+            zevt.emit('verify.passed', task=str(c.get('task', ''))[:120])
+        except Exception:
+            pass
+        try:
             zckpt.clear('active_task')
         except Exception:
             pass
@@ -1223,6 +1229,10 @@ def settle_contract(passed, reply_text):
     save_contract(c)      # v4.3：retry 时同样落盘，审计不丢次数
     if c["verify_attempts"] >= MAX_VERIFY_ATTEMPTS:
         c["status"] = "failed_final"
+        try:
+            zevt.emit('verify.failed_final', task=str(c.get('task', ''))[:120])
+        except Exception:
+            pass
         try:
             zckpt.clear('active_task')
         except Exception:
@@ -1247,6 +1257,10 @@ def begin_task_slot(desc):
                        % ACTIVE_CONTRACT["task"])
     ACTIVE_CONTRACT = None
     CURRENT_TASK = (desc or "")[:200]
+    try:
+        zevt.emit('task.begin', task=(CURRENT_TASK or '')[:120])
+    except Exception:
+        pass
 
 
     try:
@@ -2180,8 +2194,9 @@ def run_python_code(code: str):
     if not _ok:
         return 1, '', '[meta-gate 拒绝] ' + _rep
     budget_tick('proc')
-    rc, out, err, timed_out = _run_process(
-        [sys.executable, "-c", code], EXEC_TIMEOUT)
+    with zlim.guard():
+        rc, out, err, timed_out = _run_process(
+            [sys.executable, "-c", code], EXEC_TIMEOUT)
     if timed_out:
         return 124, clip_output(out), ("执行超时（>%d 秒），进程组已被强制终止。"
                                        % EXEC_TIMEOUT)
@@ -2712,6 +2727,25 @@ def handle_command(u: str):
                 for name, ts, _t, sz, note in rows:
                     print(' %s %s %dB %s' % (name, ts, sz, note))
                 print('(/resume clear <name> or /resume clear all)')
+    elif cmd == "/events":
+        parts = u.split(maxsplit=2)
+        if len(parts) >= 2 and parts[1] == "clear":
+            zevt.clear()
+            print("events cleared")
+        else:
+            n = 20
+            if len(parts) >= 2:
+                try:
+                    n = int(parts[1])
+                except Exception:
+                    pass
+            rows = zevt.tail(n)
+            print("events total=%d, last %d:" % (zevt.count(), len(rows)))
+            for r in rows:
+                print(" ", r.get("ts_str", "?"), r.get("kind", "?"), r)
+    elif cmd == "/limiter":
+        import json as _lj
+        print(_lj.dumps(zlim.status()))
     elif cmd == "/contract":
         parts = u.split(maxsplit=1)
         arg = parts[1].strip() if len(parts) > 1 else ""
