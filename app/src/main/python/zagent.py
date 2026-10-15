@@ -76,6 +76,7 @@ rain.py v4.5 —— 超级智能终端 Agent · 心智+基因+验收版（Termux
 """
 from zcore.util import _hide_artifact, _kill_process_tree, _restore_artifact, _without_scripts, apply_patch_tag, atomic_write, auto_notify, check_global_positions, extract_version, mask_literal, safe_child_env, show_exec_result, unwrap_code
 from zcore import gate as _gate
+from zcore import proc as zproc
 
 import ast
 import io
@@ -2061,14 +2062,19 @@ def _run_process(argv, timeout, env=None):
     out_file = tempfile.TemporaryFile()
     err_file = tempfile.TemporaryFile()
     try:
-        proc = subprocess.Popen(
-            argv,
-            stdin=subprocess.DEVNULL,      # 防止脚本/插件 input() 卡死终端
-            stdout=out_file,
-            stderr=err_file,
-            env=env if env is not None else safe_child_env(),
-            start_new_session=(os.name == "posix"),
-        )
+        try:
+            proc = subprocess.Popen(
+                argv,
+                stdin=subprocess.DEVNULL,      # 防止脚本/插件 input() 卡死终端
+                stdout=out_file,
+                stderr=err_file,
+                env=env if env is not None else safe_child_env(),
+                start_new_session=(os.name == "posix"),
+            )
+        except OSError as e:
+            rc = 127 if (argv and argv[0].startswith(chr(47)) and not os.path.exists(argv[0])) else -1
+            err = zproc.annotate(rc, str(e))
+            return rc, "", err, False
         timed_out = False
         try:
             rc = proc.wait(timeout=timeout)
@@ -2083,6 +2089,7 @@ def _run_process(argv, timeout, env=None):
         err_file.seek(0)
         out = out_file.read().decode("utf-8", "replace").rstrip()
         err = err_file.read().decode("utf-8", "replace").rstrip()
+        err = zproc.annotate(rc, err, timed_out)
         return rc, out, err, timed_out
     finally:
         out_file.close()
