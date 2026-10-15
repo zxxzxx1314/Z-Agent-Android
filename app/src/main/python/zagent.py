@@ -1338,6 +1338,22 @@ def _list_dir_brief(d, max_n=50):
 
 
 def _describe_image(path):
+    # P1.5 fact cache: key on (path, mtime, size); 300s TTL
+    try:
+        st = os.stat(path)
+        key = "desc_image:" + os.path.abspath(path) + ":" + str(int(st.st_mtime)) + ":" + str(st.st_size)
+    except OSError:
+        key = None
+    if key:
+        hit = zfacts.get(key)
+        if hit is not None:
+            return hit
+    out = _describe_image_impl(path)
+    if key:
+        zfacts.set(key, out, ttl=300)
+    return out
+
+def _describe_image_impl(path):
     lines = []
     try:
         sz = os.path.getsize(path)
@@ -1371,6 +1387,22 @@ def _describe_image(path):
 
 
 def _describe_text(path, max_bytes=10000):
+    # P1.5 fact cache: key on (path, mtime, size); 300s TTL
+    try:
+        st = os.stat(path)
+        key = "desc_text:" + os.path.abspath(path) + ":" + str(int(st.st_mtime)) + ":" + str(st.st_size)
+    except OSError:
+        key = None
+    if key:
+        hit = zfacts.get(key)
+        if hit is not None:
+            return hit
+    out = _describe_text_impl(path, max_bytes=10000)
+    if key:
+        zfacts.set(key, out, ttl=300)
+    return out
+
+def _describe_text_impl(path, max_bytes=10000):
     lines = []
     try:
         sz = os.path.getsize(path)
@@ -1391,6 +1423,22 @@ def _describe_text(path, max_bytes=10000):
 
 
 def _describe_pdf(path, max_pages=20):
+    # P1.5 fact cache: key on (path, mtime, size); 300s TTL
+    try:
+        st = os.stat(path)
+        key = "desc_pdf:" + os.path.abspath(path) + ":" + str(int(st.st_mtime)) + ":" + str(st.st_size)
+    except OSError:
+        key = None
+    if key:
+        hit = zfacts.get(key)
+        if hit is not None:
+            return hit
+    out = _describe_pdf_impl(path, max_pages=20)
+    if key:
+        zfacts.set(key, out, ttl=300)
+    return out
+
+def _describe_pdf_impl(path, max_pages=20):
     lines = []
     try:
         import pypdf
