@@ -2566,6 +2566,7 @@ HELP_TEXT = """可用命令：
   /plan /build          规划模式（硬禁止执行）/ 执行模式
   /auto                 切换 AUTO_EXECUTE（y 确认 / 免确认）
   /grant <lv> [act ...] [ttl=N] 授权；/revoke 收回；/gate 状态
+ /audit-pack 导出审计包（chain + anchors + 独立核验脚本）
   /skill add 名 内容     写入 ~/skills/名.md；/skill list 列出
   /save [插件名]         最近一次成功脚本 → ~/plugins/ 插件
   /clear /exit /help    清空记忆（挂起未验收合同）/ 退出 / 帮助
@@ -2718,6 +2719,13 @@ def handle_command(u: str):
         _gate.human_revoke_command()
     elif cmd == "/gate":
         print(_gate.format_status())
+    elif cmd == "/audit-pack":
+        _op = export_audit_pack()
+        if _op:
+            print("审计包已导出: %s" % _op)
+        else:
+            print("导出失败（可能无审计链）。")
+
     elif cmd == "/help":
         print(HELP_TEXT)
     else:
@@ -3048,16 +3056,46 @@ def chain_verify(logp=None, return_records=False):
 
 
 def export_audit_pack(out_dir=None):
+    """导出审计包：chain 记录 + anchors + 独立审计脚本源码。
+    默认输出到 /sdcard/Download/mind/exports/。"""
     logp = _chain_path()
     if not os.path.exists(logp):
         return None
-    out_dir = out_dir or os.path.join(HOME, 'exports')
+    out_dir = out_dir or '/sdcard/Download/mind/exports'
     try:
         os.makedirs(out_dir, exist_ok=True)
     except Exception:
         pass
     ok, recs, errs = chain_verify(logp, return_records=True)
-    pack = {'type': 'dreamcore-audit-pack', 'created': int(time.time()), 'chain_path': logp, 'records': recs, 'verify_ok': ok, 'verify_errors': errs}
+    anchor_dir = '/sdcard/Download/mind/anchors'
+    anchors = {}
+    if os.path.isdir(anchor_dir):
+        for _fn in sorted(os.listdir(anchor_dir)):
+            _p = os.path.join(anchor_dir, _fn)
+            if os.path.isfile(_p):
+                try:
+                    anchors[_fn] = open(_p, encoding='utf-8').read()
+                except Exception:
+                    pass
+    verify_src = ''
+    try:
+        _av = os.path.join(os.path.dirname(os.path.abspath(file)), 'zcore', 'audit_verify.py')
+        if os.path.exists(_av):
+            verify_src = open(_av, encoding='utf-8').read()
+    except Exception:
+        pass
+    pack = {
+        'type': 'dreamcore-audit-pack',
+        'version': 2,
+        'created': int(time.time()),
+        'chain_path': logp,
+        'records': recs,
+        'verify_ok': ok,
+        'verify_errors': errs,
+        'anchors_dir': anchor_dir,
+        'anchors': anchors,
+        'verify_script': verify_src,
+    }
     outp = os.path.join(out_dir, 'audit-pack-%d.json' % int(time.time()))
     try:
         with open(outp, 'w', encoding='utf-8') as f:
@@ -3065,7 +3103,6 @@ def export_audit_pack(out_dir=None):
     except Exception:
         return None
     return outp
-
 
 def meta_gate(action, ctx=None):
     if META_LEVEL == 'off':

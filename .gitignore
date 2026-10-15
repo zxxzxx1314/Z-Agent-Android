@@ -1,23 +1,23 @@
 
-build artifacts
+# build artifacts
 
 .gradle/
 build/
 local.properties
 
-backups
+# backups
 
 .bak
 .bak_
 
-python
+# python
 
-pycache/
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-IDE
+# IDE
 
 .idea/
 *.iml
