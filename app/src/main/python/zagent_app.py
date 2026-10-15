@@ -545,6 +545,15 @@ def set_auto(flag):
     return "AUTO_EXECUTE=%s" % (bool(flag),)
 
 
+def set_think(flag):
+    """切换 THINK_ENABLED：True 时 _post 与 _post_stream 会按厂商
+    往 payload 注入思考参数（thinking/enable_thinking/reasoning_effort）。
+    真流式思考需要模型支持 reasoning_content 字段。"""
+    if _zag:
+        _zag.THINK_ENABLED = bool(flag)
+    return "THINK_ENABLED=%s" % (bool(flag),)
+
+
 def reset_session():
     zag = _zag
     if not zag:

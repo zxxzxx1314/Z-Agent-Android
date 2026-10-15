@@ -244,7 +244,7 @@ findViewById<View>(R.id.promptCard3)?.setOnClickListener {
 haptic(it)
 inputEdit.setText("深度分析并总结下面这篇文档的核心论点：\n")
 inputEdit.setSelection(inputEdit.text.length)
-if (!thinkOn) { thinkOn = true; refreshThinkChip() }
+if (!thinkOn) { thinkOn = true; refreshThinkChip(); sp.edit().putBoolean(KEY_THINK, true).apply(); threadRun { safeBridge { try { PythonBridge.setThink(this@MainActivity, true) } catch (e: Exception) { } } } }
 }
 
 // ── 发送键状态色：空置灰、有字高亮 ──
@@ -292,6 +292,10 @@ findViewById<View>(R.id.settingsButton).setOnClickListener { haptic(it); showSet
 
 themeButton.setOnClickListener { haptic(it); toggleTheme() }
 
+// v6.4 restore thinkOn
+thinkOn = sp.getBoolean(KEY_THINK, false)
+refreshThinkChip()
+threadRun { safeBridge { try { PythonBridge.setThink(this@MainActivity, thinkOn) } catch (e: Exception) { } } }
 initQuickBar()
 refreshAutoSwitch(sp.getBoolean(KEY_AUTO_EXEC, false))
 
@@ -307,9 +311,11 @@ segPlan.setOnClickListener { haptic(it); setAppMode("plan") }
 segBuild.setOnClickListener { haptic(it); setAppMode("build") }
 
 chipThink2.setOnClickListener {
-haptic(it)
-thinkOn = !thinkOn
-refreshThinkChip()
+    haptic(it)
+    thinkOn = !thinkOn
+    refreshThinkChip()
+    sp.edit().putBoolean(KEY_THINK, thinkOn).apply()
+    threadRun { safeBridge { try { PythonBridge.setThink(this@MainActivity, thinkOn) } catch (e: Exception) { } } }
 }
 chipSearch.visibility = View.GONE
 refreshThinkChip()
@@ -1066,7 +1072,6 @@ val fullText = text + attachInfo
 pendingFiles.clear()
 refreshAttachRow()
 val payload = if (fullText.startsWith("/")) fullText
-else if (thinkOn) "/think " + fullText
 else if (appMode == "plan") "/plan " + fullText
 else fullText
 appendOutput("你> " + text + "\n")
@@ -3366,6 +3371,7 @@ private const val KEY_LIGHT_THEME = "light_theme"
  private const val KEY_AUTO_EXEC = "auto_exec"
  private const val KEY_QUICK_BUTTONS = "quick_buttons_v1"
 private const val KEY_DRAFT = "input_draft"
+private const val KEY_THINK = "think_on"
 private const val BEG = "===REASONING_BEGIN==="
 private const val END = "===REASONING_END==="
 }

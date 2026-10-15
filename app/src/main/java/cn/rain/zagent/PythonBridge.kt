@@ -242,6 +242,13 @@ object PythonBridge {
             .callAttr("set_auto", flag)?.toString() ?: ""
     }
 
+    /** v6.4 切换 THINK_ENABLED */
+    fun setThink(context: Context, flag: Boolean): String {
+        ensureBootstrapped(context)
+        return Python.getInstance().getModule("zagent_app")
+            .callAttr("set_think", flag)?.toString() ?: ""
+    }
+
     /** 清空会话（等价 /clear） */
     fun resetSession(context: Context): String {
         ensureBootstrapped(context)

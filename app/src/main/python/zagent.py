@@ -108,6 +108,31 @@ BASE_URL = os.environ.get("RAIN_BASE_URL", "https://api.deepseek.com/chat/comple
 # 详见下方 load_model()；zagent_app.bootstrap / main() 会用它刷新本变量。
 DEFAULT_MODEL = "deepseek-flash"
 MODEL = os.environ.get("RAIN_MODEL", DEFAULT_MODEL)
+
+THINK_ENABLED = False # v6.4：由 Kotlin 桥 set_think 切换；真流式思考
+
+def _thinking_params_for(base_url):
+    """按 BASE_URL 判断厂商，返回思考参数 dict。未知厂商返回 {}。"""
+    b = (base_url or "").lower()
+    if not b:
+        return {}
+    if ("deepseek" in b) or ("volces" in b) or ("siliconflow" in b) or ("sglang" in b):
+        return {"thinking": {"type": "enabled"}}
+    if ("bigmodel" in b) or ("zhipu" in b) or ("glm" in b) or ("chatglm" in b):
+        return {"thinking": {"type": "enabled"}}
+    if ("dashscope" in b) or ("aliyun" in b) or ("qwen" in b) or ("bailian" in b):
+        return {"enable_thinking": True}
+    if ("openai" in b) or ("azure" in b):
+        return {"reasoning_effort": "medium"}
+    return {"thinking": {"type": "enabled"}}
+
+def _apply_thinking(payload):
+    if not THINK_ENABLED:
+        return payload
+    extra = _thinking_params_for(BASE_URL)
+    if extra:
+        payload.update(extra)
+    return payload
 VERSION = 6.1             # v6.1: 字面区协议（标签误抓历史终结）+ /restart 自重启闭环 + 影子剧本 T0/T6；AI 进化时必须递增
 
 AUTO_EXECUTE = False      # False = 执行代码/插件/进化/验收前必须 y 确认
@@ -1948,6 +1973,8 @@ def _post(msgs, temperature=0.3):
     }
     payload = {"model": MODEL, "messages": msgs,
         "temperature": temperature, "stream": False}
+    _apply_thinking(payload)
+    _apply_thinking(payload)
     try:
         resp = _HTTP_SESSION.post(BASE_URL, headers=headers, json=payload,
             timeout=_POST_TIMEOUT)
@@ -2067,6 +2094,14 @@ def deep_think(task: str):
     current = _post(thread)
     if current is None:
         return None
+    try:
+        _STREAM_BUF.append(("reason", chr(10) + "[" + chr(31435) + chr(35770) + "] " + (current or "") + chr(10)))
+    except Exception:
+        pass
+    try:
+        _STREAM_BUF.append(("reason", chr(10) + "[立论] " + (current or "") + chr(10)))
+    except Exception:
+        pass
     thread.append({"role": "assistant", "content": current})
     print("[慢思考] 立论完成，进入 %d 轮批判-重构……" % THINK_ROUNDS)
     for i in range(THINK_ROUNDS):
@@ -2074,12 +2109,28 @@ def deep_think(task: str):
         critique = _post(thread)
         if critique is None:
             break
+        try:
+            _STREAM_BUF.append(("reason", chr(10) + "[" + chr(25209) + chr(21028) + " %d/%d] " % (i+1, THINK_ROUNDS) + (critique or "") + chr(10)))
+        except Exception:
+            pass
+        try:
+            _STREAM_BUF.append(("reason", chr(10) + "[批判 %d/%d] " % (i+1, THINK_ROUNDS) + (critique or "") + chr(10)))
+        except Exception:
+            pass
         thread.append({"role": "assistant", "content": critique})
         ask = FINAL_ASK if i == THINK_ROUNDS - 1 else SYNTH_ASK
         thread.append({"role": "user", "content": ask})
         merged = _post(thread)
         if merged is None:
             break
+        try:
+            _STREAM_BUF.append(("reason", chr(10) + "[" + chr(37325) + chr(26500) + " %d/%d] " % (i+1, THINK_ROUNDS) + (merged or "") + chr(10)))
+        except Exception:
+            pass
+        try:
+            _STREAM_BUF.append(("reason", chr(10) + "[重构 %d/%d] " % (i+1, THINK_ROUNDS) + (merged or "") + chr(10)))
+        except Exception:
+            pass
         current = merged
         thread.append({"role": "assistant", "content": merged})
         print("[慢思考] 第 %d/%d 轮重构完成。" % (i + 1, THINK_ROUNDS))
@@ -2987,6 +3038,8 @@ def _post_stream(msgs, temperature=0.3):
     }
     payload = {'model': MODEL, 'messages': msgs,
         'temperature': temperature, 'stream': True}
+    _apply_thinking(payload)
+    _apply_thinking(payload)
     try:
         resp = _HTTP_SESSION.post(BASE_URL, headers=headers, json=payload,
             timeout=_POST_TIMEOUT, stream=True)

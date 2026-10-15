@@ -75,6 +75,12 @@ rain.py v4.5 —— 超级智能终端 Agent · 心智+基因+验收版（Termux
      粘贴后自动保存，下次免输；随后即可对话，如「查电量」「发通知」。
 """
 from zcore.util import _hide_artifact, _kill_process_tree, _restore_artifact, _without_scripts, apply_patch_tag, atomic_write, auto_notify, check_global_positions, extract_version, mask_literal, safe_child_env, show_exec_result, unwrap_code
+from zcore import gate as _gate
+from zcore import proc as zproc
+from zcore import checkpoint as zckpt
+from zcore import limiter as zlim
+from zcore import events as zevt
+from zcore import facts as zfacts
 
 import ast
 import io
@@ -102,6 +108,31 @@ BASE_URL = os.environ.get("RAIN_BASE_URL", "https://api.deepseek.com/chat/comple
 # 详见下方 load_model()；zagent_app.bootstrap / main() 会用它刷新本变量。
 DEFAULT_MODEL = "deepseek-flash"
 MODEL = os.environ.get("RAIN_MODEL", DEFAULT_MODEL)
+
+THINK_ENABLED = False # v6.4：由 Kotlin 桥 set_think 切换；真流式思考
+
+def _thinking_params_for(base_url):
+    """按 BASE_URL 判断厂商，返回思考参数 dict。未知厂商返回 {}。"""
+    b = (base_url or "").lower()
+    if not b:
+        return {}
+    if ("deepseek" in b) or ("volces" in b) or ("siliconflow" in b) or ("sglang" in b):
+        return {"thinking": {"type": "enabled"}}
+    if ("bigmodel" in b) or ("zhipu" in b) or ("glm" in b) or ("chatglm" in b):
+        return {"thinking": {"type": "enabled"}}
+    if ("dashscope" in b) or ("aliyun" in b) or ("qwen" in b) or ("bailian" in b):
+        return {"enable_thinking": True}
+    if ("openai" in b) or ("azure" in b):
+        return {"reasoning_effort": "medium"}
+    return {"thinking": {"type": "enabled"}}
+
+def _apply_thinking(payload):
+    if not THINK_ENABLED:
+        return payload
+    extra = _thinking_params_for(BASE_URL)
+    if extra:
+        payload.update(extra)
+    return payload
 VERSION = 6.1             # v6.1: 字面区协议（标签误抓历史终结）+ /restart 自重启闭环 + 影子剧本 T0/T6；AI 进化时必须递增
 
 AUTO_EXECUTE = False      # False = 执行代码/插件/进化/验收前必须 y 确认
@@ -118,6 +149,56 @@ REFLECT_EVOLVE_HINT = 5   # 反思每积累几条就建议一次 /evolve
 MAX_OUTPUT_CHARS = 24000  # 回传给 AI 的单段输出截断上限（头尾保留）
 MAX_SOURCE_BYTES = 2 * 1024 * 1024   # 进化候选源码大小上限
 SHADOW_TIMEOUT = 300        # v6.0 影子沙箱单次验证超时（秒）
+
+# ===== 元认知层（soft 默认；META_LEVEL=off 一键关闭）=====
+META_LEVEL = "soft"
+
+# 权限分级（P1）
+L0_OBSERVE = 0 # 观察：只读，零副作用
+L1_ADVISE = 1 # 建议：可输出建议，不能执行
+L2_SEMI = 2 # 半自主：低风险执行，事后审计
+L3_AUTO = 3 # 自主：高风险执行，事前签名
+
+GRANT_LEVEL = 2 # 当前授予等级，默认 L2 半自主
+GRANT_TS = 0 # 授予时间戳
+GRANT_TTL = 3600 # 授予有效期（秒）；0=永久；过期自动降回默认
+
+
+def grant_level(level, reason='', ttl=3600, actor='human:local'):
+    global GRANT_LEVEL, GRANT_TS, GRANT_TTL
+    GRANT_LEVEL = int(level)
+    GRANT_TS = int(time.time())
+    GRANT_TTL = int(ttl)
+    append_meta_log('grant', {
+        'level': GRANT_LEVEL, 'reason': reason, 'ttl': GRANT_TTL},
+        actor=actor)
+    return GRANT_LEVEL
+
+
+def current_level():
+    global GRANT_LEVEL, GRANT_TS, GRANT_TTL
+    if GRANT_TTL > 0 and GRANT_TS > 0:
+        if (time.time() - GRANT_TS) > GRANT_TTL:
+            GRANT_LEVEL = 2 # 过期降回 L2
+            GRANT_TS = int(time.time())
+    return GRANT_LEVEL
+
+
+def required_level(action):
+    lv = classify_action(action)
+    if lv == 'HIGH': return 3
+    if lv == 'MED': return 2
+    return 1
+
+MAX_SECONDS = 600
+MAX_LLM_CALLS = 30
+MAX_SUB_PROC = 50
+META_LOG = '' # 惰性：首次使用时按 HOME 计算
+META_BUDGET = {"t0": 0, "llm": 0, "proc": 0, "active": False}
+
+def meta_level():
+	return META_LEVEL
+
 
 HOME = os.path.expanduser("~")
 SKILLS_DIR = os.path.join(HOME, "skills")       # 表型记忆（经验笔记）
@@ -825,6 +906,7 @@ def apply_evolution(source: str, reason: str):
     """进化主流程：静态验证 → 原子落盘候选 → 隔离冒烟 → 影子闸门
     （假 LLM 全链路会话）→ 备份旧基因 → 原子替换主文件。
     任何一步失败，旧版本毫发无损。"""
+    _gate.check_or_raise("evolve", {"reason": (reason or "")[:200]})
     source = source.strip()
     if len(source.encode("utf-8", "ignore")) > MAX_SOURCE_BYTES:
         return False, "候选源码超过 %d 字节上限，疑似异常输出。" % MAX_SOURCE_BYTES
@@ -1142,7 +1224,20 @@ def settle_contract(passed, reply_text):
         return "ok"
     c["verify_attempts"] += 1
     if passed:
+        _cl = extract_claims(reply_text or '')
+        _cok, _crep = validate_claims(_cl)
+        if not _cok and _cl:
+            print('[claim 校验失败] ' + _crep)
+            append_meta_log('claim-fail', {'reason': _crep})
         c["status"] = "passed"
+        try:
+            zevt.emit('verify.passed', task=str(c.get('task', ''))[:120])
+        except Exception:
+            pass
+        try:
+            zckpt.clear('active_task')
+        except Exception:
+            pass
         save_contract(c)
         append_journal("验收通过", c["task"])
         # 未完成待办 → 登记为自主问题（好奇心联动：未竟之事不消失）
@@ -1159,6 +1254,14 @@ def settle_contract(passed, reply_text):
     save_contract(c)      # v4.3：retry 时同样落盘，审计不丢次数
     if c["verify_attempts"] >= MAX_VERIFY_ATTEMPTS:
         c["status"] = "failed_final"
+        try:
+            zevt.emit('verify.failed_final', task=str(c.get('task', ''))[:120])
+        except Exception:
+            pass
+        try:
+            zckpt.clear('active_task')
+        except Exception:
+            pass
         save_contract(c)
         append_journal("验收终局失败",
                        "%s（%d 次未过）" % (c["task"], c["verify_attempts"]))
@@ -1179,6 +1282,16 @@ def begin_task_slot(desc):
                        % ACTIVE_CONTRACT["task"])
     ACTIVE_CONTRACT = None
     CURRENT_TASK = (desc or "")[:200]
+    try:
+        zevt.emit('task.begin', task=(CURRENT_TASK or '')[:120])
+    except Exception:
+        pass
+
+
+    try:
+        zckpt.save('active_task', {'task': CURRENT_TASK, 'pid': os.getpid()}, note='open')
+    except Exception:
+        pass
 
 
 
@@ -1247,7 +1360,7 @@ def _extract_archive(path):
     return None, "不支持的压缩格式: %s" % ext
 
 
-def _list_dir_brief(d, max_n=50):
+def _list_dir_brief_impl(d, max_n=50):
     out = []
     base_len = len(d.rstrip("/")) + 1
     cnt = 0
@@ -1267,7 +1380,34 @@ def _list_dir_brief(d, max_n=50):
     return out
 
 
+def _list_dir_brief(d, max_n=50):
+    # P1 fact cache: dir listing most-repeated probe; 60s TTL.
+    key = "list_dir:" + os.path.abspath(d) + ":" + str(max_n)
+    hit = zfacts.get(key)
+    if hit is not None:
+        return hit
+    out = _list_dir_brief_impl(d, max_n)
+    zfacts.set(key, out, ttl=60)
+    return out
+
+
 def _describe_image(path):
+    # P1.5 fact cache: key on (path, mtime, size); 300s TTL
+    try:
+        st = os.stat(path)
+        key = "desc_image:" + os.path.abspath(path) + ":" + str(int(st.st_mtime)) + ":" + str(st.st_size)
+    except OSError:
+        key = None
+    if key:
+        hit = zfacts.get(key)
+        if hit is not None:
+            return hit
+    out = _describe_image_impl(path)
+    if key:
+        zfacts.set(key, out, ttl=300)
+    return out
+
+def _describe_image_impl(path):
     lines = []
     try:
         sz = os.path.getsize(path)
@@ -1301,6 +1441,22 @@ def _describe_image(path):
 
 
 def _describe_text(path, max_bytes=10000):
+    # P1.5 fact cache: key on (path, mtime, size); 300s TTL
+    try:
+        st = os.stat(path)
+        key = "desc_text:" + os.path.abspath(path) + ":" + str(int(st.st_mtime)) + ":" + str(st.st_size)
+    except OSError:
+        key = None
+    if key:
+        hit = zfacts.get(key)
+        if hit is not None:
+            return hit
+    out = _describe_text_impl(path, max_bytes=10000)
+    if key:
+        zfacts.set(key, out, ttl=300)
+    return out
+
+def _describe_text_impl(path, max_bytes=10000):
     lines = []
     try:
         sz = os.path.getsize(path)
@@ -1321,6 +1477,22 @@ def _describe_text(path, max_bytes=10000):
 
 
 def _describe_pdf(path, max_pages=20):
+    # P1.5 fact cache: key on (path, mtime, size); 300s TTL
+    try:
+        st = os.stat(path)
+        key = "desc_pdf:" + os.path.abspath(path) + ":" + str(int(st.st_mtime)) + ":" + str(st.st_size)
+    except OSError:
+        key = None
+    if key:
+        hit = zfacts.get(key)
+        if hit is not None:
+            return hit
+    out = _describe_pdf_impl(path, max_pages=20)
+    if key:
+        zfacts.set(key, out, ttl=300)
+    return out
+
+def _describe_pdf_impl(path, max_pages=20):
     lines = []
     try:
         import pypdf
@@ -1574,18 +1746,6 @@ BASE_PROMPT = """你是 Z-Agent，一个运行在 Android 手机 Termux 终端�
 3.【程序员】输出代码：[script:]...可直接运行的 Python...[script]
   每段脚本前必须有一行 [desc]一句话目的[/desc]。
 
-【交互卡片协议（可选）】
-- 需要用户做选择/填参数/确认时，在回复里输出一个 [ui]...[/ui] 块，
- 内容是一段合法 JSON（半角双引号）：
- [ui]{"type":"form","title":"标题","components":[
- {"type":"select","name":"pick","label":"选哪个","options":[
- {"value":"a","label":"选项一"},{"value":"b","label":"选项二"}]},
- {"type":"input","name":"notes","label":"备注"},
- {"type":"button","label":"执行","action":"go"}]}[/ui]
-- 宿主渲染成卡片，用户点击后以 JSON 回传。
-- 组件类型：text / input / select / switch / button。
-- 只在真正需要用户决策时用；纯汇报或能自己判断的，直接干活别问。
-
 【字面区协议（v6.1+，重要）】
 - 需要展示标签的字面形态（解释协议、教学示例、贴片段）时，用
   [literal]...[/literal] 包裹：区内一切字符（包括 [script:]、
@@ -1676,7 +1836,18 @@ BASE_PROMPT = """你是 Z-Agent，一个运行在 Android 手机 Termux 终端�
 【回传语义】
 - 「【系统自动回传】」= 脚本/插件/进化/验收的真实结果：
   未完成→继续修复或推进；已完成→文字总结+[reflect]，不再输出代码。
-- 退出码 0 但无输出 ≠ 任务完成，宿主会提示你确认实际效果。
+- 
+
+【交互按钮协议（重要）】
+- 当你需要让用户执行某个宿主命令（/evolve、/build、/think、/resume、
+ /events、/limiter、/contract、/restart、/grant 等）时，不要只写
+ 「请输入 /xxx」——改为在回复中单独一行输出：
+ [btn:按钮文案|/命令]
+ 宿主会把它渲染成可点击按钮，用户点击即执行该命令。
+- 按钮标签必须独占一行；命令部分必须是宿主的合法 / 命令。
+- 同一处尽量只给一个按钮；按钮文案 2-4 字最佳。
+- 示例：'切换 /build 后可执行：' + 独立一行 [btn:切换构建|/build]
+退出码 0 但无输出 ≠ 任务完成，宿主会提示你确认实际效果。
 """
 
 PLAN_RULES = """
@@ -1733,7 +1904,17 @@ def build_system_prompt() -> str:
     if problems:
         pb_text = ("\n\n【待自主探索的问题队列（%d 个，/idle 时领取）】"
                    % len(problems) + "".join("\n- " + p for p in problems[:20]))
-    return (load_identity() + "\n" + BASE_PROMPT + mode_text + skills_text
+    _meta_text = ''
+    try:
+        _lvl = current_level()
+        _chainok, _ = chain_verify()
+        _meta_text = _meta_text + chr(10) + '[权限] GRANT_LEVEL=' + str(_lvl) + ' (0=观察/1=建议/2=半自主/3=自主)'
+        _meta_text = _meta_text + chr(10) + '[审计] 链式日志 verify=' + ('OK' if _chainok else 'TAMPERED') + ' ; 路径 mind/audit-chain.jsonl'
+    except Exception:
+        pass
+    if META_LEVEL != 'off':
+        _meta_text = _meta_text + (chr(10) + chr(10) + '【元认知协议】' + chr(10) + '下结论必须四元组：' + chr(10) + ' [claim] 命题' + chr(10) + ' [confidence] static|dynamic|inferred' + chr(10) + ' [basis] ev-id 列表或 无' + chr(10) + ' [unknowns] 无法检测的部分' + chr(10) + '置信度不得高于其最弱依据。' + chr(10) + 'META_LEVEL=' + META_LEVEL)
+    return (_meta_text + load_identity() + "\n" + BASE_PROMPT + mode_text + skills_text
             + plugins_text + pb_text
             + "\n\n【自身状态】当前基因版本 v%s，代数 Gen-%d。"
             % (VERSION, get_gen()))
@@ -1792,6 +1973,8 @@ def _post(msgs, temperature=0.3):
     }
     payload = {"model": MODEL, "messages": msgs,
         "temperature": temperature, "stream": False}
+    _apply_thinking(payload)
+    _apply_thinking(payload)
     try:
         resp = _HTTP_SESSION.post(BASE_URL, headers=headers, json=payload,
             timeout=_POST_TIMEOUT)
@@ -1844,7 +2027,6 @@ def _display_body(text):
     """显示美化函数体：进化/脚本剥离 + 标签美化，返回纯文本。
     v6.1 从 display_reply 拆出，供字面区分段渲染复用。"""
     text = strip_evolution(text)
-    text = _strip_ui(text)
     try:
         blocks = _script_blocks(text)
     except ValueError:
@@ -1912,6 +2094,14 @@ def deep_think(task: str):
     current = _post(thread)
     if current is None:
         return None
+    try:
+        _STREAM_BUF.append(("reason", chr(10) + "[" + chr(31435) + chr(35770) + "] " + (current or "") + chr(10)))
+    except Exception:
+        pass
+    try:
+        _STREAM_BUF.append(("reason", chr(10) + "[立论] " + (current or "") + chr(10)))
+    except Exception:
+        pass
     thread.append({"role": "assistant", "content": current})
     print("[慢思考] 立论完成，进入 %d 轮批判-重构……" % THINK_ROUNDS)
     for i in range(THINK_ROUNDS):
@@ -1919,12 +2109,28 @@ def deep_think(task: str):
         critique = _post(thread)
         if critique is None:
             break
+        try:
+            _STREAM_BUF.append(("reason", chr(10) + "[" + chr(25209) + chr(21028) + " %d/%d] " % (i+1, THINK_ROUNDS) + (critique or "") + chr(10)))
+        except Exception:
+            pass
+        try:
+            _STREAM_BUF.append(("reason", chr(10) + "[批判 %d/%d] " % (i+1, THINK_ROUNDS) + (critique or "") + chr(10)))
+        except Exception:
+            pass
         thread.append({"role": "assistant", "content": critique})
         ask = FINAL_ASK if i == THINK_ROUNDS - 1 else SYNTH_ASK
         thread.append({"role": "user", "content": ask})
         merged = _post(thread)
         if merged is None:
             break
+        try:
+            _STREAM_BUF.append(("reason", chr(10) + "[" + chr(37325) + chr(26500) + " %d/%d] " % (i+1, THINK_ROUNDS) + (merged or "") + chr(10)))
+        except Exception:
+            pass
+        try:
+            _STREAM_BUF.append(("reason", chr(10) + "[重构 %d/%d] " % (i+1, THINK_ROUNDS) + (merged or "") + chr(10)))
+        except Exception:
+            pass
         current = merged
         thread.append({"role": "assistant", "content": merged})
         print("[慢思考] 第 %d/%d 轮重构完成。" % (i + 1, THINK_ROUNDS))
@@ -1961,6 +2167,7 @@ def _run_inproc(code, timeout):
       - 超时无法强杀线程：只能放弃等待（线程泄漏由系统回收）
     Termux 环境不走此路径（ZAGENT_NO_SUBPROCESS 未设时保持子进程模式）。
     返回 (退出码, stdout, stderr, 是否超时)。"""
+    _gate.check_or_raise("script.run", {"site": "inproc"})
     import concurrent.futures
     import io
     import contextlib
@@ -1997,6 +2204,7 @@ def _run_process(argv, timeout, env=None):
     返回 (退出码, stdout, stderr, 是否超时)。
     APK 模式（ZAGENT_NO_SUBPROCESS=1）：[python, -c, code] 请求降级为
     进程内执行（见 _run_inproc 文档字符串的诚实边界）。"""
+    _gate.check_or_raise("subprocess.run", {"argv0": argv[0] if argv else ""})
     if (os.environ.get("ZAGENT_NO_SUBPROCESS") == "1"
             and len(argv) >= 3 and argv[0] == sys.executable
             and argv[1] == "-c"):
@@ -2005,14 +2213,19 @@ def _run_process(argv, timeout, env=None):
     out_file = tempfile.TemporaryFile()
     err_file = tempfile.TemporaryFile()
     try:
-        proc = subprocess.Popen(
-            argv,
-            stdin=subprocess.DEVNULL,      # 防止脚本/插件 input() 卡死终端
-            stdout=out_file,
-            stderr=err_file,
-            env=env if env is not None else safe_child_env(),
-            start_new_session=(os.name == "posix"),
-        )
+        try:
+            proc = subprocess.Popen(
+                argv,
+                stdin=subprocess.DEVNULL,      # 防止脚本/插件 input() 卡死终端
+                stdout=out_file,
+                stderr=err_file,
+                env=env if env is not None else safe_child_env(),
+                start_new_session=(os.name == "posix"),
+            )
+        except OSError as e:
+            rc = 127 if (argv and argv[0].startswith(chr(47)) and not os.path.exists(argv[0])) else -1
+            err = zproc.annotate(rc, str(e))
+            return rc, "", err, False
         timed_out = False
         try:
             rc = proc.wait(timeout=timeout)
@@ -2027,6 +2240,7 @@ def _run_process(argv, timeout, env=None):
         err_file.seek(0)
         out = out_file.read().decode("utf-8", "replace").rstrip()
         err = err_file.read().decode("utf-8", "replace").rstrip()
+        err = zproc.annotate(rc, err, timed_out)
         return rc, out, err, timed_out
     finally:
         out_file.close()
@@ -2037,8 +2251,14 @@ def _run_process(argv, timeout, env=None):
 
 def run_python_code(code: str):
     """子进程执行脚本，返回 (退出码, stdout, stderr)（已截断）。"""
-    rc, out, err, timed_out = _run_process(
-        [sys.executable, "-c", code], EXEC_TIMEOUT)
+    _ok, _rep = meta_gate('run_python_code', {'reversible': False})
+    if _rep: print(_rep)
+    if not _ok:
+        return 1, '', '[meta-gate 拒绝] ' + _rep
+    budget_tick('proc')
+    with zlim.guard():
+        rc, out, err, timed_out = _run_process(
+            [sys.executable, "-c", code], EXEC_TIMEOUT)
     if timed_out:
         return 124, clip_output(out), ("执行超时（>%d 秒），进程组已被强制终止。"
                                        % EXEC_TIMEOUT)
@@ -2186,6 +2406,8 @@ def agent_loop(first_reply=None):
     evolve_fails = 0          # 进化连续失败计数
 
     for _round in range(MAX_ROUNDS):
+        _bhit, _brep = budget_tick('llm')
+        if _brep: print(_brep)
         if first_reply is not None:
             reply = first_reply
             first_reply = None
@@ -2212,8 +2434,6 @@ def agent_loop(first_reply=None):
         control = _without_scripts(text, blocks) if blocks else text
 
         display_reply(reply)
-        for _s, _e, _spec in _ui_blocks(reply):
-            emit_ui(_spec.strip())
         update_todos(control)
         render_todos()
 
@@ -2504,6 +2724,8 @@ HELP_TEXT = """可用命令：
   /contract [放弃]       查看当前验收合同 / 主动放弃
   /plan /build          规划模式（硬禁止执行）/ 执行模式
   /auto                 切换 AUTO_EXECUTE（y 确认 / 免确认）
+  /grant <lv> [act ...] [ttl=N] 授权；/revoke 收回；/gate 状态
+ /audit-pack 导出审计包（chain + anchors + 独立核验脚本）
   /skill add 名 内容     写入 ~/skills/名.md；/skill list 列出
   /save [插件名]         最近一次成功脚本 → ~/plugins/ 插件
   /clear /exit /help    清空记忆（挂起未验收合同）/ 退出 / 帮助
@@ -2539,12 +2761,53 @@ def handle_command(u: str):
     elif cmd == "/restart":
         # v6.1：自重启闭环——进化后无需退出重跑，会话持久化 +
         # 经 boot_guard 自检（坏基因自动回滚）→ 新我上线。
+        _gate.check_or_raise("restart", {"site": "handle_command"})
         print("[重启] 会话已持久化；经由 boot_guard 自检后重启……")
         save_session(messages)
         _bg = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "zcore", "boot_guard.py")
         _target = _bg if os.path.exists(_bg) else os.path.abspath(__file__)
         os.execv(sys.executable, [sys.executable, _target])
+    elif cmd == "/resume":
+        parts = u.split(maxsplit=2)
+        if len(parts) >= 3 and parts[1] == "clear":
+            if parts[2] == "all":
+                n = 0
+                for name, _a, _b, _c, _d in zckpt.list_all():
+                    if zckpt.clear(name):
+                        n += 1
+                print('cleared %d checkpoints' % n)
+            else:
+                ok = zckpt.clear(parts[2])
+                print('clear %s: %s' % (parts[2], ok))
+        else:
+            rows = zckpt.list_all()
+            if not rows:
+                print('no checkpoints')
+            else:
+                print('checkpoints (newest first):')
+                for name, ts, _t, sz, note in rows:
+                    print(' %s %s %dB %s' % (name, ts, sz, note))
+                print('(/resume clear <name> or /resume clear all)')
+    elif cmd == "/events":
+        parts = u.split(maxsplit=2)
+        if len(parts) >= 2 and parts[1] == "clear":
+            zevt.clear()
+            print("events cleared")
+        else:
+            n = 20
+            if len(parts) >= 2:
+                try:
+                    n = int(parts[1])
+                except Exception:
+                    pass
+            rows = zevt.tail(n)
+            print("events total=%d, last %d:" % (zevt.count(), len(rows)))
+            for r in rows:
+                print(" ", r.get("ts_str", "?"), r.get("kind", "?"), r)
+    elif cmd == "/limiter":
+        import json as _lj
+        print(_lj.dumps(zlim.status()))
     elif cmd == "/contract":
         parts = u.split(maxsplit=1)
         arg = parts[1].strip() if len(parts) > 1 else ""
@@ -2644,8 +2907,24 @@ def handle_command(u: str):
     elif cmd == "/skill":
         handle_skill(u)
     elif cmd == "/auto":
+        if not AUTO_EXECUTE:
+            _gate.check_or_raise("evolve", {"site": "auto-toggle"})
         AUTO_EXECUTE = not AUTO_EXECUTE
         print("AUTO_EXECUTE 已切换为 %s" % AUTO_EXECUTE)
+    elif cmd == "/grant":
+        parts = u.split(maxsplit=1)
+        _gate.human_grant_command(parts[1] if len(parts) > 1 else "")
+    elif cmd == "/revoke":
+        _gate.human_revoke_command()
+    elif cmd == "/gate":
+        print(_gate.format_status())
+    elif cmd == "/audit-pack":
+        _op = export_audit_pack()
+        if _op:
+            print("审计包已导出: %s" % _op)
+        else:
+            print("导出失败（可能无审计链）。")
+
     elif cmd == "/help":
         print(HELP_TEXT)
     else:
@@ -2693,6 +2972,8 @@ def main():
     print("  /help 命令；/think 深思；/idle 自主；/evolve 进化")
     print("═" * 50)
     while True:
+        _gate.kill_check()
+    while True:
         try:
             user_input = input("\n你> ").strip()
         except (KeyboardInterrupt, EOFError):
@@ -2733,43 +3014,16 @@ def emit_step(idx, total, label, status, elapsed_ms=None):
         pass
 
 
-def emit_ui(spec_json):
+
+def emit_button(label, cmd, hint=None):
     try:
-        _STREAM_BUF.append(("ui", str(spec_json)))
+        import json as _jb
+        obj = {'label': str(label)[:40], 'cmd': str(cmd)}
+        if hint:
+            obj['hint'] = str(hint)[:120]
+        _STREAM_BUF.append(('btn', _jb.dumps(obj, ensure_ascii=False)))
     except Exception:
         pass
-
-
-def _ui_blocks(text):
-    out = []
-    cursor = 0
-    OPEN = "[ui]"
-    CLOSE = "[/ui]"
-    while True:
-        s = text.find(OPEN, cursor)
-        if s < 0:
-            return out
-        e = text.find(CLOSE, s + len(OPEN))
-        if e < 0:
-            return out
-        out.append((s, e + len(CLOSE), text[s + len(OPEN):e]))
-        cursor = e + len(CLOSE)
-
-
-def _strip_ui(text):
-    blocks = _ui_blocks(text)
-    if not blocks:
-        return text
-    out = []
-    pos = 0
-    for s, e, _b in blocks:
-        out.append(text[pos:s])
-        out.append("\n[已渲染交互卡片]")
-        pos = e
-    out.append(text[pos:])
-    return "".join(out)
-
-
 
 def _post_stream(msgs, temperature=0.3):
     global _REASONING_BUF
@@ -2784,6 +3038,8 @@ def _post_stream(msgs, temperature=0.3):
     }
     payload = {'model': MODEL, 'messages': msgs,
         'temperature': temperature, 'stream': True}
+    _apply_thinking(payload)
+    _apply_thinking(payload)
     try:
         resp = _HTTP_SESSION.post(BASE_URL, headers=headers, json=payload,
             timeout=_POST_TIMEOUT, stream=True)
@@ -2829,9 +3085,335 @@ def _post_stream(msgs, temperature=0.3):
         _STREAM_DONE[0] = True
 
     _REASONING_BUF = ''.join(reasoning_parts)
-    return ''.join(content_parts)
+    _content = ''.join(content_parts)
+    _content = _extract_btn_tags(_content)
+    return _content
 
+
+def _extract_btn_tags(content):
+    BR = chr(91) + 'btn:'
+    if BR not in content:
+        return content
+    out = []
+    i = 0
+    while i < len(content):
+        a2 = content.find(BR, i)
+        if a2 < 0:
+            out.append(content[i:])
+            break
+        out.append(content[i:a2])
+        b2 = content.find(chr(93), a2)
+        if b2 < 0:
+            out.append(content[a2:])
+            break
+        inner = content[a2 + len(BR):b2]
+        if '|' in inner:
+            lbl, cmd = inner.split('|', 1)
+            emit_button(lbl.strip(), cmd.strip())
+        i = b2 + 1
+    return ''.join(out)
 
 def stream_stop():
     _STREAM_STOP[0] = True
-    return True
+    try:
+        append_meta_log('abort', {
+            'reason': 'user-stop', 'in_flight': bool(_STREAM_BUF)},
+            actor='human:local')
+    except Exception:
+        pass
+    return {
+        'stopped': True, 'pending_chunks': len(_STREAM_BUF),
+        'ts': int(time.time())}
+
+
+def resume_from_abort():
+    ok, recs, _errs = chain_verify(return_records=True)
+    if not ok:
+        return {'ok': False, 'err': _errs}
+    last_abort = None
+    for r in reversed(recs):
+        if r.get('kind') == 'abort':
+            last_abort = r
+            break
+    if not last_abort:
+        return {'ok': True, 'abort': None, 'note': 'no abort point'}
+    # 复位 STOP，让下一轮可继续
+    try:
+        _STREAM_STOP[0] = False
+    except Exception:
+        pass
+    return {
+        'ok': True, 'abort': last_abort,
+        'ts': last_abort.get('ts'), 'seq': last_abort.get('seq')}
+
+
+# ============================================================
+# 元认知层：不确定性协议 / 元推理闸门 / 预算守卫 / 反事实预演 / 审计
+# ============================================================
+
+import json as _meta_json
+
+
+def extract_claims(text):
+    out = []
+    cur = None
+    LB = chr(91)
+    RB = chr(93)
+    for raw in (text or '').split(chr(10)):
+        ln = raw.strip()
+        if ln.startswith(LB + 'claim' + RB):
+            if cur: out.append(cur)
+            cur = {'claim': ln[len(LB)+6:].strip(), 'confidence': '', 'basis': [], 'unknowns': ''}
+        elif cur is not None and ln.startswith(LB + 'confidence' + RB):
+            cur['confidence'] = ln[len(LB)+11:].strip()
+        elif cur is not None and ln.startswith(LB + 'basis' + RB):
+            bs = ln[len(LB)+6:].strip()
+            cur['basis'] = [x.strip() for x in bs.split(chr(44)) if x.strip()]
+        elif cur is not None and ln.startswith(LB + 'unknowns' + RB):
+            cur['unknowns'] = ln[len(LB)+9:].strip()
+    if cur: out.append(cur)
+    return out
+
+
+def validate_claims(claims):
+    OK = {'static': 3, 'dynamic': 2, 'inferred': 1}
+    if not claims:
+        return True, ''
+    for i, c in enumerate(claims):
+        conf = (c.get('confidence') or '').strip().lower()
+        if not conf:
+            return False, 'claim ' + str(i) + ' 缺 [confidence]'
+        if conf not in OK:
+            return False, 'claim ' + str(i) + ' confidence 非法: ' + conf
+        basis = c.get('basis') or []
+        if conf == 'inferred' and not basis:
+            return False, 'inferred 结论必须有 [basis]'
+    return True, ''
+
+
+def classify_action(action):
+    if not action: return 'LOW'
+    a = action.lower()
+    for k in ('run', 'exec', 'evolve', 'shell', 'write', 'rm', 'erase'):
+        if k in a: return 'HIGH'
+    for k in ('read', 'list', 'search', 'fetch'):
+        if k in a: return 'MED'
+    return 'LOW'
+
+
+def _chain_path():
+    return os.path.join(HOME, 'mind', 'audit-chain.jsonl')
+
+
+def _chain_last_hash(logp=None):
+    logp = logp or _chain_path()
+    if not os.path.exists(logp):
+        return '', 0
+    last = ''
+    n = 0
+    try:
+        with open(logp, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    o = _meta_json.loads(line)
+                    last = o.get('this_hash', last)
+                    n = int(o.get('seq', n + 1))
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return last, n
+
+
+def _chain_hash(prev_hash, seq, ts, kind, payload, actor):
+    import hashlib as _h
+    base = '|'.join([str(prev_hash), str(seq), str(ts), str(kind), _meta_json.dumps(payload or {}, ensure_ascii=False, sort_keys=True), str(actor)])
+    return _h.sha256(base.encode('utf-8')).hexdigest()
+
+
+def append_meta_log(kind, payload, actor='ai'):
+    logp = _chain_path()
+    this_hash = ''
+    seq = 0
+    try:
+        d = os.path.dirname(logp)
+        os.makedirs(d, exist_ok=True)
+        prev_hash, last_seq = _chain_last_hash(logp)
+        seq = last_seq + 1
+        ts = int(time.time())
+        this_hash = _chain_hash(prev_hash, seq, ts, kind, payload, actor)
+        rec = {'seq': seq, 'ts': ts, 'kind': kind, 'payload': payload or {}, 'actor': actor, 'prev_hash': prev_hash, 'this_hash': this_hash}
+        with open(logp, 'a', encoding='utf-8') as f:
+            f.write(_meta_json.dumps(rec, ensure_ascii=False, sort_keys=True) + chr(10))
+    except Exception:
+        pass
+    # 外部锚点：独立目录、AI 无权删（删文件=写操作会被 gate 拦）
+    try:
+        if this_hash:
+            anchor_dir = '/sdcard/Download/mind/anchors'
+            os.makedirs(anchor_dir, exist_ok=True)
+            _sid = 'unknown'
+            try:
+                _sid = _gate._get_sid()
+            except Exception:
+                pass
+            anchor_path = os.path.join(anchor_dir, _sid + '.log')
+            with open(anchor_path, 'a', encoding='utf-8') as _af:
+                _af.write('%d:%s' % (seq, this_hash) + chr(10))
+    except Exception:
+        pass
+
+
+def chain_verify(logp=None, return_records=False):
+    logp = logp or _chain_path()
+    errs = []
+    recs = []
+    prev = ''
+    seq_expected = 1
+    if not os.path.exists(logp):
+        if return_records:
+            return True, recs, 'no chain'
+        return True, ''
+    try:
+        with open(logp, 'r', encoding='utf-8') as f:
+            for lineno, line in enumerate(f, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    o = _meta_json.loads(line)
+                except Exception as e:
+                    errs.append('line %d: JSON err %r' % (lineno, e))
+                    continue
+                seq = o.get('seq')
+                if seq != seq_expected:
+                    errs.append('line %d: seq expect %d got %s' % (lineno, seq_expected, seq))
+                ph = o.get('prev_hash', '')
+                if ph != prev:
+                    errs.append('line %d: prev mismatch' % lineno)
+                th_calc = _chain_hash(ph, seq, o.get('ts'), o.get('kind'), o.get('payload'), o.get('actor'))
+                th_actual = o.get('this_hash', '')
+                if th_calc != th_actual:
+                    errs.append('line %d: this hash mismatch' % lineno)
+                prev = th_actual
+                seq_expected = seq + 1
+                recs.append(o)
+    except Exception as e:
+        errs.append('read err: %r' % e)
+    ok = len(errs) == 0
+    if return_records:
+        return ok, recs, (chr(10).join(errs) if errs else '')
+    return ok, (chr(10).join(errs) if errs else '')
+
+
+def export_audit_pack(out_dir=None):
+    """导出审计包：chain 记录 + anchors + 独立审计脚本源码。
+    默认输出到 /sdcard/Download/mind/exports/。"""
+    logp = _chain_path()
+    if not os.path.exists(logp):
+        return None
+    out_dir = out_dir or '/sdcard/Download/mind/exports'
+    try:
+        os.makedirs(out_dir, exist_ok=True)
+    except Exception:
+        pass
+    ok, recs, errs = chain_verify(logp, return_records=True)
+    anchor_dir = '/sdcard/Download/mind/anchors'
+    anchors = {}
+    if os.path.isdir(anchor_dir):
+        for _fn in sorted(os.listdir(anchor_dir)):
+            _p = os.path.join(anchor_dir, _fn)
+            if os.path.isfile(_p):
+                try:
+                    anchors[_fn] = open(_p, encoding='utf-8').read()
+                except Exception:
+                    pass
+    verify_src = ''
+    try:
+        _av = os.path.join(os.path.dirname(os.path.abspath(file)), 'zcore', 'audit_verify.py')
+        if os.path.exists(_av):
+            verify_src = open(_av, encoding='utf-8').read()
+    except Exception:
+        pass
+    pack = {
+        'type': 'dreamcore-audit-pack',
+        'version': 2,
+        'created': int(time.time()),
+        'chain_path': logp,
+        'records': recs,
+        'verify_ok': ok,
+        'verify_errors': errs,
+        'anchors_dir': anchor_dir,
+        'anchors': anchors,
+        'verify_script': verify_src,
+    }
+    outp = os.path.join(out_dir, 'audit-pack-%d.json' % int(time.time()))
+    try:
+        with open(outp, 'w', encoding='utf-8') as f:
+            _meta_json.dump(pack, f, ensure_ascii=False, indent=1)
+    except Exception:
+        return None
+    return outp
+
+def meta_gate(action, ctx=None):
+    if META_LEVEL == 'off':
+        return True, ''
+    level = classify_action(action)
+    ctx = ctx or {}
+    evn = int(ctx.get('evidence', 0))
+    rev = ctx.get('reversible', True)
+    auto = bool(ctx.get('auto', AUTO_EXECUTE))
+    req = required_level(action)
+    cur = current_level()
+    need_sig = (req > cur and req >= 3)
+    ask = (level == 'HIGH' and not auto and not rev)
+    rep = ('[meta-reason]' + chr(10) + ' - action: ' + str(action) + chr(10) + ' - level: ' + level + chr(10) + ' - req/cur: ' + str(req) + '/' + str(cur) + chr(10) + ' - 证据数: ' + str(evn) + chr(10) + ' - AUTO_EXECUTE: ' + str(auto) + chr(10) + ' - 可逆: ' + str(rev) + chr(10) + ' - 需签名: ' + ('yes' if need_sig else 'no') + chr(10) + ' - 该问人: ' + ('yes' if ask else 'no'))
+    append_meta_log('meta-gate', {'action': action, 'level': level, 'req': req, 'cur': cur, 'ask': ask, 'need_sig': need_sig})
+    # 人类在环：LEVEL3 动作需授权签名，soft 模式下也阻塞
+    if need_sig:
+        return False, rep
+    # hard 模式：HIGH 动作也需确认
+    if META_LEVEL == 'hard' and ask:
+        return False, rep
+    return True, rep
+
+
+def budget_tick(kind):
+    b = META_BUDGET
+    if not b['active']:
+        b['active'] = True
+        b['t0'] = time.time()
+        b['llm'] = 0
+        b['proc'] = 0
+    if kind == 'llm': b['llm'] += 1
+    elif kind == 'proc': b['proc'] += 1
+    elapsed = time.time() - b['t0']
+    hit = (elapsed > MAX_SECONDS or b['llm'] > MAX_LLM_CALLS or b['proc'] > MAX_SUB_PROC)
+    if hit:
+        rep = '[budget] 超预算: %.0fs / llm=%d / proc=%d' % (elapsed, b['llm'], b['proc'])
+        append_meta_log('budget-hit', {'elapsed': elapsed})
+        return True, rep
+    return False, ''
+
+
+def budget_reset():
+    b = META_BUDGET
+    b['active'] = False
+    b['t0'] = 0
+    b['llm'] = 0
+    b['proc'] = 0
+
+
+def compare_failure_mode(expected, actual):
+    e = (expected or '').strip().lower()
+    a = (actual or '').strip().lower()
+    if not e:
+        return True, ''
+    ok = (e in a) or (a in e)
+    if not ok:
+        append_meta_log('expect-mismatch', {'expected': e, 'actual': a})
+        return False, '期望: ' + e + ' / 实得: ' + a
+    return True, ''
