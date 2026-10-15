@@ -3135,86 +3135,96 @@ rebuildQuickRow()
 }
 
 private fun showAddQuickSheet() {
-val sheet = BottomSheetDialog(this)
-val root = LinearLayout(this).apply {
-orientation = LinearLayout.VERTICAL
-setBackgroundResource(R.drawable.bg_sheet)
-setPadding(0, dp(8), 0, dp(24))
-}
-root.addView(View(this).apply {
-setBackgroundResource(R.drawable.bg_handle)
-layoutParams = LinearLayout.LayoutParams(dp(36), dp(4)).apply {
-gravity = Gravity.CENTER_HORIZONTAL
-topMargin = dp(6); bottomMargin = dp(14)
-}
-})
-root.addView(TextView(this).apply {
-text = "添加按钮"
-textSize = 18f
-setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
-setTypeface(null, android.graphics.Typeface.BOLD)
-setPadding(dp(22), 0, dp(22), dp(8))
-})
-val checks = mutableMapOf<String, android.widget.CheckBox>()
-for (c in allQuickCommands) {
-val row = LinearLayout(this).apply {
-orientation = LinearLayout.HORIZONTAL
-gravity = Gravity.CENTER_VERTICAL
-setBackgroundResource(R.drawable.bg_sheet_row)
-layoutParams = LinearLayout.LayoutParams(
-LinearLayout.LayoutParams.MATCH_PARENT, dp(52)
-).apply { marginStart = dp(10); marginEnd = dp(10) }
-setPadding(dp(16), 0, dp(16), 0)
-isClickable = true
-}
-val cb = android.widget.CheckBox(this).apply {
-isChecked = quickButtons.any { it.id == c.id }
-isClickable = false
-isFocusable = false
-}
-val tv = TextView(this).apply {
-text = c.label
-textSize = 15f
-setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
-layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-marginStart = dp(14)
-}
-}
-row.addView(cb); row.addView(tv)
-row.setOnClickListener {
-HapticTokens.tap(row)
-cb.isChecked = !cb.isChecked
-}
-checks[c.id] = cb
-root.addView(row)
-}
-val save = TextView(this).apply {
-text = "确定"
-textSize = 15f
-setTextColor(ContextCompat.getColor(this@MainActivity, R.color.on_accent))
-setBackgroundResource(R.drawable.bg_circle_send)
-gravity = Gravity.CENTER
-setPadding(dp(22), dp(10), dp(22), dp(10))
-isClickable = true
-layoutParams = LinearLayout.LayoutParams(
-LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
-).apply { topMargin = dp(12); gravity = Gravity.END; marginEnd = dp(16) }
-}
-save.setOnClickListener {
-HapticTokens.success(it)
-val newList = mutableListOf<QuickBtn>()
-for (c in allQuickCommands) {
-if (checks[c.id]?.isChecked == true) newList.add(c)
-}
-quickButtons = if (newList.isEmpty()) defaultQuickButtons() else newList
-saveQuickButtons()
-rebuildQuickRow()
-if (quickEditMode) startShakeAll()
-sheet.dismiss()
-}
-root.addView(save)
-sheet.setContentView(root)
-sheet.show()
+    val sheet = BottomSheetDialog(this)
+    val root = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setBackgroundResource(R.drawable.bg_sheet)
+        setPadding(0, dp(8), 0, dp(24))
+    }
+    root.addView(View(this).apply {
+        setBackgroundResource(R.drawable.bg_handle)
+        layoutParams = LinearLayout.LayoutParams(dp(36), dp(4)).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            topMargin = dp(6); bottomMargin = dp(14)
+        }
+    })
+    root.addView(TextView(this).apply {
+        text = "添加按钮"
+        textSize = 18f
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+        setTypeface(null, android.graphics.Typeface.BOLD)
+        setPadding(dp(22), 0, dp(22), dp(8))
+    })
+    val checks = mutableMapOf<String, android.widget.CheckBox>()
+    val scroll = android.widget.ScrollView(this).apply {
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(360)
+        )
+    }
+    val listBox = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+    }
+    for (c in allQuickCommands) {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.bg_sheet_row)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(52)
+            ).apply { marginStart = dp(10); marginEnd = dp(10) }
+            setPadding(dp(16), 0, dp(16), 0)
+            isClickable = true
+        }
+        val cb = android.widget.CheckBox(this).apply {
+            isChecked = quickButtons.any { it.id == c.id }
+            isClickable = false
+            isFocusable = false
+        }
+        val tv = TextView(this).apply {
+            text = c.label
+            textSize = 15f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = dp(14)
+            }
+        }
+        row.addView(cb); row.addView(tv)
+        row.setOnClickListener {
+            HapticTokens.tap(row)
+            cb.isChecked = !cb.isChecked
+        }
+        checks[c.id] = cb
+        listBox.addView(row)
+    }
+    scroll.addView(listBox)
+    root.addView(scroll)
+    val save = TextView(this).apply {
+        text = "确定"
+        textSize = 15f
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.on_accent))
+        setBackgroundResource(R.drawable.bg_circle_send)
+        gravity = Gravity.CENTER
+        setPadding(dp(22), dp(10), dp(22), dp(10))
+        isClickable = true
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(12); gravity = Gravity.END; marginEnd = dp(16) }
+    }
+    save.setOnClickListener {
+        HapticTokens.success(it)
+        val newList = mutableListOf<QuickBtn>()
+        for (c in allQuickCommands) {
+            if (checks[c.id]?.isChecked == true) newList.add(c)
+        }
+        quickButtons = if (newList.isEmpty()) defaultQuickButtons() else newList
+        saveQuickButtons()
+        rebuildQuickRow()
+        if (quickEditMode) startShakeAll()
+        sheet.dismiss()
+    }
+    root.addView(save)
+    sheet.setContentView(root)
+    sheet.show()
 }
 
 
