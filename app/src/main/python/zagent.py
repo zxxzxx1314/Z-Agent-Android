@@ -1811,7 +1811,18 @@ BASE_PROMPT = """你是 Z-Agent，一个运行在 Android 手机 Termux 终端�
 【回传语义】
 - 「【系统自动回传】」= 脚本/插件/进化/验收的真实结果：
   未完成→继续修复或推进；已完成→文字总结+[reflect]，不再输出代码。
-- 退出码 0 但无输出 ≠ 任务完成，宿主会提示你确认实际效果。
+- 
+
+【交互按钮协议（重要）】
+- 当你需要让用户执行某个宿主命令（/evolve、/build、/think、/resume、
+ /events、/limiter、/contract、/restart、/grant 等）时，不要只写
+ 「请输入 /xxx」——改为在回复中单独一行输出：
+ [btn:按钮文案|/命令]
+ 宿主会把它渲染成可点击按钮，用户点击即执行该命令。
+- 按钮标签必须独占一行；命令部分必须是宿主的合法 / 命令。
+- 同一处尽量只给一个按钮；按钮文案 2-4 字最佳。
+- 示例：'切换 /build 后可执行：' + 独立一行 [btn:切换构建|/build]
+退出码 0 但无输出 ≠ 任务完成，宿主会提示你确认实际效果。
 """
 
 PLAN_RULES = """
@@ -2952,6 +2963,17 @@ def emit_step(idx, total, label, status, elapsed_ms=None):
         pass
 
 
+
+def emit_button(label, cmd, hint=None):
+    try:
+        import json as _jb
+        obj = {'label': str(label)[:40], 'cmd': str(cmd)}
+        if hint:
+            obj['hint'] = str(hint)[:120]
+        _STREAM_BUF.append(('btn', _jb.dumps(obj, ensure_ascii=False)))
+    except Exception:
+        pass
+
 def _post_stream(msgs, temperature=0.3):
     global _REASONING_BUF
     _REASONING_BUF = ''
@@ -3010,8 +3032,33 @@ def _post_stream(msgs, temperature=0.3):
         _STREAM_DONE[0] = True
 
     _REASONING_BUF = ''.join(reasoning_parts)
-    return ''.join(content_parts)
+    _content = ''.join(content_parts)
+    _content = _extract_btn_tags(_content)
+    return _content
 
+
+def _extract_btn_tags(content):
+    BR = chr(91) + 'btn:'
+    if BR not in content:
+        return content
+    out = []
+    i = 0
+    while i < len(content):
+        a2 = content.find(BR, i)
+        if a2 < 0:
+            out.append(content[i:])
+            break
+        out.append(content[i:a2])
+        b2 = content.find(chr(93), a2)
+        if b2 < 0:
+            out.append(content[a2:])
+            break
+        inner = content[a2 + len(BR):b2]
+        if '|' in inner:
+            lbl, cmd = inner.split('|', 1)
+            emit_button(lbl.strip(), cmd.strip())
+        i = b2 + 1
+    return ''.join(out)
 
 def stream_stop():
     _STREAM_STOP[0] = True

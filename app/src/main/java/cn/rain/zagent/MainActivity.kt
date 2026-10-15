@@ -1084,6 +1084,7 @@ private val streamPoll = object : Runnable {
                                 "content" -> appendStream(c.optString("v"))
                                 "step" -> onStepEvent(c.optString("v"))
  "ui" -> onUiEvent(c.optString("v"))
+ "btn" -> onBtnEvent(c.optString("v"))
                             }
                         }
                     }
@@ -2566,6 +2567,41 @@ requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
 }
 
 // ── AI 交互卡片：解析 [ui] JSON，渲染与主 UI 同源的 Material 风卡片 ──
+// P5 render [btn:label|/cmd]
+private fun onBtnEvent(json: String) {
+    val o = try { JSONObject(json) } catch (e: Exception) { return }
+    val label = o.optString("label", "")
+    val cmd = o.optString("cmd", "")
+    if (label.isEmpty() || cmd.isEmpty()) return
+    hideEmpty()
+    val wrap = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(4); bottomMargin = dp(8) }
+    }
+    val btn = TextView(this).apply {
+        text = label
+        textSize = 14f
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.on_accent))
+        setTypeface(null, android.graphics.Typeface.BOLD)
+        gravity = Gravity.CENTER
+        setPadding(dp(20), dp(10), dp(20), dp(10))
+        setBackgroundResource(R.drawable.bg_circle_send)
+        isClickable = true
+        isFocusable = true
+    }
+    btn.setOnClickListener { v ->
+        HapticTokens.tap(v)
+        sendCommand(cmd)
+    }
+    wrap.addView(btn)
+    chatContainer.addView(wrap)
+    uiHandler.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+}
+
+
 private fun onUiEvent(json: String) {
 val o = try { JSONObject(json) } catch (e: Exception) { return }
 hideEmpty()
