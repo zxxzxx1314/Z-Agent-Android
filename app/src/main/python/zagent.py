@@ -77,6 +77,7 @@ rain.py v4.5 —— 超级智能终端 Agent · 心智+基因+验收版（Termux
 from zcore.util import _hide_artifact, _kill_process_tree, _restore_artifact, _without_scripts, apply_patch_tag, atomic_write, auto_notify, check_global_positions, extract_version, mask_literal, safe_child_env, show_exec_result, unwrap_code
 from zcore import gate as _gate
 from zcore import proc as zproc
+from zcore import facts as zfacts
 
 import ast
 import io
@@ -1305,7 +1306,7 @@ def _extract_archive(path):
     return None, "不支持的压缩格式: %s" % ext
 
 
-def _list_dir_brief(d, max_n=50):
+def _list_dir_brief_impl(d, max_n=50):
     out = []
     base_len = len(d.rstrip("/")) + 1
     cnt = 0
@@ -1322,6 +1323,17 @@ def _list_dir_brief(d, max_n=50):
                 sz = 0
             out.append(" %s (%d B)" % (rel, sz))
             cnt += 1
+    return out
+
+
+def _list_dir_brief(d, max_n=50):
+    # P1 fact cache: dir listing most-repeated probe; 60s TTL.
+    key = "list_dir:" + os.path.abspath(d) + ":" + str(max_n)
+    hit = zfacts.get(key)
+    if hit is not None:
+        return hit
+    out = _list_dir_brief_impl(d, max_n)
+    zfacts.set(key, out, ttl=60)
     return out
 
 
