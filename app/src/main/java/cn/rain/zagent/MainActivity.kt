@@ -110,6 +110,10 @@ private var streamPolling = false
 private var streamingBubble: TextView? = null
 private var streamingSb = StringBuilder()
 private var reasoningSb = StringBuilder()
+ private var reasoningBox: LinearLayout? = null
+ private var reasoningHeader: TextView? = null
+ private var reasoningBody: TextView? = null
+ private var reasoningStartMs = 0L
 private var cursorOn = true
 private var loadingDotsView: TextView? = null
 private var stepBarBox: LinearLayout? = null
@@ -1361,7 +1365,13 @@ private fun ensureStreamBubble(): TextView {
  }
  row.addView(bubble)
  val wrapped = wrapWithTime(row, false)
+ val rb = reasoningBox
+ if (rb != null && rb.parent === chatContainer) {
+ val ci = chatContainer.indexOfChild(rb)
+ chatContainer.addView(wrapped, if (ci >= 0) ci + 1 else chatContainer.childCount)
+ } else {
  chatContainer.addView(wrapped)
+ }
  wrapped.post { bounceIn(wrapped) }
  streamingBubble = bubble
  uiHandler.postDelayed(cursorBlink, 500)
@@ -1369,9 +1379,58 @@ private fun ensureStreamBubble(): TextView {
 }
 
 private fun appendReason(t: String) {
-    if (t.isEmpty()) return
-    if (reasoningSb.isEmpty()) { hideLoadingDots(loadingDotsView); loadingDotsView = null }
-    reasoningSb.append(t)
+ if (t.isEmpty()) return
+ if (reasoningSb.isEmpty()) {
+ hideLoadingDots(loadingDotsView)
+ loadingDotsView = null
+ reasoningStartMs = System.currentTimeMillis()
+ ensureReasoningBox()
+ }
+ reasoningSb.append(t)
+ reasoningBody?.text = maskSecret(reasoningSb.toString())
+ outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+}
+
+private fun ensureReasoningBox(): LinearLayout {
+ reasoningBox?.let { return it }
+ val box = LinearLayout(this).apply {
+ orientation = LinearLayout.VERTICAL
+ setBackgroundResource(R.drawable.bg_reasoning_box)
+ setPadding(dp(12), dp(8), dp(12), dp(8))
+ layoutParams = LinearLayout.LayoutParams(
+ LinearLayout.LayoutParams.MATCH_PARENT,
+ LinearLayout.LayoutParams.WRAP_CONTENT
+ ).apply { topMargin = dp(4); bottomMargin = dp(4) }
+ }
+ val header = TextView(this).apply {
+ text = ">> 思考中" + "…"
+ textSize = 11f
+ setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+ setPadding(dp(2), dp(2), dp(2), dp(2))
+ isClickable = true
+ }
+ val body = TextView(this).apply {
+ text = ""
+ textSize = 13f
+ setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+ setPadding(dp(4), dp(6), dp(4), dp(2))
+ setTextIsSelectable(true)
+ visibility = View.VISIBLE
+ }
+ header.setOnClickListener {
+ HapticTokens.tap(it)
+ val expanded = body.visibility == View.VISIBLE
+ body.visibility = if (expanded) View.GONE else View.VISIBLE
+ header.text = if (expanded) "> 思考过程（点击展开）" else "> 思考过程（点击收起）"
+ }
+ box.addView(header)
+ box.addView(body)
+ chatContainer.addView(box)
+ box.post { bounceIn(box) }
+ reasoningBox = box
+ reasoningHeader = header
+ reasoningBody = body
+ return box
 }
 
 
@@ -1385,16 +1444,25 @@ private fun appendStream(t: String) {
 }
 
 private fun endStreaming(): Boolean {
-    uiHandler.removeCallbacks(cursorBlink)
-    val had = streamingSb.isNotEmpty()
-    streamingBubble?.let { it.text = streamingSb.toString() }
-    streamingBubble = null
-    streamingSb = StringBuilder()
-    if (reasoningSb.isNotEmpty()) {
-        addReasoningBox(reasoningSb.toString())
-        reasoningSb = StringBuilder()
-    }
-    return had
+ uiHandler.removeCallbacks(cursorBlink)
+ val had = streamingSb.isNotEmpty()
+ streamingBubble?.let { it.text = streamingSb.toString() }
+ streamingBubble = null
+ streamingSb = StringBuilder()
+ reasoningBox?.let {
+ val secs = (System.currentTimeMillis() - reasoningStartMs).coerceAtLeast(0L) / 1000L
+ reasoningHeader?.text = "> 思考过程 · " + secs + "s（点击展开）"
+ reasoningBody?.visibility = View.GONE
+ }
+ if (reasoningBox == null && reasoningSb.isNotEmpty()) {
+ addReasoningBox(reasoningSb.toString())
+ }
+ reasoningSb = StringBuilder()
+ reasoningBox = null
+ reasoningHeader = null
+ reasoningBody = null
+ reasoningStartMs = 0L
+ return had
 }
 
 private fun sendCommand(cmd: String) {
