@@ -175,10 +175,6 @@ android:textColor="@color/accent"
 android:textSize="20sp"
 android:textStyle="bold" />
 </FrameLayout>
-<!-- 收起态：浮动圆钮，锚在对话区右下 -->
-<FrameLayout android:id="@+id/quickToggleCollapsed" android:layout_width="28dp" android:layout_height="48dp" android:layout_gravity="bottom|end" android:layout_marginEnd="0dp" android:layout_marginBottom="8dp" android:background="@drawable/bg_edge_pill" android:clickable="true" android:focusable="true" android:foreground="@drawable/ripple_pill" android:visibility="gone" android:elevation="4dp">
-<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="center" android:text="‹" android:textColor="@color/accent" android:textSize="22sp" android:textStyle="bold" />
-</FrameLayout>
 </FrameLayout>
 
 </LinearLayout>

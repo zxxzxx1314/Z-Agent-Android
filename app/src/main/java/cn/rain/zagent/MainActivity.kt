@@ -76,7 +76,7 @@ private lateinit var attachRow: LinearLayout
  // ── 快捷条（可收起/展开/自定义）──
  private var quickButtons: MutableList<QuickBtn> = mutableListOf()
  private var quickEditMode = false
- private var quickExpanded = true
+ private var quickExpanded = false
  private var quickEditRow: LinearLayout? = null
  private var quickDragFrom = -1
  private val quickAnimating = mutableSetOf<android.view.View>()
@@ -317,7 +317,7 @@ refreshThinkChip()
 
 chipMore.setOnClickListener {
  haptic(it)
- showMoreSheet()
+ if (quickExpanded) collapseQuick() else expandQuick()
 }
 
 inputEdit.setOnFocusChangeListener { _, hasFocus ->
@@ -2825,7 +2825,6 @@ data class QuickBtn(val id: String, val label: String, val action: String)
 
 private lateinit var quickRow: LinearLayout
 private lateinit var quickRowWrap: View
-private lateinit var quickToggleCollapsed: View
 private lateinit var quickCollapse: View
 private lateinit var quickEditBar: View
 private lateinit var quickBarContainer: View
@@ -2894,7 +2893,6 @@ sp.edit().putString(KEY_QUICK_BUTTONS, arr.toString()).apply()
 private fun initQuickBar() {
 quickRow = findViewById(R.id.quickRow)
 quickRowWrap = findViewById(R.id.quickRowWrap)
-quickToggleCollapsed = findViewById(R.id.quickToggleCollapsed)
 quickCollapse = findViewById(R.id.quickCollapse)
 quickEditBar = findViewById(R.id.quickEditBar)
 quickBarContainer = findViewById(R.id.quickBarContainer)
@@ -2902,7 +2900,6 @@ quickBarContainer = findViewById(R.id.quickBarContainer)
 quickButtons = loadQuickButtons()
 rebuildQuickRow()
 
-quickToggleCollapsed.setOnClickListener { haptic(it); expandQuick() }
 quickCollapse.setOnClickListener { haptic(it); collapseQuick() }
 findViewById<View>(R.id.quickEditDone).setOnClickListener { haptic(it); exitQuickEdit() }
 quickBarContainer.setOnClickListener { if (quickEditMode) exitQuickEdit() }
@@ -2914,7 +2911,7 @@ for ((idx, b) in quickButtons.withIndex()) {
 quickRow.addView(makeQuickChip(b, idx))
 }
 if (quickEditMode) quickRow.addView(makePlusChip())
-if (quickExpanded) { quickBarContainer.visibility = View.VISIBLE; quickRowWrap.visibility = View.VISIBLE; quickToggleCollapsed.visibility = View.GONE } else { quickBarContainer.visibility = View.GONE; quickToggleCollapsed.visibility = View.VISIBLE }
+if (quickExpanded) { quickBarContainer.visibility = View.VISIBLE; quickRowWrap.visibility = View.VISIBLE } else { quickBarContainer.visibility = View.GONE }
 
 }
 
@@ -3036,10 +3033,8 @@ b.action.startsWith("cmd:") -> sendCommand(b.action.removePrefix("cmd:"))
 private fun expandQuick() {
 // 打断旧动画
 quickRowWrap.animate().cancel()
-quickToggleCollapsed.animate().cancel()
 for (i in 0 until quickRow.childCount) quickRow.getChildAt(i).animate().cancel()
 quickExpanded = true
-quickToggleCollapsed.visibility = View.GONE
 quickBarContainer.visibility = View.VISIBLE
 quickRowWrap.visibility = View.VISIBLE
 quickRowWrap.alpha = 1f
@@ -3095,16 +3090,12 @@ anim.start()
 
 private fun collapseQuick() {
 quickRowWrap.animate().cancel()
-quickToggleCollapsed.animate().cancel()
 quickExpanded = false
 if (MotionPrefs.reduceMotion(quickRowWrap)) {
 val lp0 = quickRowWrap.layoutParams
 lp0.height = LinearLayout.LayoutParams.WRAP_CONTENT
 quickRowWrap.layoutParams = lp0
 quickBarContainer.visibility = View.GONE
-quickToggleCollapsed.visibility = View.VISIBLE
-quickToggleCollapsed.alpha = 1f
-quickToggleCollapsed.scaleX = 1f; quickToggleCollapsed.scaleY = 1f
 return
 }
 // 第一步：胶囊快速消失（无错开，110ms）
@@ -3149,13 +3140,6 @@ v.alpha = 1f
 v.translationY = 0f
 }
 quickBarContainer.visibility = View.GONE
-quickToggleCollapsed.visibility = View.VISIBLE
-quickToggleCollapsed.alpha = 0f
-quickToggleCollapsed.scaleX = 0.7f; quickToggleCollapsed.scaleY = 0.7f
-quickToggleCollapsed.animate().alpha(1f).scaleX(1f).scaleY(1f)
-.setDuration(220)
-.setInterpolator(android.view.animation.PathInterpolator(0.34f, 1.3f, 0.64f, 1f))
-.start()
 }
 
 private fun startShakeAll() {
