@@ -75,6 +75,7 @@ rain.py v4.5 —— 超级智能终端 Agent · 心智+基因+验收版（Termux
      粘贴后自动保存，下次免输；随后即可对话，如「查电量」「发通知」。
 """
 from zcore.util import _hide_artifact, _kill_process_tree, _restore_artifact, _without_scripts, apply_patch_tag, atomic_write, auto_notify, check_global_positions, extract_version, mask_literal, safe_child_env, show_exec_result, unwrap_code
+from zcore import gate as _gate
 
 import ast
 import io
@@ -875,6 +876,7 @@ def apply_evolution(source: str, reason: str):
     """进化主流程：静态验证 → 原子落盘候选 → 隔离冒烟 → 影子闸门
     （假 LLM 全链路会话）→ 备份旧基因 → 原子替换主文件。
     任何一步失败，旧版本毫发无损。"""
+    _gate.check_or_raise("evolve", {"reason": (reason or "")[:200]})
     source = source.strip()
     if len(source.encode("utf-8", "ignore")) > MAX_SOURCE_BYTES:
         return False, "候选源码超过 %d 字节上限，疑似异常输出。" % MAX_SOURCE_BYTES
@@ -2013,6 +2015,7 @@ def _run_inproc(code, timeout):
       - 超时无法强杀线程：只能放弃等待（线程泄漏由系统回收）
     Termux 环境不走此路径（ZAGENT_NO_SUBPROCESS 未设时保持子进程模式）。
     返回 (退出码, stdout, stderr, 是否超时)。"""
+    _gate.check_or_raise("script.run", {"site": "inproc"})
     import concurrent.futures
     import io
     import contextlib
@@ -2049,6 +2052,7 @@ def _run_process(argv, timeout, env=None):
     返回 (退出码, stdout, stderr, 是否超时)。
     APK 模式（ZAGENT_NO_SUBPROCESS=1）：[python, -c, code] 请求降级为
     进程内执行（见 _run_inproc 文档字符串的诚实边界）。"""
+    _gate.check_or_raise("subprocess.run", {"argv0": argv[0] if argv else ""})
     if (os.environ.get("ZAGENT_NO_SUBPROCESS") == "1"
             and len(argv) >= 3 and argv[0] == sys.executable
             and argv[1] == "-c"):
@@ -2561,6 +2565,7 @@ HELP_TEXT = """可用命令：
   /contract [放弃]       查看当前验收合同 / 主动放弃
   /plan /build          规划模式（硬禁止执行）/ 执行模式
   /auto                 切换 AUTO_EXECUTE（y 确认 / 免确认）
+  /grant <lv> [act ...] [ttl=N] 授权；/revoke 收回；/gate 状态
   /skill add 名 内容     写入 ~/skills/名.md；/skill list 列出
   /save [插件名]         最近一次成功脚本 → ~/plugins/ 插件
   /clear /exit /help    清空记忆（挂起未验收合同）/ 退出 / 帮助
@@ -2596,6 +2601,7 @@ def handle_command(u: str):
     elif cmd == "/restart":
         # v6.1：自重启闭环——进化后无需退出重跑，会话持久化 +
         # 经 boot_guard 自检（坏基因自动回滚）→ 新我上线。
+        _gate.check_or_raise("restart", {"site": "handle_command"})
         print("[重启] 会话已持久化；经由 boot_guard 自检后重启……")
         save_session(messages)
         _bg = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -2701,8 +2707,17 @@ def handle_command(u: str):
     elif cmd == "/skill":
         handle_skill(u)
     elif cmd == "/auto":
+        if not AUTO_EXECUTE:
+            _gate.check_or_raise("evolve", {"site": "auto-toggle"})
         AUTO_EXECUTE = not AUTO_EXECUTE
         print("AUTO_EXECUTE 已切换为 %s" % AUTO_EXECUTE)
+    elif cmd == "/grant":
+        parts = u.split(maxsplit=1)
+        _gate.human_grant_command(parts[1] if len(parts) > 1 else "")
+    elif cmd == "/revoke":
+        _gate.human_revoke_command()
+    elif cmd == "/gate":
+        print(_gate.format_status())
     elif cmd == "/help":
         print(HELP_TEXT)
     else:
@@ -2749,6 +2764,8 @@ def main():
     print("  验收合同不跨会话保留（/contract 查看，/clear 挂起）")
     print("  /help 命令；/think 深思；/idle 自主；/evolve 进化")
     print("═" * 50)
+    while True:
+        _gate.kill_check()
     while True:
         try:
             user_input = input("\n你> ").strip()
