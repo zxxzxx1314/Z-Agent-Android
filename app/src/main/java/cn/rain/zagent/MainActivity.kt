@@ -110,6 +110,7 @@ private val placeholderRotator = object : Runnable {
 private var streamPolling = false
 private var streamingBubble: TextView? = null
 private var streamingSb = StringBuilder()
+private var reasoningSb = StringBuilder()
 private var cursorOn = true
 private var loadingDotsView: TextView? = null
 private var stepBarBox: LinearLayout? = null
@@ -1085,6 +1086,7 @@ private val streamPoll = object : Runnable {
                                 "step" -> onStepEvent(c.optString("v"))
  "ui" -> onUiEvent(c.optString("v"))
  "btn" -> onBtnEvent(c.optString("v"))
+ "reason" -> appendReason(c.optString("v"))
                             }
                         }
                     }
@@ -1309,6 +1311,7 @@ private fun renderStreamText(tv: TextView) {
 
 private fun beginStreaming() {
  streamingSb = StringBuilder()
+ reasoningSb = StringBuilder()
  cursorOn = true
  hideEmpty()
  // 不预建空气泡，避免加载时白块；首次 chunk 到达再创建
@@ -1345,6 +1348,13 @@ private fun ensureStreamBubble(): TextView {
  return bubble
 }
 
+private fun appendReason(t: String) {
+    if (t.isEmpty()) return
+    if (reasoningSb.isEmpty()) { hideLoadingDots(loadingDotsView); loadingDotsView = null }
+    reasoningSb.append(t)
+}
+
+
 private fun appendStream(t: String) {
  if (t.isEmpty()) return
  if (streamingSb.isEmpty()) { hideLoadingDots(loadingDotsView); loadingDotsView = null }
@@ -1360,6 +1370,10 @@ private fun endStreaming(): Boolean {
     streamingBubble?.let { it.text = streamingSb.toString() }
     streamingBubble = null
     streamingSb = StringBuilder()
+    if (reasoningSb.isNotEmpty()) {
+        addReasoningBox(reasoningSb.toString())
+        reasoningSb = StringBuilder()
+    }
     return had
 }
 
@@ -2369,6 +2383,7 @@ box.addView(header)
 box.addView(body)
 chatContainer.addView(box)
 box.post { bounceIn(box) }
+outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
 }
 
 private var bubbleBatchStart = 0L
