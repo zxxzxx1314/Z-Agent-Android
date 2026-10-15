@@ -881,6 +881,9 @@ PythonBridge.setApiKey(this@MainActivity, k)
 runOnUiThread {
 appendOutput("[设置] API Key 已保存" + (10).toChar())
 toast("已保存")
+val has = k.isNotEmpty()
+apiKeySummary = if (has) "已配置" else "未设置"
+sheetRows["key"]?.text = apiKeySummary
 }
 }
 }
@@ -912,6 +915,8 @@ val r = PythonBridge.setBaseUrl(this@MainActivity, u)
 runOnUiThread {
 appendOutput("[设置] API 地址 " + r + (10).toChar())
 toast("已保存")
+baseUrlSummary = u.ifBlank { "未设置" }
+sheetRows["url"]?.text = baseUrlSummary
 }
 }
 }
