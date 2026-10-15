@@ -2999,6 +2999,8 @@ def _chain_hash(prev_hash, seq, ts, kind, payload, actor):
 
 def append_meta_log(kind, payload, actor='ai'):
     logp = _chain_path()
+    this_hash = ''
+    seq = 0
     try:
         d = os.path.dirname(logp)
         os.makedirs(d, exist_ok=True)
@@ -3009,6 +3011,21 @@ def append_meta_log(kind, payload, actor='ai'):
         rec = {'seq': seq, 'ts': ts, 'kind': kind, 'payload': payload or {}, 'actor': actor, 'prev_hash': prev_hash, 'this_hash': this_hash}
         with open(logp, 'a', encoding='utf-8') as f:
             f.write(_meta_json.dumps(rec, ensure_ascii=False, sort_keys=True) + chr(10))
+    except Exception:
+        pass
+    # 外部锚点：独立目录、AI 无权删（删文件=写操作会被 gate 拦）
+    try:
+        if this_hash:
+            anchor_dir = '/sdcard/Download/mind/anchors'
+            os.makedirs(anchor_dir, exist_ok=True)
+            _sid = 'unknown'
+            try:
+                _sid = _gate._get_sid()
+            except Exception:
+                pass
+            anchor_path = os.path.join(anchor_dir, _sid + '.log')
+            with open(anchor_path, 'a', encoding='utf-8') as _af:
+                _af.write('%d:%s' % (seq, this_hash) + chr(10))
     except Exception:
         pass
 
