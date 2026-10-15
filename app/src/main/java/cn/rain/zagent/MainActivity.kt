@@ -427,7 +427,10 @@ private fun applyTopInset() {
  // 状态栏 padding 加到根视图顶部（避免局部 view 首次布局时 insets 未分发）
  ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
  val bars = insets.getInsets(WindowInsetsCompat.Type.statusBars())
- v.setPadding(v.paddingLeft, bars.top, v.paddingRight, v.paddingBottom)
+ val wantTop = bars.top + dp(10)
+ if (topBar.paddingTop != wantTop) {
+  topBar.setPadding(topBar.paddingLeft, wantTop, topBar.paddingRight, topBar.paddingBottom)
+ }
  applyImePadding(insets)
  insets
  }
