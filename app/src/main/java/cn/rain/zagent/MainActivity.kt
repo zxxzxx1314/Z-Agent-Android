@@ -64,20 +64,19 @@ private lateinit var topBar: LinearLayout
 private lateinit var themeButton: View
  private lateinit var themeIcon: ImageView
 private lateinit var inputBar: LinearLayout
-private lateinit var segContainer: FrameLayout
-private lateinit var segThumb: View
 private lateinit var segPlan: TextView
 private lateinit var segBuild: TextView
 private lateinit var btnPlus: FrameLayout
 private lateinit var chipThink2: TextView
 private lateinit var chipSearch: TextView
+private lateinit var chipMore: TextView
 private lateinit var attachScroll: HorizontalScrollView
 private lateinit var attachRow: LinearLayout
  private lateinit var scrollBottomBtn: FrameLayout
  // ── 快捷条（可收起/展开/自定义）──
  private var quickButtons: MutableList<QuickBtn> = mutableListOf()
  private var quickEditMode = false
- private var quickExpanded = true
+ private var quickExpanded = false
  private var quickEditRow: LinearLayout? = null
  private var quickDragFrom = -1
  private val quickAnimating = mutableSetOf<android.view.View>()
@@ -193,13 +192,12 @@ topBar = findViewById(R.id.topBar)
 themeButton = findViewById(R.id.themeButton)
  themeIcon = findViewById(R.id.themeIcon)
 inputBar = findViewById(R.id.inputBar)
-segContainer = findViewById(R.id.segContainer)
-segThumb = findViewById(R.id.segThumb)
 segPlan = findViewById(R.id.segPlan)
 segBuild = findViewById(R.id.segBuild)
 btnPlus = findViewById(R.id.btnPlus)
 chipThink2 = findViewById(R.id.chipThink2)
 chipSearch = findViewById(R.id.chipSearch)
+chipMore = findViewById(R.id.chipMore)
 attachScroll = findViewById(R.id.attachScroll)
 attachRow = findViewById(R.id.attachRow)
 
@@ -315,6 +313,11 @@ refreshThinkChip()
 }
 chipSearch.visibility = View.GONE
 refreshThinkChip()
+ refreshSegVisual()
+chipMore.setOnClickListener {
+ haptic(it)
+ showMoreSheet()
+}
 
 inputEdit.setOnFocusChangeListener { _, hasFocus ->
     inputCard.setBackgroundResource(
@@ -344,7 +347,6 @@ inputEdit.requestFocus()
     btnPlus.pressScale()
     sendButton.pressScale()
 
-segContainer.post { layoutSegThumb(false) }
 
 // appendOutput("Z-Agent APK 启动中……\n")
 threadRun {
@@ -2427,10 +2429,15 @@ private fun bounceIn(view: View) {
 }
 
 private fun refreshThinkChip() {
-val color = ContextCompat.getColor(this,
-if (thinkOn) R.color.accent else R.color.text_secondary)
-chipThink2.setTextColor(color)
-chipThink2.text = if (thinkOn) "✻ 深度思考 ✓" else "✻ 深度思考"
+ if (thinkOn) {
+  chipThink2.setBackgroundResource(R.drawable.bg_chip_active)
+  chipThink2.setTextColor(ContextCompat.getColor(this, R.color.accent))
+  chipThink2.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_think_active, 0, 0, 0)
+ } else {
+  chipThink2.setBackgroundResource(R.drawable.bg_chip_ghost)
+  chipThink2.setTextColor(ContextCompat.getColor(this, R.color.chip_text_inactive))
+  chipThink2.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_think, 0, 0, 0)
+ }
 }
 
 private fun setAppMode(m: String) {
@@ -2440,26 +2447,24 @@ refreshSegVisual()
 }
 
 private fun refreshSegVisual() {
-val planOn = appMode == "plan"
-segPlan.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.accent else R.color.text_secondary))
-segBuild.setTextColor(ContextCompat.getColor(this, if (planOn) R.color.text_secondary else R.color.accent))
-layoutSegThumb(true)
+ val planOn = appMode == "plan"
+ if (planOn) {
+  segPlan.setBackgroundResource(R.drawable.bg_chip_active)
+  segPlan.setTextColor(ContextCompat.getColor(this, R.color.accent))
+  segPlan.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_plan_active, 0, 0, 0)
+  segBuild.setBackgroundResource(R.drawable.bg_chip_ghost)
+  segBuild.setTextColor(ContextCompat.getColor(this, R.color.chip_text_inactive))
+  segBuild.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_build, 0, 0, 0)
+ } else {
+  segPlan.setBackgroundResource(R.drawable.bg_chip_ghost)
+  segPlan.setTextColor(ContextCompat.getColor(this, R.color.chip_text_inactive))
+  segPlan.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_plan, 0, 0, 0)
+  segBuild.setBackgroundResource(R.drawable.bg_chip_active)
+  segBuild.setTextColor(ContextCompat.getColor(this, R.color.accent))
+  segBuild.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_build_active, 0, 0, 0)
+ }
 }
 
-private fun layoutSegThumb(animate: Boolean) {
-val target = if (appMode == "plan") segPlan else segBuild
-if (target.width == 0) {
-segContainer.post { layoutSegThumb(false) }
-return
-}
-val targetX = target.left.toFloat()
-val targetW = target.width
-val lp = segThumb.layoutParams
-if (lp.width != targetW) { lp.width = targetW; segThumb.layoutParams = lp }
-if (!animate) { segThumb.translationX = targetX; return }
-    // 滑块位移 spring（可打断，连续点击从当前速度继续）
-    segThumb.springX(targetX, MotionTokens.seg())
-}
 
 private fun refreshAttachRow() {
 attachRow.removeAllViews()
@@ -3190,6 +3195,65 @@ stopShakeAll()
 quickEditBar.visibility = View.GONE
 saveQuickButtons()
 rebuildQuickRow()
+}
+
+private fun showMoreSheet() {
+    val sheet = BottomSheetDialog(this)
+    val root = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setBackgroundResource(R.drawable.bg_sheet)
+        setPadding(0, dp(8), 0, dp(24))
+    }
+    root.addView(View(this).apply {
+        setBackgroundResource(R.drawable.bg_handle)
+        layoutParams = LinearLayout.LayoutParams(dp(36), dp(4)).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            topMargin = dp(6); bottomMargin = dp(14)
+        }
+    })
+    root.addView(TextView(this).apply {
+        text = "更多命令"
+        textSize = 18f
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+        setTypeface(null, android.graphics.Typeface.BOLD)
+        setPadding(dp(22), 0, dp(22), dp(8))
+    })
+    val scroll = android.widget.ScrollView(this).apply {
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(440)
+        )
+    }
+    val listBox = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+    }
+    for (c in allQuickCommands) {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.bg_sheet_row)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(52)
+            ).apply { marginStart = dp(10); marginEnd = dp(10) }
+            setPadding(dp(16), 0, dp(16), 0)
+            isClickable = true
+        }
+        val tv = TextView(this).apply {
+            text = c.label
+            textSize = 15f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+        }
+        row.addView(tv)
+        row.setOnClickListener {
+            HapticTokens.tap(row)
+            sheet.dismiss()
+            dispatchQuick(c)
+        }
+        listBox.addView(row)
+    }
+    scroll.addView(listBox)
+    root.addView(scroll)
+    sheet.setContentView(root)
+    sheet.show()
 }
 
 private fun showAddQuickSheet() {

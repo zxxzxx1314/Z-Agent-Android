@@ -200,21 +200,17 @@ android:orientation="vertical">
 
 <!-- 模式 chips（移出输入框）-->
 
-<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingBottom="8dp">
-
-<FrameLayout android:id="@+id/segContainer" android:layout_width="wrap_content" android:layout_height="36dp" android:background="@drawable/bg_seg_container" android:padding="2dp">
-<View android:id="@+id/segThumb" android:layout_width="0dp" android:layout_height="match_parent" android:background="@drawable/bg_seg_thumb" />
-<LinearLayout android:layout_width="wrap_content" android:layout_height="match_parent" android:orientation="horizontal">
-<TextView android:id="@+id/segPlan" android:layout_width="wrap_content" android:layout_height="match_parent" android:gravity="center" android:paddingStart="14dp" android:paddingEnd="14dp" android:text="计划" android:textColor="@color/text_secondary" android:textSize="@dimen/fs_label" />
-<TextView android:id="@+id/segBuild" android:layout_width="wrap_content" android:layout_height="match_parent" android:gravity="center" android:paddingStart="14dp" android:paddingEnd="14dp" android:text="构建" android:textColor="@color/accent" android:textSize="@dimen/fs_label" />
+<!-- ghost chips: 3 pills + more -->
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingBottom="10dp">
+<HorizontalScrollView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:scrollbars="none" android:overScrollMode="never">
+<LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+<TextView android:id="@+id/segPlan" android:layout_width="wrap_content" android:layout_height="32dp" android:background="@drawable/bg_chip_ghost" android:clickable="true" android:focusable="true" android:foreground="@drawable/ripple_pill" android:gravity="center_vertical" android:drawableStart="@drawable/ic_plan" android:drawablePadding="6dp" android:paddingStart="12dp" android:paddingEnd="12dp" android:text="计划" android:textColor="@color/chip_text_inactive" android:textSize="13sp" android:maxLines="1" />
+<TextView android:id="@+id/segBuild" android:layout_width="wrap_content" android:layout_height="32dp" android:layout_marginStart="8dp" android:background="@drawable/bg_chip_active" android:clickable="true" android:focusable="true" android:foreground="@drawable/ripple_pill" android:gravity="center_vertical" android:drawableStart="@drawable/ic_build_active" android:drawablePadding="6dp" android:paddingStart="12dp" android:paddingEnd="12dp" android:text="构建" android:textColor="@color/accent" android:textSize="13sp" android:maxLines="1" />
+<TextView android:id="@+id/chipThink2" android:layout_width="wrap_content" android:layout_height="32dp" android:layout_marginStart="8dp" android:background="@drawable/bg_chip_ghost" android:clickable="true" android:focusable="true" android:foreground="@drawable/ripple_pill" android:gravity="center_vertical" android:drawableStart="@drawable/ic_think" android:drawablePadding="6dp" android:paddingStart="12dp" android:paddingEnd="12dp" android:text="深度思考" android:textColor="@color/chip_text_inactive" android:textSize="13sp" android:maxLines="1" />
+<TextView android:id="@+id/chipSearch" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
 </LinearLayout>
-</FrameLayout>
-
-<TextView android:id="@+id/chipThink2" android:layout_width="wrap_content" android:layout_height="36dp" android:layout_marginStart="8dp" android:background="@drawable/bg_mini_pill" android:clickable="true" android:focusable="true" android:foreground="@drawable/ripple_pill" android:gravity="center" android:paddingStart="14dp" android:paddingEnd="14dp" android:text="✻ 深度思考" android:textColor="@color/text_secondary" android:textSize="@dimen/fs_label" android:maxLines="1" android:singleLine="true" />
-
-<TextView android:id="@+id/chipSearch" android:layout_width="wrap_content" android:layout_height="36dp" android:visibility="gone" />
-
-<View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+</HorizontalScrollView>
+<TextView android:id="@+id/chipMore" android:layout_width="32dp" android:layout_height="32dp" android:layout_marginStart="8dp" android:background="@drawable/bg_chip_ghost" android:clickable="true" android:focusable="true" android:foreground="@drawable/ripple_pill" android:gravity="center" android:drawableStart="@drawable/ic_more" />
 </LinearLayout>
 
 <!-- 输入卡 -->
