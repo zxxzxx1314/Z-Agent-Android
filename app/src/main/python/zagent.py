@@ -77,6 +77,7 @@ rain.py v4.5 —— 超级智能终端 Agent · 心智+基因+验收版（Termux
 from zcore.util import _hide_artifact, _kill_process_tree, _restore_artifact, _without_scripts, apply_patch_tag, atomic_write, auto_notify, check_global_positions, extract_version, mask_literal, safe_child_env, show_exec_result, unwrap_code
 from zcore import gate as _gate
 from zcore import proc as zproc
+from zcore import checkpoint as zckpt
 from zcore import facts as zfacts
 
 import ast
@@ -1202,6 +1203,10 @@ def settle_contract(passed, reply_text):
             print('[claim 校验失败] ' + _crep)
             append_meta_log('claim-fail', {'reason': _crep})
         c["status"] = "passed"
+        try:
+            zckpt.clear('active_task')
+        except Exception:
+            pass
         save_contract(c)
         append_journal("验收通过", c["task"])
         # 未完成待办 → 登记为自主问题（好奇心联动：未竟之事不消失）
@@ -1218,6 +1223,10 @@ def settle_contract(passed, reply_text):
     save_contract(c)      # v4.3：retry 时同样落盘，审计不丢次数
     if c["verify_attempts"] >= MAX_VERIFY_ATTEMPTS:
         c["status"] = "failed_final"
+        try:
+            zckpt.clear('active_task')
+        except Exception:
+            pass
         save_contract(c)
         append_journal("验收终局失败",
                        "%s（%d 次未过）" % (c["task"], c["verify_attempts"]))
@@ -1238,6 +1247,12 @@ def begin_task_slot(desc):
                        % ACTIVE_CONTRACT["task"])
     ACTIVE_CONTRACT = None
     CURRENT_TASK = (desc or "")[:200]
+
+
+    try:
+        zckpt.save('active_task', {'task': CURRENT_TASK, 'pid': os.getpid()}, note='open')
+    except Exception:
+        pass
 
 
 
@@ -2676,6 +2691,27 @@ def handle_command(u: str):
                            "zcore", "boot_guard.py")
         _target = _bg if os.path.exists(_bg) else os.path.abspath(__file__)
         os.execv(sys.executable, [sys.executable, _target])
+    elif cmd == "/resume":
+        parts = u.split(maxsplit=2)
+        if len(parts) >= 3 and parts[1] == "clear":
+            if parts[2] == "all":
+                n = 0
+                for name, _a, _b, _c, _d in zckpt.list_all():
+                    if zckpt.clear(name):
+                        n += 1
+                print('cleared %d checkpoints' % n)
+            else:
+                ok = zckpt.clear(parts[2])
+                print('clear %s: %s' % (parts[2], ok))
+        else:
+            rows = zckpt.list_all()
+            if not rows:
+                print('no checkpoints')
+            else:
+                print('checkpoints (newest first):')
+                for name, ts, _t, sz, note in rows:
+                    print(' %s %s %dB %s' % (name, ts, sz, note))
+                print('(/resume clear <name> or /resume clear all)')
     elif cmd == "/contract":
         parts = u.split(maxsplit=1)
         arg = parts[1].strip() if len(parts) > 1 else ""
