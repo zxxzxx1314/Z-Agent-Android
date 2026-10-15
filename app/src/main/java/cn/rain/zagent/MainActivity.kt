@@ -423,12 +423,16 @@ if (emptyState.visibility != View.GONE) emptyState.visibility = View.GONE
 }
 
 private fun applyTopInset() {
+ val resId = resources.getIdentifier("status_bar_height", "dimen", "android")
+ val statusH = if (resId > 0) resources.getDimensionPixelSize(resId) else 0
+ val baseTop = statusH + dp(10)
+ topBar.setPadding(topBar.paddingLeft, baseTop, topBar.paddingRight, topBar.paddingBottom)
  val root = findViewById<View>(R.id.rootView)
  // 状态栏 padding 加到根视图顶部（避免局部 view 首次布局时 insets 未分发）
  ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
  val bars = insets.getInsets(WindowInsetsCompat.Type.statusBars())
  val wantTop = bars.top + dp(10)
- if (topBar.paddingTop != wantTop) {
+ if (wantTop > topBar.paddingTop) {
   topBar.setPadding(topBar.paddingLeft, wantTop, topBar.paddingRight, topBar.paddingBottom)
  }
  applyImePadding(insets)
