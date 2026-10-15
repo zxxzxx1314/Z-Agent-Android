@@ -128,7 +128,7 @@ def _load_model_noninteractive():
 # 出厂基因静态清单（机制2 的枚举兜底）。新增 zcore/zguard 源文件时
 # 同步更新；reader 枚举成功时会自动补全，无需手工维护精确。
 _FACTORY_MANIFEST = {
-    "zcore": ("__init__.py", "util.py"),
+ "zcore": ("__init__.py", "util.py", "mask.py", "gate.py", "proc.py", "checkpoint.py", "limiter.py", "events.py", "facts.py", "audit_verify.py"),
     "zguard": ("__init__.py", "boot_guard.py", "boot_guard_selftest.py",
                "shadow_child.py", "shadow_test.py"),
 }
