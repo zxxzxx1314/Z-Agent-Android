@@ -27,9 +27,7 @@ object MdRender {
         val lines = src.split("\n")
         for (i in lines.indices) {
 
-if
-复制
-下载
+            if (i > 0) sb.append("\n")
             val line = lines[i].trimEnd()
             when {
                 line.isEmpty() -> {}
