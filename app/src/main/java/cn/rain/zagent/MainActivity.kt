@@ -3113,7 +3113,62 @@ quickButtons = loadQuickButtons()
 rebuildQuickRow()
 
 quickCollapse.setOnClickListener { haptic(it); collapseQuick() }
-quickBall.setOnClickListener { haptic(it); if (quickExpanded) collapseQuick() else expandQuick() }
+// 紫花球：短按=切换快捷条，长按拖动改位置
+run {
+val ball = quickBall
+val prefsX = sp.getFloat(KEY_BALL_X, -1f)
+val prefsY = sp.getFloat(KEY_BALL_Y, -1f)
+if (prefsX >= 0f && prefsY >= 0f) {
+ball.post {
+try {
+ball.x = prefsX
+ball.y = prefsY
+} catch (e: Throwable) {}
+}
+}
+var downX = 0f; var downY = 0f; var startX = 0f; var startY = 0f
+var dragging = false
+ball.setOnTouchListener { v, ev ->
+when (ev.actionMasked) {
+android.view.MotionEvent.ACTION_DOWN -> {
+downX = ev.rawX; downY = ev.rawY
+startX = v.x; startY = v.y
+dragging = false
+false
+}
+android.view.MotionEvent.ACTION_MOVE -> {
+val dx = ev.rawX - downX
+val dy = ev.rawY - downY
+if (!dragging && (Math.abs(dx) > dp(6) || Math.abs(dy) > dp(6))) {
+dragging = true
+HapticTokens.longPress(v)
+}
+if (dragging) {
+val parent = v.parent as? View
+val maxX = ((parent?.width ?: 0) - v.width).toFloat().coerceAtLeast(0f)
+val maxY = ((parent?.height ?: 0) - v.height).toFloat().coerceAtLeast(0f)
+v.x = (startX + dx).coerceIn(0f, maxX)
+v.y = (startY + dy).coerceIn(0f, maxY)
+true
+} else false
+}
+android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+if (dragging) {
+sp.edit().putFloat(KEY_BALL_X, v.x).putFloat(KEY_BALL_Y, v.y).apply()
+HapticTokens.tap(v)
+true
+} else {
+// 短按=切换快捷条
+haptic(v)
+if (quickExpanded) collapseQuick() else expandQuick()
+true
+}
+}
+else -> false
+}
+}
+}
+
 findViewById<View>(R.id.quickEditDone).setOnClickListener { haptic(it); exitQuickEdit() }
 quickBarContainer.setOnClickListener { if (quickEditMode) exitQuickEdit() }
 }
@@ -3579,6 +3634,8 @@ private const val KEY_LIGHT_THEME = "light_theme"
  private const val KEY_QUICK_BUTTONS = "quick_buttons_v1"
 private const val KEY_DRAFT = "input_draft"
 private const val KEY_THINK = "think_on"
+private const val KEY_BALL_X = "ball_x"
+private const val KEY_BALL_Y = "ball_y"
 private const val BEG = "===REASONING_BEGIN==="
 private const val END = "===REASONING_END==="
 }
