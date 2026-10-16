@@ -409,8 +409,7 @@ requestNotifyPermission()
             }
             outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
         } catch (e: Exception) {
-            appendOutput("[历史] 渲染失败：" + (e.message ?: "") + "
-")
+            appendOutput("[历史] 渲染失败：" + (e.message ?: "") + "\n")
         }
     }
 
@@ -504,8 +503,7 @@ requestNotifyPermission()
                 })
             }
         } catch (e: Exception) {
-            appendOutput("[历史] 列表解析失败：" + (e.message ?: "") + "
-")
+            appendOutput("[历史] 列表解析失败：" + (e.message ?: "") + "\n")
         }
         val sv = android.widget.ScrollView(this)
         sv.addView(root)
