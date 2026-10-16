@@ -91,7 +91,7 @@ private var stopRequested = false
 private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
 private val placeholderHints = arrayOf(
-"/help 看看能做什么", "解释这个文件", "重构这个函数",
+"输入消息…", "解释这个文件", "重构这个函数",
 "跑一下这段代码", "查这个报错", "帮我做代码审查",
 "写个单元测试", "看看我的待办",
 )
@@ -505,7 +505,7 @@ themeIcon.setImageResource(if (!light) R.drawable.ic_sun else R.drawable.ic_moon
 
 // 自动执行：不再放主界面，仅在设置页内切换
 private fun refreshAutoSwitch(on: Boolean) {
-sheetRows["auto"]?.text = if (on) "开启 · 跳过确认" else "关闭 · 每步询问"
+sheetRows["auto"]?.text = if (on) "跳过确认" else "每步询问"
 }
 
 // 设置页里点「自动执行（跳过确认）」→ 二次确认
@@ -585,7 +585,7 @@ root.addView(settingsRow(R.drawable.ic_refresh, "自动执行（跳过确认）"
 root.addView(groupLabel("会话"))
 
  root.addView(settingsRow(R.drawable.ic_info, "运行日志", "查看执行日志") { showLogSheet() })
-root.addView(settingsRow(R.drawable.ic_info, "查看状态", statusSummary) {
+root.addView(settingsRow(R.drawable.ic_info, "关于", statusSummary) {
 threadRun { safeBridge {
 val st = try { PythonBridge.status(this@MainActivity) } catch (e: Exception) { "{}" }
 runOnUiThread { showStatus(st) }
@@ -649,7 +649,7 @@ try {
 val o = JSONObject(json)
 val keyOk = o.optBoolean("api_key_set", false)
 apiKeySummary = if (keyOk) "已配置" else "未设置"
-baseUrlSummary = o.optString("base_url", "").ifBlank { "未设置" }
+baseUrlSummary = o.optString("base_url", "").let { v -> if (v.isBlank()) "未设置" else try { android.net.Uri.parse(v).host ?: v } catch (e: Exception) { v } }
 modelSummary = o.optString("model", "").ifBlank { "未设置" }
 val t = o.optInt("turns", 0)
 turnsSummary = if (t > 0) "$t 条" else ""
@@ -718,7 +718,7 @@ when (title) {
 "API 地址" -> sheetRows["url"] = vl
 "模型名称" -> sheetRows["model"] = vl
 "清空会话" -> sheetRows["turns"] = vl
-"查看状态" -> sheetRows["status"] = vl
+"关于" -> sheetRows["status"] = vl
 "测试连接" -> sheetRows["test"] = vl
  "自动执行（跳过确认）" -> sheetRows["auto"] = vl
 }
@@ -940,7 +940,7 @@ val r = PythonBridge.setBaseUrl(this@MainActivity, u)
 runOnUiThread {
 appendOutput("[设置] API 地址 " + r + (10).toChar())
 toast("已保存")
-baseUrlSummary = u.ifBlank { "未设置" }
+baseUrlSummary = if (u.isBlank()) "未设置" else try { android.net.Uri.parse(u).host ?: u } catch (e: Exception) { u }
 sheetRows["url"]?.text = baseUrlSummary
 }
 }
@@ -963,10 +963,23 @@ conn.requestMethod = "GET"
 conn.connectTimeout = 8000
 conn.readTimeout = 8000
 val code = try { conn.responseCode } catch (e: Exception) { 0 }
+var errBody = ""
+try {
+val es = if (code >= 400) conn.errorStream else conn.inputStream
+if (es != null) {
+val buf = ByteArray(1024)
+val n = es.read(buf)
+if (n > 0) errBody = String(buf, 0, n, Charsets.UTF_8)
+es.close()
+}
+} catch (e: Exception) { }
 conn.disconnect()
+val isModelErr = errBody.contains("model", true) && (errBody.contains("not exist", true) || errBody.contains("not found", true) || errBody.contains("invalid", true))
 if (code in 200..299) "✓ 已连通 · HTTP " + code
-else if (code == 401 || code == 403) "✓ 已连通 · Key 被拒 · HTTP " + code
-else if (code > 0) "✓ 已连通 · HTTP " + code
+else if (isModelErr) "✗ 模型名可能无效，请检查「模型名称」"
+else if (code == 401 || code == 403) "✗ Key 被拒 · HTTP " + code
+else if (code == 404) "✗ 地址或路径错误 · HTTP 404"
+else if (code > 0) "✗ HTTP " + code
 else "✗ 连接失败（无响应）"
 } catch (e: Exception) {
 "✗ 连接失败：" + (e.message ?: e.javaClass.simpleName)
@@ -984,18 +997,115 @@ sheetRows["test"]?.setTextColor(if (result.startsWith("✓")) okColor else dngCo
 
 private fun promptModel() {
 val saved = sp.getString(KEY_MODEL_NAME, "") ?: ""
-if (saved.isNotBlank()) {
-showModelDialog(saved)
-} else {
 threadRun {
-val cur = try {
+val cur0 = if (saved.isNotBlank()) saved else try {
 val st = PythonBridge.status(this@MainActivity)
 JSONObject(st).optString("model", "")
 } catch (e: Exception) { "" }
-runOnUiThread { showModelDialog(cur) }
+runOnUiThread { showModelPicker(cur0) }
+}
+}
+
+private val presetModels = listOf(
+"deepseek-chat",
+"deepseek-reasoner",
+"glm-4-flash",
+"glm-4-plus",
+"gpt-4o-mini",
+"gpt-4o",
+"claude-3-5-sonnet-20241022"
+)
+
+private fun showModelPicker(current: String) {
+val sheet = BottomSheetDialog(this)
+val root = LinearLayout(this).apply {
+orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_sheet)
+setPadding(0, dp(8), 0, dp(24))
+}
+root.addView(TextView(this).apply {
+text = "选择模型"
+textSize = 20f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+setTypeface(null, android.graphics.Typeface.BOLD)
+setPadding(dp(22), dp(8), dp(22), dp(4))
+})
+root.addView(TextView(this).apply {
+text = "当前：" + (if (current.isBlank()) "（未设置）" else current)
+textSize = 12f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+setPadding(dp(22), 0, dp(22), dp(10))
+})
+for (m in presetModels) {
+val row = TextView(this).apply {
+text = (if (m == current) "✓ " else " ") + m
+textSize = 15f
+setTextColor(ContextCompat.getColor(this@MainActivity,
+if (m == current) R.color.accent else R.color.text_primary))
+setPadding(dp(22), dp(12), dp(22), dp(12))
+isClickable = true
+setBackgroundResource(R.drawable.bg_sheet_row)
+}
+row.setOnClickListener {
+HapticTokens.tap(it)
+applyModel(m)
+sheet.dismiss()
+}
+root.addView(row)
+}
+val custom = TextView(this).apply {
+text = "自定义…"
+textSize = 15f
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+setPadding(dp(22), dp(14), dp(22), dp(14))
+isClickable = true
+}
+custom.setOnClickListener {
+HapticTokens.tap(it)
+sheet.dismiss()
+showModelDialogCustom(current)
+}
+root.addView(custom)
+sheet.setContentView(root)
+sheet.show()
+}
+
+private fun applyModel(name: String) {
+val n = name.trim()
+HapticTokens.success(sendButton)
+sp.edit().putString(KEY_MODEL_NAME, n).apply()
+threadRun {
+safeBridge {
+val r = PythonBridge.setModel(this@MainActivity, n)
+runOnUiThread {
+appendOutput("[设置] 模型名称 " + r + (10).toChar())
+toast("已切换模型：" + n)
+refreshStatusQuiet()
 }
 }
 }
+}
+
+private fun showModelDialogCustom(current: String) {
+inputSheet(
+title = "自定义模型",
+hint = "服务商文档里的 model id",
+initial = current,
+message = "仅在列表里没有你的模型时使用；留空 = 恢复出厂默认"
+) { name ->
+val n = name.trim()
+sp.edit().putString(KEY_MODEL_NAME, n).apply()
+threadRun { safeBridge {
+val r = PythonBridge.setModel(this@MainActivity, n)
+runOnUiThread {
+appendOutput("[设置] 模型名称 " + r + (10).toChar())
+toast("已保存")
+refreshStatusQuiet()
+}
+} }
+}
+}
+
 
 private fun showModelDialog(current: String) {
 inputSheet(
@@ -1499,6 +1609,7 @@ return had
 
 private fun sendCommand(cmd: String) {
     if (busy) return
+ try { if (!quickExpanded) quickBall.visibility = View.VISIBLE } catch (x: Throwable) {}
     busy = true
     stopRequested = false
     refreshSendButton()
@@ -1515,21 +1626,23 @@ private fun sendCommand(cmd: String) {
                 hideLoadingDots(loadingDotsView)
                 loadingDotsView = null
                 val wasStopped = stopRequested
-                if (!had) {
-                    val fb = if (wasStopped) "[已停止]\n" else reply + "\n"
-                    appendOutput(fb)
-                }
-                endStepBar()
-                busy = false
-                stopRequested = false
-                refreshSendButton()
-                val failed = wasStopped
-                        || reply.contains("[API错误")
-                        || reply.contains("[网络错误")
-                        || reply.contains("[流读取中断]")
-        if (failed) HapticTokens.warn(sendButton) else HapticTokens.success(sendButton)
+val looksLikeError = reply.contains("[API错误") || reply.contains("[网络错误") || reply.contains("[流读取中断]")
+if (!had && !wasStopped && !looksLikeError) {
+appendOutput(reply + "\n")
+}
+if (wasStopped && !had) appendOutput("[已停止]\n")
+endStepBar()
+busy = false
+stopRequested = false
+refreshSendButton()
+val failed = wasStopped
+|| reply.contains("[API错误")
+|| reply.contains("[网络错误")
+|| reply.contains("[流读取中断]")
+if (failed) HapticTokens.warn(sendButton) else HapticTokens.success(sendButton)
 if (!failed) sendButton.animateFinish()
-                if (failed) addErrorBar(cmd, extractErrorReason(reply, wasStopped), reply, classifyError(reply, wasStopped))
+if (failed) addErrorBar(cmd, extractErrorReason(reply, wasStopped), reply, classifyError(reply, wasStopped))
+
             }
         }
     }
@@ -1652,7 +1765,7 @@ setTextIsSelectable(true)
 visibility = View.GONE
 }
 val toggle = TextView(this).apply {
-text = "查看原文"
+text = "查看详情"
 textSize = 12f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
 setPadding(0, dp(6), 0, 0)
@@ -1662,7 +1775,7 @@ toggle.setOnClickListener {
 HapticTokens.tap(it)
 val expanded = detail.visibility == View.VISIBLE
 detail.visibility = if (expanded) View.GONE else View.VISIBLE
-toggle.text = if (expanded) "查看原文" else "收起原文"
+toggle.text = if (expanded) "查看详情" else "收起详情"
 }
 card.addView(title); card.addView(tipTv); card.addView(toggle); card.addView(detail)
 chatContainer.addView(card)
@@ -1716,6 +1829,7 @@ textSize = 15f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
 setBackgroundResource(R.drawable.bg_bubble_user)
 setPadding(dp(14), dp(10), dp(14), dp(10))
+minWidth = dp(56)
 maxWidth = dp(280)
 setTextIsSelectable(true)
 isClickable = true
@@ -2065,25 +2179,31 @@ popup.show()
 // 失败/中断后追加行内重试按钮
 // 从回复中提取错误原因
 private fun extractErrorReason(reply: String, stopped: Boolean): String {
-    if (stopped) return "已手动停止"
-    if (reply.contains("[网络错误")) return "网络连接失败，请检查网络或 API 地址"
-    if (reply.contains("[API错误")) {
-        val m = Regex("\\[API错误 (\\d+)\\]").find(reply)
-        val code = m?.groupValues?.getOrNull(1) ?: ""
-        if (code == "401") return "API Key 无效或已过期"
-        if (code == "429") return "请求过于频繁，稍后重试"
-        if (code.startsWith("5")) return "服务端错误（" + code + "）"
-        return "API 错误（" + code + "）"
-    }
-    if (reply.contains("[流读取中断]")) return "连接中断"
-    return "生成失败"
+if (stopped) return "已手动停止"
+if (reply.contains("[网络错误")) return "网络连接失败，请检查网络或 API 地址"
+if (reply.contains("[API错误")) {
+ val m = Regex("\\[API错误 (\\d+)\\]").find(reply)
+val code = m?.groupValues?.getOrNull(1) ?: ""
+val low = reply.lowercase()
+if (low.contains("model") && (low.contains("not exist") || low.contains("not found") || low.contains("invalid"))) return "模型名称无效，请在设置里重新选择"
+if (code == "401") return "API Key 无效或已过期"
+if (code == "403") return "Key 权限不足或已被封禁"
+if (code == "404") return "API 地址或路径错误（HTTP 404）"
+if (code == "429") return "请求过于频繁，稍后重试"
+if (code == "400") return "请求被拒（HTTP 400），检查模型名与参数"
+if (code.startsWith("5")) return "服务端错误（" + code + "）"
+return "API 错误（" + code + "）"
 }
+if (reply.contains("[流读取中断]")) return "连接中断"
+return "生成失败"
+}
+
 private fun classifyError(reply: String, stopped: Boolean): String {
 if (stopped) return "other"
 if (reply.contains("[网络错误")) return "network"
 if (reply.contains("[流读取中断]")) return "network"
 if (reply.contains("[API错误")) {
-        val m = Regex("\\[API错误 (\\d+)\\]").find(reply)
+ val m = Regex("\\[API错误 (\\d+)\\]").find(reply)
 val code = m?.groupValues?.getOrNull(1) ?: ""
 if (code == "401" || code == "403") return "auth"
 if (code == "429") return "other"
@@ -2096,6 +2216,7 @@ return "other"
 
 // 错误态：行内提示条（原因 + 去设置 + 重试）
 private fun addErrorBar(cmd: String, reason: String, detail: String = "", category: String = "other") {
+try { quickBall.visibility = View.GONE } catch (x: Throwable) {}
 hideEmpty()
 val card = LinearLayout(this).apply {
 orientation = LinearLayout.VERTICAL
@@ -2136,7 +2257,7 @@ LinearLayout.LayoutParams.WRAP_CONTENT
 ).apply { topMargin = dp(8) }
 }
 val detailBtn = TextView(this).apply {
-text = "看详情"
+text = "查看详情"
 textSize = 13f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
 setPadding(dp(12), dp(6), dp(12), dp(6))
@@ -2147,7 +2268,7 @@ detailBtn.setOnClickListener {
 HapticTokens.tap(it)
 val expanded = detailTv.visibility == View.VISIBLE
 detailTv.visibility = if (expanded) View.GONE else View.VISIBLE
-detailBtn.text = if (expanded) "看详情" else "收起"
+detailBtn.text = if (expanded) "查看详情" else "收起"
 }
 val retryBtn = TextView(this).apply {
 text = "↻ 重试"
@@ -2296,18 +2417,24 @@ isAlert -> addAlertLine(raw, false)
 isWarn -> addAlertLine(raw, true)
 isLog -> addLogLine(raw)
 else -> {
-val tv = TextView(this).apply {
+val pill = TextView(this).apply {
 text = raw
-textSize = 13f
+textSize = 12f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
 gravity = Gravity.CENTER
-setPadding(dp(12), dp(4), dp(12), dp(4))
+setPadding(dp(14), dp(6), dp(14), dp(6))
+setBackgroundResource(R.drawable.bg_quick)
+}
+val row = LinearLayout(this).apply {
+orientation = LinearLayout.HORIZONTAL
+gravity = Gravity.CENTER
 layoutParams = LinearLayout.LayoutParams(
 LinearLayout.LayoutParams.MATCH_PARENT,
 LinearLayout.LayoutParams.WRAP_CONTENT
-)
+).apply { topMargin = dp(4); bottomMargin = dp(4) }
 }
-chatContainer.addView(tv)
+row.addView(pill)
+chatContainer.addView(row)
 }
 }
 }
@@ -2614,9 +2741,9 @@ try {
 val o = JSONObject(json)
 val keyOk = o.optBoolean("api_key_set", false)
 val model = if (o.isNull("model")) "" else (o.optString("model", ""))
-tv.text = if (model.isNotBlank()) model else "未选择模型"
+tv.text = if (model.isNotBlank()) "已就绪 · " + model else "未选择模型"
 // Key 未配置时用 accent 提示，已配置用常规灰
-val col = if (keyOk) R.color.text_tertiary else R.color.warn
+val col = if (keyOk) R.color.text_secondary else R.color.warn
 tv.setTextColor(ContextCompat.getColor(this@MainActivity, col))
 // 长按复制全部状态（保留调试能力）
 tv.setOnLongClickListener {
@@ -2898,7 +3025,7 @@ card.post { bounceIn(card) }
 
 
 // ══════ 快捷条：可收起/展开/自定义 ══════
-data class QuickBtn(val id: String, val label: String, val action: String)
+data class QuickBtn(val id: String, val label: String, val action: String, val desc: String = "")
 
 private lateinit var quickRow: LinearLayout
 private lateinit var quickRowWrap: View
@@ -2909,22 +3036,22 @@ private lateinit var quickBall: View
 private val quickShakeAnims = mutableListOf<android.animation.ObjectAnimator>()
 
 private val allQuickCommands = listOf(
-QuickBtn("idle", "自主", "cmd:/idle"),
-QuickBtn("think", "深思", "cmd:/think"),
-QuickBtn("contract", "合同", "cmd:/contract"),
-QuickBtn("versions", "版本", "cmd:/versions"),
-QuickBtn("evolve", "进化", "cmd:/evolve"),
-QuickBtn("rollback", "回滚", "cmd:/rollback"),
-QuickBtn("plan", "计划", "cmd:/plan"),
-QuickBtn("build", "构建", "cmd:/build"),
-QuickBtn("auto", "自动", "cmd:/auto"),
-QuickBtn("skill", "技能", "cmd:/skill list"),
-QuickBtn("save", "存插件", "saveplugin"),
-QuickBtn("plugins", "插件", "plugin"),
-QuickBtn("clear", "清屏", "cmd:/clear"),
-QuickBtn("restart", "重启", "cmd:/restart"),
+QuickBtn("idle", "自主", "cmd:/idle", "自主执行子任务队列"),
+QuickBtn("think", "深思", "cmd:/think", "开启深度思考"),
+QuickBtn("contract", "合同", "cmd:/contract", "查看验收合同"),
+QuickBtn("versions", "版本", "cmd:/versions", "查看/回滚版本"),
+QuickBtn("evolve", "进化", "cmd:/evolve", "自我改进（高风险）"),
+QuickBtn("rollback", "回滚", "cmd:/rollback", "回滚到上一版本"),
+QuickBtn("plan", "计划", "cmd:/plan", "仅拆解任务，不执行"),
+QuickBtn("build", "构建", "cmd:/build", "执行代码任务"),
+QuickBtn("auto", "自动", "cmd:/auto", "切换自动执行"),
+QuickBtn("skill", "技能", "cmd:/skill list", "列出技能"),
+QuickBtn("save", "存插件", "saveplugin", "把当前代码存为插件"),
+QuickBtn("plugins", "插件", "plugin", "打开插件页"),
+QuickBtn("clear", "清屏", "cmd:/clear", "清空对话"),
+QuickBtn("restart", "重启", "cmd:/restart", "重启 Agent"),
 
-QuickBtn("analyze", "分析", "analyze")
+QuickBtn("analyze", "分析", "analyze", "REA 分析器")
 )
 
 private fun defaultQuickButtons(): MutableList<QuickBtn> {
@@ -3020,6 +3147,11 @@ HapticTokens.tap(it)
 dispatchQuick(b)
 }
 tv.setOnLongClickListener {
+if (!quickEditMode && b.desc.isNotBlank()) {
+HapticTokens.longPress(it)
+toast(b.label + " · " + b.desc)
+return@setOnLongClickListener true
+}
 if (quickEditMode) {
 HapticTokens.longPress(it)
 val data = ClipData.newPlainText("qi", idx.toString())
