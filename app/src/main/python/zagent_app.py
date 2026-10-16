@@ -378,6 +378,7 @@ def bootstrap(home_path):
                     % (zag.VERSION, zag.get_gen(), len(zag.messages),
                        "" if zag.API_KEY else "（API Key 未配置，请在设置中填写）"))
     _state["ready"] = True
+    _sync_session()
     return get_status()
 
 
@@ -455,6 +456,7 @@ def run_agent(user_input):
                 turn_buf.append("\n[网络/API 异常] 本轮未完成。"
                                 "请检查 API Key 与网络后重试。\n")
         zag.save_session(zag.messages)
+        _sync_session()
     except SystemExit:
         turn_buf.append("\n[提示] 命令请求退出运行时，已拦截（APK 模式"
                         "请直接关闭应用）。\n")
@@ -786,3 +788,105 @@ def analyze_action(action, arg):
 		return _j.dumps({'ok': False, 'err': '未知 action: ' + str(action)}, ensure_ascii=False)
 	except Exception as e:
 		return _j.dumps({'ok': False, 'err': repr(e)}, ensure_ascii=False)
+
+# ==================== session manager (Kotlin bridge) ====================
+
+
+def _sess():
+    import zagent_sessions as _s
+    return _s, _state.get("home") or os.path.expanduser(chr(126))
+
+
+def _sync_session():
+    try:
+        _s, h = _sess()
+        sid = _state.get("sid")
+        if not sid and _zag:
+            sid = _s.ensure(h, list(_zag.messages))
+            _state["sid"] = sid
+        if sid and _zag:
+            _s.touch(h, sid, _zag.messages)
+    except Exception:
+        pass
+
+
+def sessions_list():
+    import json as _j
+    try:
+        _s, h = _sess()
+        sid = _s.ensure(h, list(_zag.messages) if _zag else None)
+        return _j.dumps({"ok": True, "current": sid, "items": _s.list_sessions(h)}, ensure_ascii=False)
+    except Exception as e:
+        return _j.dumps({"ok": False, "err": repr(e)}, ensure_ascii=False)
+
+
+def session_new():
+    import json as _j
+    try:
+        _s, h = _sess()
+        sid = _s.create(h, [])
+        _state["sid"] = sid
+        if _zag:
+            _zag.messages.clear()
+            _zag.refresh_system()
+            _zag.save_session(_zag.messages)
+        return _j.dumps({"ok": True, "sid": sid}, ensure_ascii=False)
+    except Exception as e:
+        return _j.dumps({"ok": False, "err": repr(e)}, ensure_ascii=False)
+
+
+def session_switch(sid):
+    import json as _j
+    try:
+        _s, h = _sess()
+        msgs = _s.load_msgs(h, sid)
+        idx = _s.load_index(h)
+        idx["current"] = sid
+        _s.save_index(h, idx)
+        _state["sid"] = sid
+        if _zag:
+            _zag.messages.clear()
+            _zag.refresh_system()
+            for m in msgs:
+                _zag.messages.append({"role": m["role"], "content": m["content"]})
+            _zag.save_session(_zag.messages)
+        return _j.dumps({"ok": True, "sid": sid, "msgs": msgs}, ensure_ascii=False)
+    except Exception as e:
+        return _j.dumps({"ok": False, "err": repr(e)}, ensure_ascii=False)
+
+
+def session_delete(sid):
+    import json as _j
+    try:
+        _s, h = _sess()
+        cur = _s.remove(h, sid)
+        if _zag and cur:
+            msgs = _s.load_msgs(h, cur)
+            _zag.messages.clear()
+            _zag.refresh_system()
+            for m in msgs:
+                _zag.messages.append({"role": m["role"], "content": m["content"]})
+            _zag.save_session(_zag.messages)
+            _state["sid"] = cur
+        return _j.dumps({"ok": True, "current": cur}, ensure_ascii=False)
+    except Exception as e:
+        return _j.dumps({"ok": False, "err": repr(e)}, ensure_ascii=False)
+
+
+def session_current():
+    import json as _j
+    try:
+        _s, h = _sess()
+        sid = _s.ensure(h, list(_zag.messages) if _zag else None)
+        return _j.dumps({"ok": True, "sid": sid, "msgs": _s.load_msgs(h, sid)}, ensure_ascii=False)
+    except Exception as e:
+        return _j.dumps({"ok": False, "err": repr(e)}, ensure_ascii=False)
+
+
+def session_export(sid, out_dir):
+    import json as _j
+    try:
+        _s, h = _sess()
+        return _j.dumps({"ok": True, "file": _s.export_md(h, sid, out_dir)}, ensure_ascii=False)
+    except Exception as e:
+        return _j.dumps({"ok": False, "err": repr(e)}, ensure_ascii=False)
