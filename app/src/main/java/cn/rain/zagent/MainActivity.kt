@@ -2970,6 +2970,7 @@ private lateinit var quickRowWrap: View
 private lateinit var quickCollapse: View
 private lateinit var quickEditBar: View
 private lateinit var quickBarContainer: View
+private lateinit var quickBall: View
 private val quickShakeAnims = mutableListOf<android.animation.ObjectAnimator>()
 
 private val allQuickCommands = listOf(
@@ -3038,11 +3039,13 @@ quickRowWrap = findViewById(R.id.quickRowWrap)
 quickCollapse = findViewById(R.id.quickCollapse)
 quickEditBar = findViewById(R.id.quickEditBar)
 quickBarContainer = findViewById(R.id.quickBarContainer)
+quickBall = findViewById(R.id.quickBall)
 
 quickButtons = loadQuickButtons()
 rebuildQuickRow()
 
 quickCollapse.setOnClickListener { haptic(it); collapseQuick() }
+quickBall.setOnClickListener { haptic(it); expandQuick() }
 findViewById<View>(R.id.quickEditDone).setOnClickListener { haptic(it); exitQuickEdit() }
 quickBarContainer.setOnClickListener { if (quickEditMode) exitQuickEdit() }
 }
@@ -3053,7 +3056,7 @@ for ((idx, b) in quickButtons.withIndex()) {
 quickRow.addView(makeQuickChip(b, idx))
 }
 if (quickEditMode) quickRow.addView(makePlusChip())
-if (quickExpanded) { quickBarContainer.visibility = View.VISIBLE; quickRowWrap.visibility = View.VISIBLE } else { quickBarContainer.visibility = View.GONE }
+if (quickExpanded) { quickBarContainer.visibility = View.VISIBLE; quickRowWrap.visibility = View.VISIBLE; quickBall.visibility = View.GONE } else { quickBarContainer.visibility = View.VISIBLE; quickRowWrap.visibility = View.GONE; quickBall.visibility = View.VISIBLE }
 
 }
 
@@ -3177,6 +3180,7 @@ private fun expandQuick() {
 quickRowWrap.animate().cancel()
 for (i in 0 until quickRow.childCount) quickRow.getChildAt(i).animate().cancel()
 quickExpanded = true
+try { quickBall.visibility = View.GONE } catch (x: Throwable) {}
 quickBarContainer.visibility = View.VISIBLE
 quickRowWrap.visibility = View.VISIBLE
 quickRowWrap.alpha = 1f
@@ -3237,7 +3241,8 @@ if (MotionPrefs.reduceMotion(quickRowWrap)) {
 val lp0 = quickRowWrap.layoutParams
 lp0.height = LinearLayout.LayoutParams.WRAP_CONTENT
 quickRowWrap.layoutParams = lp0
-quickBarContainer.visibility = View.GONE
+quickRowWrap.visibility = View.GONE
+quickBall.visibility = View.VISIBLE
 return
 }
 // 第一步：胶囊快速消失（无错开，110ms）
@@ -3281,7 +3286,8 @@ val v = quickRow.getChildAt(i)
 v.alpha = 1f
 v.translationY = 0f
 }
-quickBarContainer.visibility = View.GONE
+quickRowWrap.visibility = View.GONE
+quickBall.visibility = View.VISIBLE
 }
 
 private fun startShakeAll() {
