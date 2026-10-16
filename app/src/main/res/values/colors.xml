@@ -48,8 +48,8 @@
 <color name="log_text">#5A5A68</color>
 
         <!-- UI revamp ghost chip tokens -->
-        <color name="chip_ghost_bg">#0F787880</color>
-        <color name="chip_ghost_stroke">#14000000</color>
+        <color name="chip_ghost_bg">#EEECF4</color>
+        <color name="chip_ghost_stroke">#00000000</color>
         <color name="chip_active_bg">#1A6D4AFF</color>
         <color name="chip_text_inactive">#8E8E93</color>
     </resources>
