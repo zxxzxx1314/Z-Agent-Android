@@ -2412,8 +2412,7 @@ private fun showLogSheet() {
  setPadding(dp(22), dp(6), dp(22), dp(10))
  })
  val body = TextView(this).apply {
- text = if (logBuffer.isEmpty()) "（暂无日志）" else logBuffer.joinToString("
-")
+ text = if (logBuffer.isEmpty()) "（暂无日志）" else logBuffer.joinToString(System.lineSeparator())
  textSize = 11f
  typeface = android.graphics.Typeface.MONOSPACE
  setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
