@@ -1007,14 +1007,20 @@ runOnUiThread { showModelPicker(cur0) }
 }
 
 private val presetModels = listOf(
+"deepseek-flash",
 "deepseek-chat",
 "deepseek-reasoner",
-"glm-4-flash",
-"glm-4-plus",
-"gpt-4o-mini",
-"gpt-4o",
-"claude-3-5-sonnet-20241022"
+"glm-5.3",
+"glm-5.3-flash",
+"glm-5.3-flashx",
+"qwen3.8-max",
+"qwen3.8-flash",
+"qwen3.7-plus",
+"kimi-k3",
+"kimi-k2.7-code",
+"kimi-k2.6"
 )
+
 
 private fun showModelPicker(current: String) {
 val sheet = BottomSheetDialog(this)
