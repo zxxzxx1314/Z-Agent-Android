@@ -108,6 +108,10 @@ private val placeholderRotator = object : Runnable {
 private var streamPolling = false
 private var streamingBubble: TextView? = null
 private var streamingSb = StringBuilder()
+private var streamingMasked = ""
+private var streamRenderDirty = false
+private var lastRenderAtMs = 0L
+private val maskParaCache = HashMap<Int, String>()
 private var reasoningSb = StringBuilder()
 private var reasoningBox: LinearLayout? = null
 private var reasoningHeader: TextView? = null
@@ -1216,11 +1220,15 @@ inputEdit.hint = "输入消息..."
 
 // ============ 流式渲染 ============
 private val cursorBlink = object : Runnable {
-    override fun run() {
-        cursorOn = !cursorOn
-        streamingBubble?.let { renderStreamText(it) }
-        uiHandler.postDelayed(this, 500)
-    }
+ override fun run() {
+ cursorOn = !cursorOn
+ if (streamRenderDirty || streamingSb.isNotEmpty()) {
+ streamRenderDirty = false
+ lastRenderAtMs = System.currentTimeMillis()
+ streamingBubble?.let { renderStreamText(it) }
+ }
+ uiHandler.postDelayed(this, 500)
+ }
 }
 
 private val streamPoll = object : Runnable {
@@ -1460,12 +1468,37 @@ stepRows.clear()
 }
 
 private fun renderStreamText(tv: TextView) {
-    val _masked = maskSecret(streamingSb.toString())
-    tv.text = if (cursorOn) _masked + "▌" else _masked
+ streamingMasked = computeMaskedStreaming()
+ tv.text = if (cursorOn) streamingMasked + "▌" else streamingMasked
+}
+
+private fun computeMaskedStreaming(): String {
+ val full = streamingSb.toString()
+ if (full.isEmpty()) return ""
+ val sep = 10.toChar()
+ val paras = full.split(sep)
+ val done = paras.size - 1
+ val sb = StringBuilder(full.length + 16)
+ for (i in 0 until done) {
+ var seg = maskParaCache[i]
+ if (seg == null) {
+ seg = maskSecret(paras[i])
+ maskParaCache[i] = seg
+ }
+ sb.append(seg).append(sep)
+ }
+ if (paras.isNotEmpty()) {
+ sb.append(maskSecret(paras[paras.size - 1]))
+ }
+ return sb.toString()
 }
 
 private fun beginStreaming() {
  streamingSb = StringBuilder()
+ streamingMasked = ""
+ streamRenderDirty = false
+ lastRenderAtMs = 0L
+ maskParaCache.clear()
  reasoningSb = StringBuilder()
  cursorOn = true
  hideEmpty()
@@ -1582,9 +1615,15 @@ private fun appendStream(t: String) {
  if (t.isEmpty()) return
  if (streamingSb.isEmpty()) { hideLoadingDots(loadingDotsView); loadingDotsView = null }
  streamingSb.append(t)
+ streamRenderDirty = true
  val b = ensureStreamBubble()
+ val now = System.currentTimeMillis()
+ if (now - lastRenderAtMs >= 80L) {
+ lastRenderAtMs = now
+ streamRenderDirty = false
  renderStreamText(b)
  smartScrollBottom()
+ }
 }
 
 private fun endStreaming(): Boolean {
