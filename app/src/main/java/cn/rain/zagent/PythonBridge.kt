@@ -310,4 +310,42 @@ object PythonBridge {
  .callAttr("analyze_action", action, arg)?.toString() ?: ""
  }
 
+
+    // ---- session manager bridge ----
+
+    fun sessionsList(context: Context): String {
+        ensureBootstrapped(context)
+        return Python.getInstance().getModule("zagent_app")
+            .callAttr("sessions_list")?.toString() ?: ""
+    }
+
+    fun sessionNew(context: Context): String {
+        ensureBootstrapped(context)
+        return Python.getInstance().getModule("zagent_app")
+            .callAttr("session_new")?.toString() ?: ""
+    }
+
+    fun sessionSwitch(context: Context, sid: String): String {
+        ensureBootstrapped(context)
+        return Python.getInstance().getModule("zagent_app")
+            .callAttr("session_switch", sid)?.toString() ?: ""
+    }
+
+    fun sessionDelete(context: Context, sid: String): String {
+        ensureBootstrapped(context)
+        return Python.getInstance().getModule("zagent_app")
+            .callAttr("session_delete", sid)?.toString() ?: ""
+    }
+
+    fun sessionCurrent(context: Context): String {
+        ensureBootstrapped(context)
+        return Python.getInstance().getModule("zagent_app")
+            .callAttr("session_current")?.toString() ?: ""
+    }
+
+    fun sessionExport(context: Context, sid: String, outDir: String): String {
+        ensureBootstrapped(context)
+        return Python.getInstance().getModule("zagent_app")
+            .callAttr("session_export", sid, outDir)?.toString() ?: ""
+    }
 }
