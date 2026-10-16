@@ -598,7 +598,8 @@ runOnUiThread { showStatus(st) }
 
 root.addView(groupLabel("危险操作"))
  root.addView(settingsRow(R.drawable.ic_trash, "清空会话", turnsSummary, danger = true) { confirmClear() })
- sheet.setContentView(root)
+
+ root.addView(settingsRow(R.drawable.ic_info, "测试崩溃页", "触发一次假崩溃") { throw RuntimeException("test crash from settings") }) sheet.setContentView(root)
 sheet.show()
 
     val sv = sheet.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)
