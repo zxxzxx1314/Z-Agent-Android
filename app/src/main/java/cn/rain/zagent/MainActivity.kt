@@ -2139,7 +2139,7 @@ wrapped.post { bounceIn(wrapped) }
 
 private fun makePlainAiBubble(parent: LinearLayout, text: String): TextView {
 val bubble = TextView(this).apply {
-this.text = maskSecret(text)
+this.text = MdRender.render(maskSecret(text))
 textSize = 15f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
 setBackgroundResource(R.drawable.bg_bubble_ai)
