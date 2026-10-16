@@ -3117,7 +3117,7 @@ quickRow.removeAllViews()
 for ((idx, b) in quickButtons.withIndex()) {
 quickRow.addView(makeQuickChip(b, idx))
 }
-if (quickEditMode) quickRow.addView(makePlusChip())
+quickRow.addView(makePlusChip())
 if (quickExpanded) { quickBarContainer.visibility = View.VISIBLE; quickRowWrap.visibility = View.VISIBLE; quickBall.visibility = View.GONE } else { quickBarContainer.visibility = View.VISIBLE; quickRowWrap.visibility = View.GONE; quickBall.visibility = View.VISIBLE }
 
 }
@@ -3144,14 +3144,10 @@ isFocusable = true
 tv.setOnClickListener {
 if (quickEditMode) return@setOnClickListener
 HapticTokens.tap(it)
+if (b.desc.isNotBlank()) toast(b.label + " · " + b.desc)
 dispatchQuick(b)
 }
 tv.setOnLongClickListener {
-if (!quickEditMode && b.desc.isNotBlank()) {
-HapticTokens.longPress(it)
-toast(b.label + " · " + b.desc)
-return@setOnLongClickListener true
-}
 if (quickEditMode) {
 HapticTokens.longPress(it)
 val data = ClipData.newPlainText("qi", idx.toString())
