@@ -62,6 +62,7 @@ private lateinit var sendButton: FrameLayout
 private lateinit var sendIcon: android.widget.ImageView
 private lateinit var topBar: LinearLayout
 private lateinit var themeButton: View
+private lateinit var historyButton: View
  private lateinit var themeIcon: ImageView
 private lateinit var inputBar: LinearLayout
 private lateinit var segPlan: TextView
@@ -199,6 +200,8 @@ sendButton = findViewById(R.id.sendButton)
 topBar = findViewById(R.id.topBar)
 themeButton = findViewById(R.id.themeButton)
  themeIcon = findViewById(R.id.themeIcon)
+historyButton = findViewById(R.id.historyButton)
+historyButton.setOnClickListener { haptic(it); showHistorySheet() }
 inputBar = findViewById(R.id.inputBar)
 segPlan = findViewById(R.id.segPlan)
 segBuild = findViewById(R.id.segBuild)
