@@ -383,7 +383,7 @@ appendOutput("\n初始化异常：" + e.toString() + "\n")
 }
 }
 
-    // 恢复上次会话的历史消息到界面
+    // restore last session messages into UI
     threadRun { safeBridge { try {
         val cur = PythonBridge.sessionCurrent(this@MainActivity)
         runOnUiThread { renderHistory(cur) }
@@ -391,14 +391,14 @@ appendOutput("\n初始化异常：" + e.toString() + "\n")
 requestNotifyPermission()
 }
 
-    /** 把会话消息渲染到 chatContainer（切会话/启动恢复共用）。 /
+    // renderHistory: render session messages into chatContainer
     private fun renderHistory(json: String) {
         try {
             val o = org.json.JSONObject(json)
             if (!o.optBoolean("ok", false)) return
             val arr = o.optJSONArray("msgs") ?: return
             chatContainer.removeAllViews()
-            if (arr.length() == 0) { showEmptyState(); return }
+            if (arr.length() == 0) { emptyState.visibility = View.VISIBLE; return }
             hideEmpty()
             for (i in 0 until arr.length()) {
                 val m = arr.optJSONObject(i) ?: continue
@@ -414,12 +414,7 @@ requestNotifyPermission()
         }
     }
 
-    /* 显示空状态卡片。 /
-    private fun showEmptyState() {
-        emptyState.visibility = View.VISIBLE
-    }
-
-    /* 会话列表 BottomSheet：切换 / 新建 / 删除 / 导出。 */
+    // showHistorySheet: session list bottom sheet
     private fun showHistorySheet() {
         val json = try { PythonBridge.sessionsList(this) } catch (e: Exception) { "" }
         val sheet = BottomSheetDialog(this)
@@ -435,7 +430,6 @@ requestNotifyPermission()
             setTypeface(null, android.graphics.Typeface.BOLD)
             setPadding(dp(22), dp(10), dp(22), dp(10))
         })
-        // 新建会话
         root.addView(TextView(this).apply {
             text = "+ 新建对话"
             textSize = 15f
@@ -446,26 +440,25 @@ requestNotifyPermission()
                 haptic(it)
                 sheet.dismiss()
                 threadRun { safeBridge { try {
-                    val r = PythonBridge.sessionNew(this@MainActivity)
+                    PythonBridge.sessionNew(this@MainActivity)
                     runOnUiThread {
                         chatContainer.removeAllViews()
-                        showEmptyState()
+                        emptyState.visibility = View.VISIBLE
                         toast("已新建对话")
                     }
                 } catch (e: Exception) { runOnUiThread { toast("新建失败：" + (e.message ?: "")) } } } }
             }
         })
-        // 会话列表
         try {
             val o = org.json.JSONObject(json)
             val arr = o.optJSONArray("items")
             if (arr != null && arr.length() > 0) {
                 for (i in 0 until arr.length()) {
-                    val it = arr.optJSONObject(i) ?: continue
-                    val sid = it.optString("sid")
-                    val title = it.optString("title", "(无标题)")
-                    val cnt = it.optInt("count", 0)
-                    val isCur = it.optBoolean("current", false)
+                    val it2 = arr.optJSONObject(i) ?: continue
+                    val sid = it2.optString("sid")
+                    val title = it2.optString("title", "(无标题)")
+                    val cnt = it2.optInt("count", 0)
+                    val isCur = it2.optBoolean("current", false)
                     val row = LinearLayout(this).apply {
                         orientation = LinearLayout.VERTICAL
                         setPadding(dp(22), dp(12), dp(22), dp(12))
@@ -477,7 +470,7 @@ requestNotifyPermission()
                         setTextColor(ContextCompat.getColor(this@MainActivity, if (isCur) R.color.accent else R.color.text_primary))
                     })
                     row.addView(TextView(this).apply {
-                        text = cnt.toString() + " 条" + " · 长按删除"
+                        text = cnt.toString() + " 条 · 长按删除"
                         textSize = 11f
                         setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
                     })
@@ -721,8 +714,7 @@ root.addView(settingsRow(R.drawable.ic_refresh, "自动执行（跳过确认）"
 // 分组：会话
 root.addView(groupLabel("会话"))
 
- root.addView(settingsRow(R.drawable.ic_info, "聊天记录", "历史会话 · 切换/新建/删除") { showHistorySheet() })
-root.addView(settingsRow(R.drawable.ic_info, "运行日志", "查看执行日志") { showLogSheet() })
+ root.addView(settingsRow(R.drawable.ic_info, "运行日志", "查看执行日志") { showLogSheet() })
 root.addView(settingsRow(R.drawable.ic_info, "关于", statusSummary) {
 threadRun { safeBridge {
 val st = try { PythonBridge.status(this@MainActivity) } catch (e: Exception) { "{}" }
