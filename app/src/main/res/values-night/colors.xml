@@ -45,4 +45,10 @@
 <color name="warn_bg">#26D29922</color>
 <color name="warn_line">#66D29922</color>
 <color name="log_text">#80808E</color>
-</resources>
+
+ <!-- UI revamp ghost chip tokens -->
+ <color name="chip_ghost_bg">#2C2C36</color>
+ <color name="chip_ghost_stroke">#00000000</color>
+ <color name="chip_active_bg">#269B7FFF</color>
+ <color name="chip_text_inactive">#9A9AA8</color>
+ </resources>
