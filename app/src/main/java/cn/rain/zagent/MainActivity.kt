@@ -112,7 +112,6 @@ private var streamingSb = StringBuilder()
 private var reasoningSb = StringBuilder()
 private var reasoningBox: LinearLayout? = null
 private var reasoningHeader: TextView? = null
-private var reasoningBall: TextView? = null
 private var reasoningBody: TextView? = null
 private var reasoningStartMs = 0L
 private var cursorOn = true
@@ -1410,34 +1409,19 @@ reasoningBox?.let { return it }
 return try {
 val box = LinearLayout(this).apply {
 orientation = LinearLayout.VERTICAL
+setBackgroundResource(R.drawable.bg_reasoning_box)
+setPadding(dp(12), dp(8), dp(12), dp(8))
 layoutParams = LinearLayout.LayoutParams(
 LinearLayout.LayoutParams.MATCH_PARENT,
 LinearLayout.LayoutParams.WRAP_CONTENT
 ).apply { topMargin = dp(4); bottomMargin = dp(4) }
 }
-val ball = TextView(this).apply {
-text = "✦"
-textSize = 13f
-setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
-gravity = android.view.Gravity.CENTER
-setBackgroundResource(R.drawable.bg_reason_ball)
-layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply { bottomMargin = dp(2) }
-isClickable = true
-isFocusable = true
-visibility = View.GONE
-}
-val bar = TextView(this).apply {
-text = "✦ 思考中…"
+val header = TextView(this).apply {
+text = "思考中"
 textSize = 11f
 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
-setBackgroundResource(R.drawable.bg_reasoning_box)
-setPadding(dp(10), dp(8), dp(10), dp(8))
+setPadding(dp(2), dp(2), dp(2), dp(2))
 isClickable = true
-isFocusable = true
-layoutParams = LinearLayout.LayoutParams(
-LinearLayout.LayoutParams.MATCH_PARENT,
-LinearLayout.LayoutParams.WRAP_CONTENT
-)
 }
 val body = TextView(this).apply {
 text = ""
@@ -1447,31 +1431,18 @@ setPadding(dp(4), dp(6), dp(4), dp(2))
 setTextIsSelectable(true)
 visibility = View.VISIBLE
 }
-val toggler = View.OnClickListener {
+header.setOnClickListener {
 HapticTokens.tap(it)
-val expanding = body.visibility != View.VISIBLE
-try { androidx.transition.TransitionManager.beginDelayedTransition(box) } catch (tm: Throwable) {}
-if (expanding) {
-ball.visibility = View.GONE
-bar.visibility = View.VISIBLE
-body.visibility = View.VISIBLE
-if (!bar.text.contains("秒")) bar.text = "✦ 思考过程 (点收起)"
-} else {
-ball.visibility = View.VISIBLE
-bar.visibility = View.GONE
-body.visibility = View.GONE
+val expanded = body.visibility == View.VISIBLE
+body.visibility = if (expanded) View.GONE else View.VISIBLE
+header.text = if (expanded) "思考过程 (点开)" else "思考过程 (收起)"
 }
-}
-ball.setOnClickListener(toggler)
-bar.setOnClickListener(toggler)
-box.addView(ball)
-box.addView(bar)
+box.addView(header)
 box.addView(body)
 chatContainer.addView(box)
 box.post { try { bounceIn(box) } catch (x: Throwable) {} }
 reasoningBox = box
-reasoningHeader = bar
-reasoningBall = ball
+reasoningHeader = header
 reasoningBody = body
 box
 } catch (e: Throwable) {
@@ -1509,9 +1480,7 @@ streamingSb = StringBuilder()
 try {
 reasoningBox?.let {
 val secs = (System.currentTimeMillis() - reasoningStartMs).coerceAtLeast(0L) / 1000L
-reasoningHeader?.text = "✦ 思考过程 · " + secs + "s"
-reasoningBall?.visibility = View.VISIBLE
-reasoningHeader?.visibility = View.GONE
+reasoningHeader?.text = "思考过程 · " + secs + "s"
 reasoningBody?.visibility = View.GONE
 }
 if (reasoningBox == null && reasoningSb.isNotEmpty()) {
@@ -1523,7 +1492,6 @@ appendReasonError(e)
 reasoningSb = StringBuilder()
 reasoningBox = null
 reasoningHeader = null
-reasoningBall = null
 reasoningBody = null
 reasoningStartMs = 0L
 return had
