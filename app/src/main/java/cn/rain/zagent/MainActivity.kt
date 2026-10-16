@@ -229,20 +229,20 @@ true
 }
 
 // 输入草稿自动保存 / 恢复
-inputEdit.setText(sp.getString(KEY_DRAFT, "") ?: "")
+val _draft = sp.getString(KEY_DRAFT, "") ?: ""; if (_draft.isNotBlank()) { inputEdit.setText(_draft); inputEdit.hint = "[草稿] 点击继续编辑" }
 
 // ── 空状态 Prompt 卡片：点击填入输入框 ──
 findViewById<View>(R.id.promptCard1)?.setOnClickListener {
 haptic(it)
 inputEdit.setText("帮我写一份本周工作周报，按「本周进展 / 遇到的问题 / 下周计划」结构组织")
 inputEdit.setSelection(inputEdit.text.length)
-setAppMode("plan")
+setAppMode("plan"); try { segPlan.thinkingPulseOnce() } catch (x: Throwable) {}
 }
 findViewById<View>(R.id.promptCard2)?.setOnClickListener {
 haptic(it)
 inputEdit.setText("解释下面这段代码的逻辑，指出关键控制流和潜在问题：\n")
 inputEdit.setSelection(inputEdit.text.length)
-setAppMode("build")
+setAppMode("build"); try { segBuild.thinkingPulseOnce() } catch (x: Throwable) {}
 }
 findViewById<View>(R.id.promptCard3)?.setOnClickListener {
 haptic(it)
