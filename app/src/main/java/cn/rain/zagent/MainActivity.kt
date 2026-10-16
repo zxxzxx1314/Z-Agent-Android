@@ -490,7 +490,8 @@ val light = sp.getBoolean(KEY_LIGHT_THEME, true)
 AppCompatDelegate.setDefaultNightMode(
 if (light) AppCompatDelegate.MODE_NIGHT_NO
 else AppCompatDelegate.MODE_NIGHT_YES)
-themeIcon.setImageResource(if (light) R.drawable.ic_moon else R.drawable.ic_sun)
+themeIcon.setImageResource(if (light) R.drawable.ic_sun else R.drawable.ic_moon)
+ themeButton.contentDescription = if (light) "当前亮色主题，点击切换到暗色" else "当前暗色主题，点击切换到亮色"
 }
 
 private fun toggleTheme() {
@@ -499,31 +500,31 @@ sp.edit().putBoolean(KEY_LIGHT_THEME, !light).apply()
 AppCompatDelegate.setDefaultNightMode(
 if (!light) AppCompatDelegate.MODE_NIGHT_NO
 else AppCompatDelegate.MODE_NIGHT_YES)
-themeIcon.setImageResource(if (!light) R.drawable.ic_moon else R.drawable.ic_sun)
+themeIcon.setImageResource(if (!light) R.drawable.ic_sun else R.drawable.ic_moon)
 }
 
-// 免确认执行：不再放主界面，仅在设置页内切换
+// 自动执行：不再放主界面，仅在设置页内切换
 private fun refreshAutoSwitch(on: Boolean) {
-sheetRows["auto"]?.text = if (on) "已开启" else "已关闭"
+sheetRows["auto"]?.text = if (on) "开启 · 跳过确认" else "关闭 · 每步询问"
 }
 
-// 设置页里点「免确认执行」→ 二次确认
+// 设置页里点「自动执行（跳过确认）」→ 二次确认
 private fun toggleAutoExec() {
 val cur = sp.getBoolean(KEY_AUTO_EXEC, false)
 if (cur) {
 confirmSheet(
-title = "关闭免确认执行？",
+title = "关闭自动执行？",
 message = "关闭后，Agent 每次操作都会先询问你确认。",
 confirmLabel = "关闭"
 ) {
 sp.edit().putBoolean(KEY_AUTO_EXEC, false).apply()
 threadRun { safeBridge { try { PythonBridge.setAuto(this@MainActivity, false) } catch (e: Exception) { } } }
 refreshAutoSwitch(false)
-toast("已关闭免确认")
+toast("已关闭自动执行")
 }
 } else {
 confirmSheet(
-title = "开启免确认执行？",
+title = "开启自动执行（跳过确认）？",
 message = "开启后 Agent 操作不再逐条询问，可能直接改动文件或应用。仅在你完全信任当前任务时开启。",
 confirmLabel = "开启",
 danger = true
@@ -531,7 +532,7 @@ danger = true
 sp.edit().putBoolean(KEY_AUTO_EXEC, true).apply()
 threadRun { safeBridge { try { PythonBridge.setAuto(this@MainActivity, true) } catch (e: Exception) { } } }
 refreshAutoSwitch(true)
-toast("已开启免确认")
+toast("已开启自动执行（跳过确认）")
 }
 }
 }
@@ -575,12 +576,15 @@ root.addView(groupLabel("连接"))
 root.addView(settingsRow(R.drawable.ic_key, "API Key", apiKeySummary) { promptApiKey() })
 root.addView(settingsRow(R.drawable.ic_globe, "API 地址", baseUrlSummary) { promptBaseUrl() })
 root.addView(settingsRow(R.drawable.ic_model, "模型名称", modelSummary) { promptModel() })
-root.addView(settingsRow(R.drawable.ic_refresh, "测试连接", "检查 API 地址与 Key") { testConnection() })
-root.addView(settingsRow(R.drawable.ic_refresh, "免确认执行", if (sp.getBoolean(KEY_AUTO_EXEC, false)) "已开启" else "已关闭") { toggleAutoExec() })
+val _testRow = settingsRow(R.drawable.ic_refresh, "测试连接", if (apiKeySummary == "未设置") "先去配置 API Key" else "检查 API 地址与 Key") { if (apiKeySummary == "未设置") promptApiKey() else testConnection() }
+ root.addView(_testRow)
+ _testRow.alpha = if (apiKeySummary == "未设置") 0.5f else 1f
+root.addView(settingsRow(R.drawable.ic_refresh, "自动执行（跳过确认）", if (sp.getBoolean(KEY_AUTO_EXEC, false)) "开启 · 跳过确认" else "关闭 · 每步询问") { toggleAutoExec() })
 
 // 分组：会话
 root.addView(groupLabel("会话"))
-root.addView(settingsRow(R.drawable.ic_trash, "清空会话", turnsSummary, danger = true) { confirmClear() })
+
+ root.addView(settingsRow(R.drawable.ic_info, "运行日志", "查看执行日志") { showLogSheet() })
 root.addView(settingsRow(R.drawable.ic_info, "查看状态", statusSummary) {
 threadRun { safeBridge {
 val st = try { PythonBridge.status(this@MainActivity) } catch (e: Exception) { "{}" }
@@ -588,7 +592,9 @@ runOnUiThread { showStatus(st) }
 } }
 })
 
-sheet.setContentView(root)
+root.addView(groupLabel("危险操作"))
+ root.addView(settingsRow(R.drawable.ic_trash, "清空会话", turnsSummary, danger = true) { confirmClear() })
+ sheet.setContentView(root)
 sheet.show()
 
     val sv = sheet.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)
@@ -714,7 +720,7 @@ when (title) {
 "清空会话" -> sheetRows["turns"] = vl
 "查看状态" -> sheetRows["status"] = vl
 "测试连接" -> sheetRows["test"] = vl
- "免确认执行" -> sheetRows["auto"] = vl
+ "自动执行（跳过确认）" -> sheetRows["auto"] = vl
 }
 return row
 }
@@ -2385,80 +2391,48 @@ smartScrollBottom()
 }
 
 private fun addLogLine(content: String) {
-// 系统日志独立样式语言：灰底 + 左竖线 + 等宽 + 小一号，视觉权重远低于对话
-if (logBox == null) {
-val wrap = LinearLayout(this).apply {
-orientation = LinearLayout.VERTICAL
-layoutParams = LinearLayout.LayoutParams(
-LinearLayout.LayoutParams.MATCH_PARENT,
-LinearLayout.LayoutParams.WRAP_CONTENT
-).apply { topMargin = dp(2); bottomMargin = dp(4) }
+ logBuffer.add(content)
+ while (logBuffer.size > 500) logBuffer.removeAt(0)
 }
-val head = TextView(this).apply {
-text = "▸ 运行日志"
-textSize = 10f
-setTextColor(ContextCompat.getColor(this@MainActivity, R.color.log_text))
-typeface = android.graphics.Typeface.MONOSPACE
-setPadding(dp(10), dp(4), dp(10), dp(4))
-isClickable = true
-alpha = 0.75f
+
+private val logBuffer = mutableListOf<String>()
+
+private fun showLogSheet() {
+ val sheet = BottomSheetDialog(this)
+ val root = LinearLayout(this).apply {
+ orientation = LinearLayout.VERTICAL
+ setBackgroundResource(R.drawable.bg_sheet)
+ setPadding(0, dp(8), 0, dp(24))
+ }
+ root.addView(TextView(this).apply {
+ text = "运行日志"
+ textSize = 18f
+ setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+ setTypeface(null, android.graphics.Typeface.BOLD)
+ setPadding(dp(22), dp(6), dp(22), dp(10))
+ })
+ val body = TextView(this).apply {
+ text = if (logBuffer.isEmpty()) "（暂无日志）" else logBuffer.joinToString("
+")
+ textSize = 11f
+ typeface = android.graphics.Typeface.MONOSPACE
+ setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+ setPadding(dp(22), 0, dp(22), 0)
+ setTextIsSelectable(true)
+ }
+ val sv = android.widget.ScrollView(this).apply {
+ layoutParams = LinearLayout.LayoutParams(
+ LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+ }
+ sv.addView(body)
+ val maxH = (resources.displayMetrics.heightPixels * 0.6f).toInt()
+ sv.layoutParams = LinearLayout.LayoutParams(
+ LinearLayout.LayoutParams.MATCH_PARENT, maxH)
+ root.addView(sv)
+ sheet.setContentView(root)
+ sheet.show()
 }
-val bb = LinearLayout(this).apply {
-orientation = LinearLayout.VERTICAL
-setBackgroundResource(R.drawable.bg_log_line)
-setPadding(dp(10), dp(6), dp(10), dp(6))
-visibility = View.GONE
-}
-head.setOnClickListener {
-HapticTokens.tap(it)
-val willExpand = bb.visibility != View.VISIBLE
-if (willExpand) {
-// 展开：先量高再撑开（动效）
-bb.visibility = View.VISIBLE
-bb.measure(
-View.MeasureSpec.makeMeasureSpec(resources.displayMetrics.widthPixels, View.MeasureSpec.AT_MOST),
-View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
-val h = bb.measuredHeight
-if (h > 0 && !MotionPrefs.reduceMotion(bb)) {
-val lp = bb.layoutParams
-lp.height = 0
-bb.layoutParams = lp
-val a = android.animation.ValueAnimator.ofInt(0, h)
-a.duration = 180
-a.interpolator = android.view.animation.DecelerateInterpolator()
-a.addUpdateListener { va ->
-lp.height = va.animatedValue as Int
-bb.layoutParams = lp
-}
-a.addListener(object : android.animation.AnimatorListenerAdapter() {
-override fun onAnimationEnd(animation: android.animation.Animator) {
-lp.height = LinearLayout.LayoutParams.WRAP_CONTENT
-bb.layoutParams = lp
-}
-})
-a.start()
-}
-head.text = "▾ 运行日志"
-} else {
-bb.visibility = View.GONE
-head.text = "▸ 运行日志"
-}
-}
-wrap.addView(head); wrap.addView(bb)
-chatContainer.addView(wrap)
-logHead = head; logBox = bb
-}
-val tv = TextView(this).apply {
-text = content
-textSize = 10f
-setTextColor(ContextCompat.getColor(this@MainActivity, R.color.log_text))
-typeface = android.graphics.Typeface.MONOSPACE
-setPadding(0, dp(1), 0, dp(1))
-alpha = 0.85f
-setTextIsSelectable(true)
-}
-logBox?.addView(tv)
-}
+
 
 private fun addReasoningBox(reasoning: String) {
 if (reasoning.isEmpty()) return
@@ -2944,7 +2918,7 @@ QuickBtn("evolve", "进化", "cmd:/evolve"),
 QuickBtn("rollback", "回滚", "cmd:/rollback"),
 QuickBtn("plan", "计划", "cmd:/plan"),
 QuickBtn("build", "构建", "cmd:/build"),
-QuickBtn("auto", "免确认", "cmd:/auto"),
+QuickBtn("auto", "自动", "cmd:/auto"),
 QuickBtn("skill", "技能", "cmd:/skill list"),
 QuickBtn("save", "存插件", "saveplugin"),
 QuickBtn("plugins", "插件", "plugin"),
@@ -3062,11 +3036,11 @@ wrapper.addView(tv)
 
 if (quickEditMode) {
 val del = TextView(this).apply {
-text = "×"
+text = "−"
 textSize = 12f
-setTextColor(0xFFFFFFFF.toInt())
+setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
 gravity = Gravity.CENTER
-setBackgroundResource(R.drawable.bg_quick_del)
+setBackgroundResource(R.drawable.bg_quick_del_subtle)
 layoutParams = FrameLayout.LayoutParams(dp(18), dp(18)).apply {
 gravity = Gravity.TOP or Gravity.END
 topMargin = -dp(4)
