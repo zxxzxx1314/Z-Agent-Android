@@ -325,7 +325,6 @@ chipSearch.visibility = View.GONE
 refreshThinkChip()
  refreshSegVisual()
 
-}
 
 inputEdit.setOnFocusChangeListener { _, hasFocus ->
     inputCard.setBackgroundResource(
@@ -3019,7 +3018,7 @@ for ((idx, b) in quickButtons.withIndex()) {
 quickRow.addView(makeQuickChip(b, idx))
 }
 if (quickEditMode) quickRow.addView(makePlusChip())
-if (quickExpanded) { quickBarContainer.visibility = View.VISIBLE; quickRowWrap.visibility = View.VISIBLE } else { quickBarContainer.visibility = View.VISIBLE; quickRowWrap.visibility = View.GONE }
+if (quickExpanded) { quickBarContainer.visibility = View.VISIBLE; quickRowWrap.visibility = View.VISIBLE; quickBall.visibility = View.GONE } else { quickBarContainer.visibility = View.VISIBLE; quickRowWrap.visibility = View.GONE; quickBall.visibility = View.VISIBLE }
 
 }
 
@@ -3143,6 +3142,7 @@ private fun expandQuick() {
 quickRowWrap.animate().cancel()
 for (i in 0 until quickRow.childCount) quickRow.getChildAt(i).animate().cancel()
 quickExpanded = true
+try { quickBall.visibility = View.GONE } catch (x: Throwable) {}
 quickBarContainer.visibility = View.VISIBLE
 quickRowWrap.visibility = View.VISIBLE
 quickRowWrap.alpha = 1f
@@ -3204,6 +3204,7 @@ val lp0 = quickRowWrap.layoutParams
 lp0.height = LinearLayout.LayoutParams.WRAP_CONTENT
 quickRowWrap.layoutParams = lp0
 quickRowWrap.visibility = View.GONE
+quickBall.visibility = View.VISIBLE
 return
 }
 // 第一步：胶囊快速消失（无错开，110ms）
@@ -3248,6 +3249,7 @@ v.alpha = 1f
 v.translationY = 0f
 }
 quickRowWrap.visibility = View.GONE
+quickBall.visibility = View.VISIBLE
 }
 
 private fun startShakeAll() {
