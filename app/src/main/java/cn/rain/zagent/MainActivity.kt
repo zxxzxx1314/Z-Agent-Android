@@ -211,12 +211,14 @@ scrollBottomBtn = findViewById(R.id.scrollBottomBtn)
 outputScroll.setOnScrollChangeListener { _, _, scrollY, _, _ ->
 val ch = outputScroll.getChildAt(0) ?: return@setOnScrollChangeListener
 val atBottom = scrollY >= ch.height - outputScroll.height - dp(8)
+autoScrollEnabled = atBottom
 scrollBottomBtn.visibility = if (atBottom) View.GONE else View.VISIBLE
 }
 scrollBottomBtn.setOnClickListener {
 haptic(it)
 outputScroll.post {
  outputScroll.fullScroll(View.FOCUS_DOWN)
+autoScrollEnabled = true
  scrollBottomBtn.visibility = View.GONE
  }
 }
@@ -430,6 +432,19 @@ inputEdit.setText(t)
 inputEdit.setSelection(t.length)
 inputEdit.requestFocus()
 }
+private var autoScrollEnabled = true
+private var lastAutoScrollMs = 0L
+
+private fun smartScrollBottom() {
+ if (!autoScrollEnabled) return
+ val now = System.currentTimeMillis()
+ if (now - lastAutoScrollMs < 90L) return
+ lastAutoScrollMs = now
+ outputScroll.post {
+ try { outputScroll.fullScroll(View.FOCUS_DOWN) } catch (x: Throwable) {}
+ }
+}
+
 
 private fun hideEmpty() {
 if (emptyState.visibility != View.GONE) emptyState.visibility = View.GONE
@@ -1382,8 +1397,8 @@ reasoningStartMs = System.currentTimeMillis()
 ensureReasoningBox()
 }
 reasoningSb.append(t)
-reasoningBody?.text = maskSecret(reasoningSb.toString())
-outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+if (autoScrollEnabled) reasoningBody?.text = maskSecret(reasoningSb.toString())
+smartScrollBottom()
 } catch (e: Throwable) {
 appendReasonError(e)
 }
@@ -1453,7 +1468,7 @@ private fun appendStream(t: String) {
  streamingSb.append(t)
  val b = ensureStreamBubble()
  renderStreamText(b)
- outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+ smartScrollBottom()
 }
 
 private fun endStreaming(): Boolean {
@@ -1536,7 +1551,7 @@ renderPlain(rest.substring(0, b))
 addReasoningBox(rest.substring(b + BEG.length, e).trim())
 rest = rest.substring(e + END.length)
 }
-outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+smartScrollBottom()
 }
 
 private fun renderPlain(text: String) {
@@ -1652,7 +1667,7 @@ toggle.text = if (expanded) "查看原文" else "收起原文"
 card.addView(title); card.addView(tipTv); card.addView(toggle); card.addView(detail)
 chatContainer.addView(card)
 card.post { bounceIn(card) }
-outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+smartScrollBottom()
 }
 
 private fun wrapWithTime(bubbleRow: View, alignEnd: Boolean): LinearLayout {
@@ -2182,7 +2197,7 @@ card.addView(setRow)
 
 chatContainer.addView(card)
 card.animateErrorCard()
-outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+smartScrollBottom()
 }
 
 
@@ -2254,7 +2269,7 @@ private fun addRetryRow(cmd: String) {
         sendCommand(cmd)
     }
     chatContainer.addView(wrap)
-    outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+    smartScrollBottom()
 }
 
 private fun copyText(t: String) {
@@ -2372,7 +2387,7 @@ row.translationY = dp(6).toFloat()
 row.animate().alpha(1f).translationY(0f).setDuration(200)
 .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
 }
-outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+smartScrollBottom()
 }
 
 private fun addLogLine(content: String) {
@@ -2488,7 +2503,7 @@ box.addView(header)
 box.addView(body)
 chatContainer.addView(box)
 box.post { bounceIn(box) }
-outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+smartScrollBottom()
 }
 
 private var bubbleBatchStart = 0L
@@ -2721,7 +2736,7 @@ private fun onBtnEvent(json: String) {
     }
     wrap.addView(btn)
     chatContainer.addView(wrap)
-    uiHandler.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+    uiHandler.post { smartScrollBottom() }
 }
 
 
@@ -2910,7 +2925,7 @@ btnRow.addView(btn)
 card.addView(btnRow)
 }
 chatContainer.addView(card)
-outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+smartScrollBottom()
 card.post { bounceIn(card) }
 }
 
@@ -3622,7 +3637,7 @@ card.addView(actions)
 card.tag = "card"
 chatContainer.addView(card)
 card.post { appearCardOnce(card) }
-outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+smartScrollBottom()
 return card
 }
 private fun appearCardOnce(card: View) {
@@ -3684,7 +3699,7 @@ btnTrace.setOnClickListener { HapticTokens.tap(it); showAnalyzeSessions() }
 actions.addView(btnRep)
 actions.addView(btnTrace)
 HapticTokens.success(card)
-outputScroll.post { outputScroll.fullScroll(View.FOCUS_DOWN) }
+smartScrollBottom()
 } catch (e: Exception) {
 val sub = card.getChildAt(1) as TextView
 sub.text = "解析失败：" + (e.message ?: "?")
