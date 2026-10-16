@@ -700,7 +700,7 @@ def scan_plugins():
         plugins[pid] = {"name": name, "desc": desc}
     if not plugins:
         return plugins, ""
-    lines = ["\n\n【可用插件列表（[plugin:文件名] 调用，不带 .py）】"]
+    lines = ["\n\n【可用插件列表（[plugin:文件名 参数] 调用，不带 .py）】"]
     for pid, info in plugins.items():
         lines.append("- %s ｜ @name: %s ｜ @desc: %s"
                      % (pid, info["name"], info["desc"] or "无描述"))
@@ -710,13 +710,14 @@ def scan_plugins():
 # 插件子进程引导代码：在独立进程里导入插件并调用 run()
 _PLUGIN_RUNNER = """import importlib.util, sys
 path = @@PLGPATH@@
+_ARG = @@PLGARG@@
 spec = importlib.util.spec_from_file_location('rain_plugin_isolated', path)
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 if not hasattr(mod, 'run'):
     sys.stdout.write('插件缺少 run() 函数')
     sys.exit(3)
-ret = mod.run()
+ret = mod.run(_ARG) if _ARG else mod.run()
 if ret is None:
     sys.stdout.write('(插件 run() 无返回值)')
 elif isinstance(ret, str):
@@ -728,7 +729,54 @@ else:
 
 
 
-def run_plugin(pid):
+def emit_web(obj):
+    try:
+        import json as _j
+        _STREAM_BUF.append(("web", _j.dumps(obj, ensure_ascii=False)))
+    except Exception:
+        pass
+
+
+def fetch_page(url):
+    import re as _re
+    import json as _j
+    import urllib.request as _ur
+    u = (url or "").strip()
+    if not u:
+        return _j.dumps({"ok": False, "err": "empty"}, ensure_ascii=False)
+    req = _ur.Request(u, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        raw = _ur.urlopen(req, timeout=25).read()
+    except Exception as e:
+        return _j.dumps({"ok": False, "err": repr(e)}, ensure_ascii=False)
+    html = raw.decode("utf-8", "replace")
+    m = _re.search(r"(?is)<title[^>*]>(.*?)</title>", html)
+    title = _re.sub(r"<[^>*]+>", "", m.group(1)).strip() if m else u
+    html = _re.sub(r"(?is)<script[^>*]>.*?</script>", " ", html)
+    html = _re.sub(r"(?is)<style[^>*]>.*?</style>", " ", html)
+    text = _re.sub(r"<[^>*]+>", " ", html)
+    text = " ".join(text.split())
+    return _j.dumps({"ok": True, "url": u, "title": title, "text": text[:12000]}, ensure_ascii=False)
+
+
+def _parse_search(raw, query):
+    import re as _re
+    items = []
+    lines = (raw or "").split(chr(10))
+    i = 0
+    while i < len(lines):
+        m = _re.match(r"^\d+\.\s+(.*)$", lines[i])
+        if m and i + 1 < len(lines):
+            t2 = m.group(1).strip()
+            u2 = lines[i + 1].strip()
+            if u2.startswith("http"):
+                items.append({"title": t2, "url": u2})
+                i += 2
+                continue
+        i += 1
+    return {"kind": "search_result", "query": query, "items": items}
+
+def run_plugin(pid, arg=None):
     """执行插件。Termux 走隔离子进程；APK/Chaquopy 无子进程，
     降级为进程内执行（无隔离、超时无法强杀线程）。
     v6.2 修复：不再依赖 sys.argv 传路径（APK 进程内模式取不到），
@@ -753,6 +801,7 @@ def run_plugin(pid):
         except Exception:
             pass
     runner_code = _PLUGIN_RUNNER.replace("@@PLGPATH@@", repr(path))
+    runner_code = runner_code.replace("@@PLGARG@@", repr(arg or ""))
     rc, out, err, timed_out = _run_process(
         [sys.executable, "-c", runner_code], PLUGIN_TIMEOUT)
     if timed_out:
@@ -1820,7 +1869,7 @@ BASE_PROMPT = """你是 Z-Agent，一个运行在 Android 手机 Termux 终端�
   6) 进化成功后旧进程仍跑旧代码，要在总结里提醒用户重启激活新基因。
 
 【插件调用】
-- 复用能力输出：[plugin:插件文件名]（不带 .py，可用中文）。
+- 复用能力输出：[plugin:插件文件名 参数]（不带 .py，可用中文；参数按插件需求传）。
   插件在隔离子进程中执行，超时会被强制终止。
 
 【附件处理（重要）】
@@ -2479,12 +2528,14 @@ def agent_loop(first_reply=None):
                 accept_registered = True
 
         plugin_calls = []
-        for pid in re.findall(PLUGIN_CALL_RE, control):
-            pid = pid.strip()
+        for _pc in re.findall(PLUGIN_CALL_RE, control):
+            _pcs = _pc.strip().split(None, 1)
+            pid = _pcs[0]
+            _arg = _pcs[1] if len(_pcs) > 1 else ""
             if pid.endswith(".py"):
                 pid = pid[:-3]
-            if pid and pid not in plugin_calls:
-                plugin_calls.append(pid)
+            if pid and (pid, _arg) not in plugin_calls:
+                plugin_calls.append((pid, _arg))
 
         if evo_error:
             error_feedbacks.append(
@@ -2644,14 +2695,19 @@ def agent_loop(first_reply=None):
                                 "可重新输出它们。" % remaining)
                         break
                 if not rejected and not batch_failed:
-                    for pid in plugin_calls:
+                    for pid, _arg in plugin_calls:
                         if not confirm_execute("调用插件 %s（隔离子进程）" % pid):
                             rejected = True
                             feedbacks.append(
                                 "【系统自动回传】用户拒绝调用插件 %s。"
                                 "请解释或改用其他方式。" % pid)
                             break
-                        result = run_plugin(pid)
+                        result = run_plugin(pid, _arg)
+                        if pid == "web_search" and _arg:
+                            try:
+                                emit_web(_parse_search(result, _arg))
+                            except Exception:
+                                pass
                         print("\n[插件 %s] 执行结果：\n%s" % (pid, result))
                         feedbacks.append(
                             "【系统自动回传】插件 %s 执行结果（隔离子进程）：\n%s\n"
@@ -2740,6 +2796,14 @@ v4.3 验收机制：[accept:] 声明产物+检查（严格一行）+标准；完
 def handle_command(u: str):
     global MODE, TODOS, AUTO_EXECUTE, ACTIVE_CONTRACT    # v4.3：/contract 放弃需要写
     cmd = u.split()[0].lower()
+    if cmd.startswith("/websearch") or cmd.startswith("/搜索"):
+        _kw = u.split(None, 1)
+        _kw = _kw[1].strip() if len(_kw) > 1 else ""
+        if not _kw:
+            print("用法：/websearch 关键词")
+        else:
+            print(run_plugin("web_search", _kw))
+        return
     if cmd == "/plan":
         MODE = "plan"
         refresh_system()

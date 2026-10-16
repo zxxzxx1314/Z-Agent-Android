@@ -132,6 +132,7 @@ private var stepBarFailed = false
 private val stepRows = HashMap<Int, LinearLayout>()
 private var settingsSheet: BottomSheetDialog? = null
 private var thinkOn = false
+private var searchOn = false
 private var appMode = "build"
 
 private lateinit var sp: SharedPreferences
@@ -302,6 +303,8 @@ themeButton.setOnClickListener { haptic(it); toggleTheme() }
 
 // v6.4 restore thinkOn
 thinkOn = sp.getBoolean(KEY_THINK, false)
+searchOn = sp.getBoolean(KEY_SEARCH, false)
+refreshSearchChip()
 refreshThinkChip()
 threadRun { safeBridge { try { PythonBridge.setThink(this@MainActivity, thinkOn) } catch (e: Exception) { } } }
 initQuickBar()
@@ -325,7 +328,13 @@ chipThink2.setOnClickListener {
     sp.edit().putBoolean(KEY_THINK, thinkOn).apply()
     threadRun { safeBridge { try { PythonBridge.setThink(this@MainActivity, thinkOn) } catch (e: Exception) { } } }
 }
-chipSearch.visibility = View.GONE
+chipSearch.visibility = View.VISIBLE
+chipSearch.setOnClickListener {
+    haptic(it)
+    searchOn = !searchOn
+    refreshSearchChip()
+    sp.edit().putBoolean(KEY_SEARCH, searchOn).apply()
+}
 refreshThinkChip()
  refreshSegVisual()
 
@@ -1337,6 +1346,7 @@ val fullText = text + attachInfo
 pendingFiles.clear()
 refreshAttachRow()
 val payload = if (fullText.startsWith("/")) fullText
+else if (searchOn) "/websearch " + fullText
 else if (appMode == "plan") "/plan " + fullText
 else fullText
 appendOutput("你> " + text + "\n")
@@ -1376,6 +1386,7 @@ private val streamPoll = object : Runnable {
  "ui" -> onUiEvent(c.optString("v"))
  "btn" -> onBtnEvent(c.optString("v"))
  "reason" -> appendReason(c.optString("v"))
+ "web" -> onWebEvent(c.optString("v"))
                             }
                         }
                     }
@@ -1591,6 +1602,114 @@ stepBarSteps = null
 stepBarProgress = null
 stepBarProgressFill = null
 stepRows.clear()
+}
+
+private fun onWebEvent(json: String) {
+ val o = try { JSONObject(json) } catch (e: Exception) { return }
+ val kind = o.optString("kind")
+ if (kind != "search_result") return
+ hideEmpty()
+ val query = o.optString("query")
+ val arr = o.optJSONArray("items") ?: return
+ val card = LinearLayout(this).apply {
+ orientation = LinearLayout.VERTICAL
+ setBackgroundResource(R.drawable.bg_reasoning_box)
+ setPadding(dp(12), dp(8), dp(12), dp(8))
+ layoutParams = LinearLayout.LayoutParams(
+ LinearLayout.LayoutParams.MATCH_PARENT,
+ LinearLayout.LayoutParams.WRAP_CONTENT
+ ).apply { topMargin = dp(4); bottomMargin = dp(4) }
+ }
+ val head = TextView(this).apply {
+ text = "搜索「" + query + "」· " + arr.length() + " 条结果（点击展开）"
+ textSize = 12f
+ setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+ isClickable = true
+ }
+ val body = LinearLayout(this).apply {
+ orientation = LinearLayout.VERTICAL
+ visibility = View.GONE
+ }
+ for (i in 0 until arr.length()) {
+ val it = arr.optJSONObject(i) ?: continue
+ val title = it.optString("title")
+ val url = it.optString("url")
+ val row = TextView(this).apply {
+ text = (i + 1).toString() + ". " + title
+ textSize = 12.5f
+ setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+ setPadding(dp(2), dp(6), dp(2), dp(6))
+ isClickable = true
+ }
+ row.setOnClickListener { v ->
+ HapticTokens.tap(v)
+ openWebDetail(title, url)
+ }
+ body.addView(row)
+ }
+ head.setOnClickListener {
+ HapticTokens.tap(it)
+ val ex = body.visibility == View.VISIBLE
+ body.visibility = if (ex) View.GONE else View.VISIBLE
+ }
+ card.addView(head)
+ card.addView(body)
+ chatContainer.addView(card)
+ card.post { bounceIn(card) }
+ smartScrollBottom()
+}
+
+
+private fun openWebDetail(title: String, url: String) {
+ val sheet = BottomSheetDialog(this)
+ val root = LinearLayout(this).apply {
+ orientation = LinearLayout.VERTICAL
+ setBackgroundResource(R.drawable.bg_sheet)
+ setPadding(dp(20), dp(12), dp(20), dp(20))
+ }
+ root.addView(TextView(this).apply {
+ text = title
+ textSize = 17f
+ setTypeface(null, android.graphics.Typeface.BOLD)
+ setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+ })
+ root.addView(TextView(this).apply {
+ text = url
+ textSize = 11f
+ setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+ setPadding(0, dp(4), 0, dp(10))
+ })
+ val bodyTv = TextView(this).apply {
+ text = "加载中…"
+ textSize = 13f
+ setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+ setTextIsSelectable(true)
+ }
+ val sv = android.widget.ScrollView(this)
+ sv.addView(bodyTv)
+ sv.layoutParams = LinearLayout.LayoutParams(
+ LinearLayout.LayoutParams.MATCH_PARENT, dp(420))
+ root.addView(sv)
+ val openBtn = TextView(this).apply {
+ text = "在浏览器打开"
+ textSize = 14f
+ setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
+ setPadding(0, dp(12), 0, 0)
+ isClickable = true
+ }
+ openBtn.setOnClickListener {
+ HapticTokens.tap(it)
+ try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) } catch (e: Exception) { toast("无法打开") }
+ }
+ root.addView(openBtn)
+ sheet.setContentView(root)
+ sheet.show()
+ threadRun { safeBridge { try {
+ val r = PythonBridge.fetchPage(this@MainActivity, url)
+ val o = JSONObject(r)
+ val txt = if (o.optBoolean("ok")) o.optString("text") else "抓取失败：" + o.optString("err")
+ runOnUiThread { bodyTv.text = if (txt.isBlank()) "(无正文)" else txt }
+ } catch (e: Exception) { runOnUiThread { bodyTv.text = "异常：" + (e.message ?: "") } } } }
 }
 
 private fun renderStreamText(tv: TextView) {
@@ -2804,6 +2923,18 @@ private fun bounceIn(view: View) {
     }, delay)
 }
 
+private fun refreshSearchChip() {
+    if (searchOn) {
+        chipSearch.setBackgroundResource(R.drawable.bg_chip_active)
+        chipSearch.setTextColor(ContextCompat.getColor(this, R.color.accent))
+    } else {
+        chipSearch.setBackgroundResource(R.drawable.bg_chip_ghost)
+        chipSearch.setTextColor(ContextCompat.getColor(this, R.color.chip_text_inactive))
+    }
+    chipSearch.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_globe, 0, 0, 0)
+}
+
+
 private fun refreshThinkChip() {
  if (thinkOn) {
   chipThink2.setBackgroundResource(R.drawable.bg_chip_active)
@@ -3799,6 +3930,7 @@ private const val KEY_LIGHT_THEME = "light_theme"
  private const val KEY_QUICK_BUTTONS = "quick_buttons_v1"
 private const val KEY_DRAFT = "input_draft"
 private const val KEY_THINK = "think_on"
+private const val KEY_SEARCH = "search_on"
 private const val KEY_BALL_X = "ball_x"
 private const val KEY_BALL_Y = "ball_y"
 private const val BEG = "===REASONING_BEGIN==="

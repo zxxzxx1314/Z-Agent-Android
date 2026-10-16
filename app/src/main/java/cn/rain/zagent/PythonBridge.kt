@@ -311,6 +311,13 @@ object PythonBridge {
  }
 
 
+ fun fetchPage(context: Context, url: String): String {
+ ensureBootstrapped(context)
+ return Python.getInstance().getModule("zagent_app")
+ .callAttr("fetch_page_api", url)?.toString() ?: ""
+ }
+
+
     // ---- session manager bridge ----
 
     fun sessionsList(context: Context): String {

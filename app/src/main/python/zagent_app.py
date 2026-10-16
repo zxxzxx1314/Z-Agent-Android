@@ -892,3 +892,11 @@ def session_export(sid, out_dir):
         return _j.dumps({"ok": True, "file": fn}, ensure_ascii=False)
     except Exception as e:
         return _j.dumps({"ok": False, "err": repr(e)}, ensure_ascii=False)
+
+def fetch_page_api(url):
+    import json as _j
+    try:
+        from zagent import fetch_page as _fp
+        return _fp(url)
+    except Exception as e:
+        return _j.dumps({"ok": False, "err": repr(e)}, ensure_ascii=False)
