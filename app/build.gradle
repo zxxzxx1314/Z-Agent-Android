@@ -1,104 +1,97 @@
 plugins {
-id 'com.android.application'
-id 'org.jetbrains.kotlin.android'
-id 'com.chaquo.python'
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'com.chaquo.python'
 }
 
-// ── 敏感信息从 local.properties / 环境变量 读取（不进 git）──
 def localProps = new Properties()
 def localPropsFile = rootProject.file('local.properties')
 if (localPropsFile.exists()) {
-localPropsFile.withInputStream { localProps.load(it) }
+    localPropsFile.withInputStream { localProps.load(it) }
 }
 def cfg = { String key -> localProps.getProperty(key) ?: System.getenv(key) ?: "" }
 
 android {
-namespace 'cn.rain.zagent'
-compileSdk 35
+    namespace 'cn.rain.zagent'
+    compileSdk 37
 
-defaultConfig {
-applicationId "cn.rain.zagent"
-minSdk 24
-targetSdk 35
-versionCode 22
-versionName "3.0"
+    defaultConfig {
+        applicationId "cn.rain.zagent"
+        minSdk 26
+        targetSdk 37
+        versionCode 23
+        versionName "3.1"
 
-ndk {
-abiFilters "arm64-v8a", "x86_64"
-}
+        ndk {
 
-// API Key / 签名指纹：源码中不再硬编码
+abiFilters
+复制
+下载
+        }
+
         buildConfigField "String", "ZAGENT_API_KEY", "\"${cfg('ZAGENT_API_KEY')}\""
         buildConfigField "String", "ZAGENT_EXPECTED_SIGNATURE", "\"${cfg('ZAGENT_EXPECTED_SIGNATURE')}\""
-}
+    }
 
-// 只有本机配置了 keystore 才启用 release 签名；CI 无 keystore 时自动跳过
-def ksFile = cfg('RELEASE_STORE_FILE')
-if (ksFile) {
-signingConfigs {
-release {
-storeFile file(ksFile)
-storePassword cfg('RELEASE_STORE_PASSWORD')
-keyAlias cfg('RELEASE_KEY_ALIAS')
-keyPassword cfg('RELEASE_KEY_PASSWORD')
-}
-}
-}
+    def ksFile = cfg('RELEASE_STORE_FILE')
+    if (ksFile) {
+        signingConfigs {
+            release {
+                storeFile file(ksFile)
+                storePassword cfg('RELEASE_STORE_PASSWORD')
+                keyAlias cfg('RELEASE_KEY_ALIAS')
+                keyPassword cfg('RELEASE_KEY_PASSWORD')
+            }
+        }
+    }
 
-buildTypes {
-debug {
-minifyEnabled false
-shrinkResources false
-}
-release {
-// R8 代码混淆
-minifyEnabled true
-// 资源压缩
-shrinkResources true
-proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-// 移除调试信息
-debuggable false
-ndk {
-debugSymbolLevel 'NONE'
-}
+    buildTypes {
+        debug {
+            minifyEnabled false
+            shrinkResources false
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            debuggable false
+            ndk {
+                debugSymbolLevel 'NONE'
+            }
             signingConfig ksFile ? signingConfigs.release : signingConfigs.debug
-}
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
 }
 
-buildFeatures {
-buildConfig true
-}
-
-compileOptions {
-sourceCompatibility JavaVersion.VERSION_17
-targetCompatibility JavaVersion.VERSION_17
-}
-kotlinOptions {
-jvmTarget = '17'
-}
-}
-
-// Chaquopy 配置块必须在顶层（与 android 平级），不能嵌在 android 里
 chaquopy {
-defaultConfig {
-version = "3.12"
-
-// 保留 .py 源码进 APK（genome_empty 修复）
-pyc { src = false }
-
-pip {
-install "requests"
-install "pillow"
-install "pypdf"
-}
-}
+    defaultConfig {
+        version = "3.12"
+        pyc { src = false }
+        pip {
+            install "requests"
+            install "pillow"
+            install "pypdf"
+        }
+    }
 }
 
 dependencies {
-implementation 'androidx.core:core-ktx:1.13.1'
-implementation 'androidx.appcompat:appcompat:1.7.0'
-implementation 'com.google.android.material:material:1.11.0'
-implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
- implementation 'androidx.dynamicanimation:dynamicanimation:1.0.0'
+    implementation 'androidx.core:core-ktx:1.15.0'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.0'
+    implementation 'androidx.dynamicanimation:dynamicanimation:1.0.0'
     implementation 'androidx.security:security-crypto:1.1.0-alpha06'
 }
