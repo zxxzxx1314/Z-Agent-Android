@@ -138,13 +138,45 @@ _LAST_API_ERROR = ""
 
 def _free_proxy_call(target_url, payload):
     msgs = payload.get("messages", [])
-    prompt = ""
-    for m in reversed(msgs):
-        if m.get("role") == "user":
-            prompt = m.get("content", "")
-            break
-    if not prompt:
+    if not msgs:
         return None
+    sys_text = ""
+    conv = []
+    for m in msgs:
+        r = m.get("role")
+        c = m.get("content") or ""
+        if not c:
+            continue
+        if r == "system":
+            if sys_text:
+                sys_text = sys_text + "\n\n" + c
+            else:
+                sys_text = c
+        elif r == "user" or r == "assistant":
+            conv.append((r, c))
+    if len(conv) > 6:
+        conv = conv[-6:]
+    L = []
+    if sys_text:
+        L.append("===== 系统设定（最高优先级，必须严格遵守） =====")
+        L.append(sys_text.strip())
+        L.append("===== 系统设定结束 =====")
+        L.append("")
+    L.append("===== 对话历史 =====")
+    for r, c in conv[:-1]:
+        tag = "【用户】" if r == "user" else "【助手】"
+        L.append(tag + c)
+    if conv:
+        L.append("===== 当前输入 =====")
+        L.append(conv[-1][1])
+    L.append("")
+    L.append("===== 强制要求 =====")
+    L.append("你现在是 Z-Agent（Android 本地 AI Agent），不是普通聊天助手。")
+    L.append("必须严格按上面系统设定的工具调用格式输出（文件写入/读取/执行等指令）。")
+    L.append("禁止回复「我是语言模型」「无法操作文件」之类的拒绝话语。直接输出指令。")
+    prompt = "\n".join(L)
+    if len(prompt) > 12000:
+        prompt = prompt[:12000] + "\n[上下文已截断，请基于以上内容作答]"
     global _LAST_API_ERROR
     try:
         from java import jclass
@@ -154,6 +186,7 @@ def _free_proxy_call(target_url, payload):
         except AttributeError:
             _inst = WebAiBridge.getINSTANCE()
         res = _inst.sendAndWait(prompt)
+        res = _normalize_fenced_to_tags(res)
         if isinstance(res, str) and res.startswith("ERROR:"):
             _LAST_API_ERROR = res[6:].strip() if len(res) > 6 else "unknown"
             print("[free] " + _LAST_API_ERROR)
@@ -3589,3 +3622,41 @@ def compare_failure_mode(expected, actual):
         append_meta_log('expect-mismatch', {'expected': e, 'actual': a})
         return False, '期望: ' + e + ' / 实得: ' + a
     return True, ''
+
+def _normalize_fenced_to_tags(text):
+    if not isinstance(text, str) or not text:
+        return text
+    LB = chr(91)
+    RB = chr(93)
+    BT = chr(96) * 3
+    OP = LB + 'script:' + RB
+    CL = LB + '/script' + RB
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+        j = text.find(BT, i)
+        if j < 0:
+            out.append(text[i:])
+            break
+        k = j + 3
+        while k < n and text[k] != chr(10):
+            k += 1
+        if k >= n:
+            out.append(text[i:])
+            break
+        k += 1
+        e = text.find(BT, k)
+        if e < 0:
+            out.append(text[i:])
+            break
+        code = text[k:e]
+        block = text[j:e+3]
+        if (OP in code) or (CL in code):
+            out.append(text[i:j])
+            out.append(block)
+        else:
+            out.append(text[i:j])
+            out.append(OP + chr(10) + code.rstrip() + chr(10) + CL)
+        i = e + 3
+    return ''.join(out)
