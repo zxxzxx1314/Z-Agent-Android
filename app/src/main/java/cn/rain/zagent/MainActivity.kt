@@ -746,7 +746,22 @@ private fun pickMode(m: String) {
 }
 
 
-    private fun showWebAiDialog() {
+    private fun showWebDebug() {
+    threadRun {
+        val info = try { WebAiBridge.debugDom() } catch (e: Exception) { "ERROR: " + e.message }
+        runOnUiThread {
+            val dlg = android.app.AlertDialog.Builder(this@MainActivity)
+                .setTitle("网页 DOM 调试")
+                .setMessage(info)
+                .setPositiveButton("复制") { _, _ -> copyText(info) }
+                .setNegativeButton("关闭", null)
+                .create()
+            dlg.show()
+        }
+    }
+}
+
+private fun showWebAiDialog() {
         val wv = WebAiBridge.getWebView() ?: return
         if (wv.parent != null) {
             (wv.parent as? android.view.ViewGroup)?.removeView(wv)
@@ -940,6 +955,7 @@ val _testRow = settingsRow(R.drawable.ic_refresh, "测试连接", if (apiKeySumm
  root.addView(_testRow)
  _testRow.alpha = if (apiKeySummary == "未设置") 0.5f else 1f
 root.addView(settingsRow(R.drawable.ic_refresh, "自动执行（跳过确认）", if (sp.getBoolean(KEY_AUTO_EXEC, false)) "开启 · 跳过确认" else "关闭 · 每步询问") { toggleAutoExec() })
+root.addView(settingsRow(R.drawable.ic_info, "网页调试", "查看 DeepSeek 网页版 DOM 结构") { showWebDebug() })
 
 // 分组：会话
 root.addView(groupLabel("会话"))
