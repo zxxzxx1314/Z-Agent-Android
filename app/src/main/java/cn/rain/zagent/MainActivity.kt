@@ -225,6 +225,9 @@ historyButton.setOnClickListener { haptic(it); showHistorySheet() }
     if (savedMode.isNullOrBlank()) {
         modeSelectOverlay.visibility = View.VISIBLE
     } else if (savedMode == "free") {
+        val savedSite = sp.getString(KEY_WEB_SITE, "DeepSeek") ?: "DeepSeek"
+        val urlMap = WebAiBridge.sites()
+        if (urlMap.containsKey(savedSite)) WebAiBridge.setUrl(urlMap[savedSite]!!)
         WebAiBridge.init(this)
     }
 inputBar = findViewById(R.id.inputBar)
@@ -1017,6 +1020,8 @@ val _testRow = settingsRow(R.drawable.ic_refresh, "测试连接", if (apiKeySumm
  _testRow.alpha = if (apiKeySummary == "未设置") 0.5f else 1f
 root.addView(settingsRow(R.drawable.ic_refresh, "自动执行（跳过确认）", if (sp.getBoolean(KEY_AUTO_EXEC, false)) "开启 · 跳过确认" else "关闭 · 每步询问") { toggleAutoExec() })
 root.addView(settingsRow(R.drawable.ic_info, "网页调试", "查看 DeepSeek 网页版 DOM 结构") { showWebDebug() })
+val webSiteName = sp.getString(KEY_WEB_SITE, "DeepSeek") ?: "DeepSeek"
+root.addView(settingsRow(R.drawable.ic_model, "网页服务", webSiteName) { promptWebSite() })
 root.addView(settingsRow(R.drawable.ic_globe, "打开网页 AI", "查看登录状态 / 网页版对话") {
  WebAiBridge.init(this@MainActivity)
  uiHandler.postDelayed({ showWebAiDialog() }, 150)
@@ -1436,6 +1441,45 @@ sheetRows["test"]?.setTextColor(if (result.startsWith("✓")) okColor else dngCo
 }
 
 } }
+}
+
+private fun promptWebSite() {
+    val sheet = BottomSheetDialog(this)
+    val root = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setBackgroundResource(R.drawable.bg_sheet)
+        setPadding(0, dp(8), 0, dp(24))
+    }
+    root.addView(TextView(this).apply {
+        text = "选择网页服务"
+        textSize = 20f
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+        setTypeface(null, android.graphics.Typeface.BOLD)
+        setPadding(dp(22), dp(8), dp(22), dp(14))
+    })
+    val cur = sp.getString(KEY_WEB_SITE, "DeepSeek")
+    for ((name, url) in WebAiBridge.sites()) {
+        val row = TextView(this).apply {
+            text = (if (name == cur) "✓ " else " ") + name + " (" + url.removePrefix("https://").substringBefore("/") + ")"
+            textSize = 15f
+            setTextColor(ContextCompat.getColor(this@MainActivity, if (name == cur) R.color.accent else R.color.text_primary))
+            setPadding(dp(22), dp(14), dp(22), dp(14))
+            isClickable = true
+            setBackgroundResource(R.drawable.bg_sheet_row)
+        }
+        row.setOnClickListener {
+            HapticTokens.tap(it)
+            sp.edit().putString(KEY_WEB_SITE, name).apply()
+            WebAiBridge.setUrl(url)
+            sheet.dismiss()
+            toast("已切换到 " + name + "，请重新登录网页版")
+            settingsSheet?.dismiss()
+            showSettingsTransform()
+        }
+        root.addView(row)
+    }
+    sheet.setContentView(root)
+    sheet.show()
 }
 
 private fun promptModel() {
@@ -4253,6 +4297,7 @@ private const val KEY_LIGHT_THEME = "light_theme"
 private const val KEY_DRAFT = "input_draft"
 private const val KEY_THINK = "think_on"
 private const val KEY_APP_MODE = "app_mode"
+ private const val KEY_WEB_SITE = "web_site_url"
 private const val KEY_SEARCH = "search_on"
 private const val KEY_BALL_X = "ball_x"
 private const val KEY_BALL_Y = "ball_y"
