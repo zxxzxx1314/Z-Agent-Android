@@ -121,14 +121,14 @@ THINK_ENABLED = False # v6.4：由 Kotlin 桥 set_think 切换；真流式思考
 # ============================================================
 FREE_MODE = False
 def _is_free_mode():
- try:
- import sys as _s
- m = _s.modules.get("zagent")
- if m is not None and bool(getattr(m, "FREE_MODE", False)):
- return True
- except Exception:
- pass
- return bool(globals().get("FREE_MODE", False))
+    try:
+        import sys as _s
+        m = _s.modules.get("zagent")
+        if m is not None and bool(getattr(m, "FREE_MODE", False)):
+            return True
+    except Exception:
+        pass
+    return bool(globals().get("FREE_MODE", False))
 FREE_API_URL = "https://agoni.xn--rhyr4ib67a.top/RainAgent/api.php"
 FREE_APP_ID = "APP09EC7766A1CD"
 FREE_ANDROID_ID = ""
@@ -2866,7 +2866,25 @@ v4.3 验收机制：[accept:] 声明产物+检查（严格一行）+标准；完
 用户拒绝执行检查命令不计入 AI 失败次数。"""
 
 
-def handle_command(u: str):
+def handle_command(u):
+    if u.startswith('/mcp'):
+        try:
+            import rea_mcp
+            parts = u.split()
+            act = parts[1] if len(parts) > 1 else 'status'
+            if act == 'start':
+                port = int(parts[2]) if len(parts) > 2 else 8765
+                host = parts[3] if len(parts) > 3 else '0.0.0.0'
+                p = rea_mcp.serve(port, host)
+                print('[MCP] 已启动 host=' + host + ' port=' + str(p))
+            elif act == 'stop':
+                print('[MCP] ' + ('已停止' if rea_mcp.stop() else '未运行'))
+            else:
+                print(rea_mcp.cli_status())
+            return
+        except Exception as e:
+            print('[MCP] error: ' + repr(e))
+            return
     global MODE, TODOS, AUTO_EXECUTE, ACTIVE_CONTRACT    # v4.3：/contract 放弃需要写
     cmd = u.split()[0].lower()
     if cmd.startswith("/websearch") or cmd.startswith("/搜索"):

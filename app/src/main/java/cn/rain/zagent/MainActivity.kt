@@ -3655,7 +3655,8 @@ QuickBtn("plugins", "插件", "plugin", "打开插件页"),
 QuickBtn("clear", "清屏", "cmd:/clear", "清空对话"),
 QuickBtn("restart", "重启", "cmd:/restart", "重启 Agent"),
 
-QuickBtn("analyze", "分析", "analyze", "REA 分析器")
+QuickBtn("analyze", "分析", "analyze", "REA 分析器"),
+QuickBtn("syscheck", "ROOT", "cmd:/mcp start 8765 0.0.0.0", "启动 MCP 并检测 root")
 )
 
 private fun defaultQuickButtons(): MutableList<QuickBtn> {

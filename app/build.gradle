@@ -19,7 +19,7 @@ android {
         applicationId "cn.rain.zagent"
         minSdk 26
         targetSdk 37
-        versionCode 26
+        versionCode 28
         versionName "0.3.1"
 
         ndk {

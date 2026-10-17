@@ -1,5 +1,9 @@
 import json, threading, http.server
 from pathlib import Path
+try:
+ from zcore import sys_mcp
+except Exception:
+ sys_mcp = None
 
 DEFAULT_PORT = 8765
 PORT_FILE = Path("/sdcard/Download/rea/.mcp_port")
@@ -30,7 +34,7 @@ def tools():
         t("rea_frida_status", "frida status + gate"),
         t("rea_frida_gate", "open/close frida gate", {"enable": {"type": "boolean"}}, ["enable"]),
         t("rea_frida_run", "run frida (requires gate open)", {"mode": {"type": "string"}, "target": {"type": "string"}, "script": {"type": "string"}, "timeout": {"type": "integer"}}, ["mode"]),
-    ]
+    ] + (sys_mcp.tools() if sys_mcp else [])
 
 def resources():
     def r(uri, name, desc, mime="application/json"):
@@ -158,6 +162,8 @@ def _frida():
 
 def call(name, args):
     args = args or {}
+    if name.startswith('sys_') and sys_mcp:
+        return sys_mcp.call(name, args)
     c = _c()
     if name == "rea_open":
         t = args.get("target", "")
@@ -289,14 +295,15 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         else:
             self._send(200, json.dumps(r, ensure_ascii=False))
 
-def serve(port=None):
+def serve(port=None, host=None):
     port = int(port or DEFAULT_PORT)
+    h = host or '0.0.0.0'
     if STATE["srv"] is not None:
         return STATE["port"]
     try:
-        srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), _Handler)
+        srv = http.server.ThreadingHTTPServer((h, port), _Handler)
     except Exception:
-        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        srv = http.server.ThreadingHTTPServer((h, 0), _Handler)
     actual = srv.server_address[1]
     STATE["srv"] = srv
     STATE["port"] = actual
