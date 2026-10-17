@@ -726,6 +726,56 @@ private fun maskSecret(s: String): String =
  out
  }
 
+// 模式选择：显示覆盖层
+private fun showModeSelect() {
+    modeSelectOverlay.alpha = 0f
+    modeSelectOverlay.visibility = View.VISIBLE
+    modeSelectOverlay.animate().alpha(1f).setDuration(180).start()
+}
+
+// 模式选择：应用并关闭
+private fun pickMode(m: String) {
+    sp.edit().putString(KEY_APP_MODE, m).apply()
+    modeSelectOverlay.animate().alpha(0f).setDuration(160).withEndAction {
+        modeSelectOverlay.visibility = View.GONE
+        modeSelectOverlay.alpha = 1f
+    }.start()
+    if (m == "free") {
+        appendOutput("[模式] 已切换到免费模式" + (10).toChar())
+        WebAiBridge.init(this)
+        uiHandler.postDelayed({ showWebAiDialog() }, 500)
+        val aid = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: ""
+        val md = java.security.MessageDigest.getInstance("MD5")
+        val dc = md.digest(aid.toByteArray()).joinToString("") { "%02x".format(it) }
+        try { PythonBridge.setFreeMode(this@MainActivity, true, aid, dc); appendOutput("[模式] 免费模式已就绪" + (10).toChar()) } catch (e: Exception) { appendOutput("[模式] 设置失败：" + (e.message ?: "") + (10).toChar()) }
+    } else {
+        appendOutput("[模式] 已切换到自备 Key 模式" + (10).toChar())
+        threadRun { safeBridge { try { PythonBridge.setFreeMode(this@MainActivity, false, "", "") } catch (e: Exception) { } } }
+        val k = SecurePrefs.getApiKey(this)
+        if (k.isNullOrBlank()) {
+            uiHandler.postDelayed({ promptApiKey() }, 240)
+        }
+    }
+
+    refreshStatusQuiet()
+}
+
+
+    private fun showWebDebug() {
+    threadRun {
+        val info = try { WebAiBridge.debugDom() } catch (e: Exception) { "ERROR: " + e.message }
+        runOnUiThread {
+            val dlg = android.app.AlertDialog.Builder(this@MainActivity)
+                .setTitle("网页 DOM 调试")
+                .setMessage(info)
+                .setPositiveButton("复制") { _, _ -> copyText(info) }
+                .setNegativeButton("关闭", null)
+                .create()
+            dlg.show()
+        }
+    }
+}
+
 private fun showWebAiDialog() {
         val wv = WebAiBridge.getWebView() ?: return
         if (wv.parent != null) {
