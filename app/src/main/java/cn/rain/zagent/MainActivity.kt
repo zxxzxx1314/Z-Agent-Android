@@ -3656,7 +3656,11 @@ QuickBtn("clear", "清屏", "cmd:/clear", "清空对话"),
 QuickBtn("restart", "重启", "cmd:/restart", "重启 Agent"),
 
 QuickBtn("analyze", "分析", "analyze", "REA 分析器"),
-QuickBtn("syscheck", "ROOT", "cmd:/mcp start 8765 0.0.0.0", "启动 MCP 并检测 root")
+QuickBtn("syscheck", "ROOT", "cmd:/mcp start 8765 0.0.0.0", "启动 MCP 并检测 root"),
+QuickBtn("gate", "权限门", "cmd:/gate", "查看权限门状态"),
+QuickBtn("grant3", "授权L3", "cmd:/grant 3", "授权到 L3 自主级"),
+QuickBtn("auditpack", "审计包", "cmd:/audit-pack", "导出审计包（链+锚点+核验CLI）"),
+QuickBtn("websearch", "联网", "cmd:/websearch ", "联网搜索关键词")
 )
 
 private fun defaultQuickButtons(): MutableList<QuickBtn> {
