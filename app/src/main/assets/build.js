@@ -63,6 +63,18 @@ if(isVisible(mds[i])) out.push(mds[i]);
 return out;
 }
 
+function extractThoughtAndText(){
+ var thinks = document.querySelectorAll('div[class*=think]');
+ var thought = '';
+ for(var i=0; i<thinks.length; i++){
+ if(isVisible(thinks[i])) {
+ thought = thinks[i].innerText;
+ break;
+ }
+ }
+ var text = lastMarkdownText();
+ return {thought: thought, text: text};
+}
 function countMarkdown(){ return collectAnswerContainers().length; }
 
 function lastMarkdownText(){
@@ -109,7 +121,12 @@ if(finalized) return;
 finalized = true;
 try{ mo.disconnect(); }catch(e){}
 try{ clearInterval(iv); }catch(e){}
-RainBridge.onResult(text || '（空回复）');
+var resObj = extractThoughtAndText();
+ if (resObj.thought) {
+ RainBridge.onResult('T_SEP' + resObj.thought + 'C_SEP' + resObj.text);
+ } else {
+ RainBridge.onResult(resObj.text || '（空回复）');
+ }
 }
 var mo = new MutationObserver(function(){
 if(finalized) return;

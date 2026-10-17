@@ -192,11 +192,18 @@ def _free_proxy_call(target_url, payload):
             print("[free] " + _LAST_API_ERROR)
             return None
         _LAST_API_ERROR = ""
+        if isinstance(res, str) and res.startswith("T_SEP"):
+            parts = res.split("C_SEP", 1)
+            th = parts[0][6:]
+            ct = parts[1] if len(parts) > 1 else ""
+            return {"choices": [{"message": {"content": ct, "reasoning_content": th}}]}
         return {"choices": [{"message": {"content": res}}]}
     except Exception as e:
         _LAST_API_ERROR = "bridge: " + str(e)
         print("[free] " + _LAST_API_ERROR)
         return None
+
+
 def _free_extract(obj):
     if not isinstance(obj, dict):
         return "", ""

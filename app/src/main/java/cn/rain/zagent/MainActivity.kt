@@ -812,6 +812,7 @@ private fun showWebAiDialog() {
         dialog.setContentView(root)
         dialog.setOnDismissListener {
  try { root.removeView(wv) } catch (e: Exception) {}
+ try { getWebAiHost().addView(wv, android.widget.FrameLayout.LayoutParams(1, 1)) } catch (e: Exception) {}
  // WebAiBridge.reset() // 保留 WebView，维持对话上下文
  }
         dialog.show()
