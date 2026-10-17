@@ -56,6 +56,8 @@ private lateinit var statusText: TextView
 private lateinit var outputScroll: ScrollView
 private lateinit var chatContainer: LinearLayout
 private lateinit var emptyState: LinearLayout
+private lateinit var emptyTitle: TextView
+private lateinit var emptySubtitle: TextView
 private lateinit var inputEdit: EditText
 private lateinit var inputCard: LinearLayout
 private lateinit var sendButton: FrameLayout
@@ -197,6 +199,8 @@ statusText = findViewById(R.id.statusText)
 outputScroll = findViewById(R.id.outputScroll)
 chatContainer = findViewById(R.id.chatContainer)
 emptyState = findViewById(R.id.emptyState)
+        emptyTitle = findViewById(R.id.emptyTitle)
+        emptySubtitle = findViewById(R.id.emptySubtitle)
 inputEdit = findViewById(R.id.inputEdit)
 inputCard = findViewById(R.id.inputCard)
 sendButton = findViewById(R.id.sendButton)
@@ -425,7 +429,8 @@ requestNotifyPermission()
             if (!o.optBoolean("ok", false)) return
             val arr = o.optJSONArray("msgs") ?: return
             chatContainer.removeAllViews()
-            if (arr.length() == 0) { emptyState.visibility = View.VISIBLE; return }
+            if (arr.length() == 0) { emptyState.visibility = View.VISIBLE
+        refreshEmptyGreeting(); return }
             hideEmpty()
             for (i in 0 until arr.length()) {
                 val m = arr.optJSONObject(i) ?: continue
@@ -476,6 +481,7 @@ requestNotifyPermission()
                     runOnUiThread {
                         chatContainer.removeAllViews()
                         emptyState.visibility = View.VISIBLE
+        refreshEmptyGreeting()
                         toast("已新建对话")
                     }
                 } catch (e: Exception) { runOnUiThread { toast("新建失败：" + (e.message ?: "")) } } } }
@@ -817,6 +823,46 @@ private fun smartScrollBottom() {
  }
 }
 
+
+private fun refreshEmptyGreeting() {
+    try {
+        if (!::emptyTitle.isInitialized) return
+        val cal = java.util.Calendar.getInstance()
+        val hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+        val dow = cal.get(java.util.Calendar.DAY_OF_WEEK)
+        val isWeekend = dow == java.util.Calendar.SATURDAY || dow == java.util.Calendar.SUNDAY
+        val title: String
+        val sub: String
+        if (isWeekend && hour in 9..22) {
+            title = "周末还在卷？"
+            sub = "告诉我要干嘛，早点弄完去玩。"
+        } else if (hour >= 23 || hour < 6) {
+            title = "夜挺深了"
+            sub = "代码跑不通就扔进来，你去歇会儿。"
+        } else if (hour in 9..18) {
+            title = "正在忙吧？"
+            sub = "把那些繁琐的活儿丢给我。"
+        } else {
+            title = "别纠结了"
+            sub = "直接把最头疼的那部分丢给我。"
+        }
+        emptyTitle.text = title
+        emptySubtitle.text = sub
+        emptySubtitle.visibility = if (sub.isEmpty()) View.GONE else View.VISIBLE
+    } catch (e: Exception) { }
+}
+
+private fun applyModeHint(mode: String) {
+    try {
+        val h = when (mode) {
+            "plan" -> "帮我规划一下产品架构……"
+            "build" -> "告诉我想构建什么功能……"
+            "think", "deep" -> "帮我仔细分析一下这个Bug的原因……"
+            else -> "把最头疼的那部分丢给我……"
+        }
+        inputEdit.hint = h
+    } catch (e: Exception) { }
+}
 
 private fun hideEmpty() {
 if (emptyState.visibility != View.GONE) emptyState.visibility = View.GONE
@@ -1532,6 +1578,7 @@ runOnUiThread {
 appendOutput("[会话] " + r + (10).toChar())
 chatContainer.removeAllViews()
 emptyState.visibility = View.VISIBLE
+        refreshEmptyGreeting()
 }
 }
 }
@@ -2700,6 +2747,7 @@ danger = true
 ) {
 chatContainer.removeView(target)
 if (chatContainer.childCount <= 1) emptyState.visibility = View.VISIBLE
+        refreshEmptyGreeting()
 }
 true
 }
