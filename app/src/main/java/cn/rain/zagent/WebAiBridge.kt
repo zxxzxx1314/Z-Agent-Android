@@ -4,10 +4,12 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.util.Base64
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import org.json.JSONObject
+import java.nio.charset.Charset
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -19,6 +21,14 @@ object WebAiBridge {
     private var currentResult: String? = null
     private var debugLatch: CountDownLatch? = null
     private var debugResult: String? = null
+
+    private const val DEBUG_JS_B64 = "KGZ1bmN0aW9uKCl7CnZhciBvdXQ9W107Cm91dC5wdXNoKCdVUkw9Jytsb2NhdGlvbi5ocmVmKTsKb3V0LnB1c2goJ1RJVExFPScrZG9jdW1lbnQudGl0bGUpOwp2YXIgdGFzPWRvY3VtZW50LnF1ZXJ5U2VsZWN0b3JBbGwoJ3RleHRhcmVhJyk7Cm91dC5wdXNoKCctLS0gVEVYVEFSRUFTIGNvdW50PScrdGFzLmxlbmd0aCsnIC0tLScpOwpmb3IodmFyIGk9MDtpPHRhcy5sZW5ndGg7aSsrKXt2YXIgdD10YXNbaV07b3V0LnB1c2goJ1snK2krJ10gaWQ9Jyt0LmlkKycgY2xzPScrdC5jbGFzc05hbWUrJyB2aXM9JysodC5vZmZzZXRQYXJlbnQhPT1udWxsKSk7fQp2YXIgY2VzPWRvY3VtZW50LnF1ZXJ5U2VsZWN0b3JBbGwoJ1tjb250ZW50ZWRpdGFibGVdJyk7Cm91dC5wdXNoKCctLS0gQ09OVEVOVEVESVRBQkxFIGNvdW50PScrY2VzLmxlbmd0aCsnIC0tLScpOwpmb3IodmFyIGk9MDtpPGNlcy5sZW5ndGg7aSsrKXt2YXIgZT1jZXNbaV07b3V0LnB1c2goJ1snK2krJ10gdGFnPScrZS50YWdOYW1lKycgY2xzPScrZS5jbGFzc05hbWUrJyB2aXM9JysoZS5vZmZzZXRQYXJlbnQhPT1udWxsKSk7fQp2YXIgYnM9ZG9jdW1lbnQucXVlcnlTZWxlY3RvckFsbCgnYnV0dG9uJyk7Cm91dC5wdXNoKCctLS0gQlVUVE9OUyBjb3VudD0nK2JzLmxlbmd0aCsnIC0tLScpOwpmb3IodmFyIGk9MDtpPE1hdGgubWluKGJzLmxlbmd0aCwyMCk7aSsrKXt2YXIgYj1ic1tpXTtvdXQucHVzaCgnWycraSsnXSB0eXBlPScrYi50eXBlKycgY2xzPScrYi5jbGFzc05hbWUrJyBhcmlhPScrYi5nZXRBdHRyaWJ1dGUoJ2FyaWEtbGFiZWwnKSsnIGRpcz0nK2IuZGlzYWJsZWQpO30KdmFyIHJicz1kb2N1bWVudC5xdWVyeVNlbGVjdG9yQWxsKCdkaXZbcm9sZT1idXR0b25dJyk7Cm91dC5wdXNoKCctLS0gRElWX1JPTEVfQlVUVE9OIGNvdW50PScrcmJzLmxlbmd0aCsnIC0tLScpOwpmb3IodmFyIGk9MDtpPE1hdGgubWluKHJicy5sZW5ndGgsMTUpO2krKyl7dmFyIHI9cmJzW2ldO291dC5wdXNoKCdbJytpKyddIGNscz0nK3IuY2xhc3NOYW1lKycgYXJpYT0nK3IuZ2V0QXR0cmlidXRlKCdhcmlhLWxhYmVsJykrJyBkaXM9JytyLmdldEF0dHJpYnV0ZSgnYXJpYS1kaXNhYmxlZCcpKTt9CnZhciBtY3M9ZG9jdW1lbnQucXVlcnlTZWxlY3RvckFsbCgnZGl2W2NsYXNzKj1tYXJrZG93bl0nKTsKdmFyIG1jczI9ZG9jdW1lbnQucXVlcnlTZWxlY3RvckFsbCgnZGl2W2NsYXNzKj1tZXNzYWdlXScpOwpvdXQucHVzaCgnLS0tIE1FU1NBR0VTIG1kPScrbWNzLmxlbmd0aCsnIG1zZz0nK21jczIubGVuZ3RoKycgLS0tJyk7ClJhaW5CcmlkZ2Uub25EZWJ1ZyhvdXQuam9pbihTdHJpbmcuZnJvbUNoYXJDb2RlKDEwKSkpOwp9KSgpOwo="
+    private const val BUILD_JS_B64 = "KGZ1bmN0aW9uKCl7CnZhciBQUk9NUFQ9UFJPTVBUOwpmdW5jdGlvbiBmaW5kSW5wdXQoKXsKdmFyIHQ9ZG9jdW1lbnQucXVlcnlTZWxlY3RvcigndGV4dGFyZWEnKTsKaWYodCYmdC5vZmZzZXRQYXJlbnQhPT1udWxsKXJldHVybiB0Owp2YXIgZXM9ZG9jdW1lbnQucXVlcnlTZWxlY3RvckFsbCgnW2NvbnRlbnRlZGl0YWJsZT10cnVlXScpOwpmb3IodmFyIGk9MDtpPGVzLmxlbmd0aDtpKyspe2lmKGVzW2ldLm9mZnNldFBhcmVudCE9PW51bGwpcmV0dXJuIGVzW2ldO30KcmV0dXJuIG51bGw7Cn0KZnVuY3Rpb24gZmluZFNlbmRCdG4oKXsKdmFyIGJzPWRvY3VtZW50LnF1ZXJ5U2VsZWN0b3JBbGwoJ2Rpdltyb2xlPWJ1dHRvbl0sYnV0dG9uJyk7CnZhciBjYW5kPVtdOwpmb3IodmFyIGk9MDtpPGJzLmxlbmd0aDtpKyspewp2YXIgYj1ic1tpXTsKaWYoYi5nZXRBdHRyaWJ1dGUoJ2FyaWEtZGlzYWJsZWQnKT09PSd0cnVlJyljb250aW51ZTsKaWYoYi5kaXNhYmxlZCljb250aW51ZTsKdmFyIHN2Zz1iLnF1ZXJ5U2VsZWN0b3IoJ3N2ZycpOwppZihzdmcpY2FuZC5wdXNoKGIpOwp9CnJldHVybiBjYW5kLmxlbmd0aD4wP2NhbmRbY2FuZC5sZW5ndGgtMV06bnVsbDsKfQp2YXIgdHJpZXM9MDsKdmFyIGl2MD1zZXRJbnRlcnZhbChmdW5jdGlvbigpewp0cmllcysrOwp2YXIgZWw9ZmluZElucHV0KCk7CmlmKCFlbCl7aWYodHJpZXM+NjApe2NsZWFySW50ZXJ2YWwoaXYwKTtSYWluQnJpZGdlLm9uRXJyb3IoJ2lucHV0IG5vdCBmb3VuZCcpO31yZXR1cm47fQpjbGVhckludGVydmFsKGl2MCk7CnRyeXsKaWYoZWwudGFnTmFtZS50b0xvd2VyQ2FzZSgpPT09J3RleHRhcmVhJyl7CnZhciBzPU9iamVjdC5nZXRPd25Qcm9wZXJ0eURlc2NyaXB0b3Iod2luZG93LkhUTUxUZXh0QXJlYUVsZW1lbnQucHJvdG90eXBlLCd2YWx1ZScpLnNldDsKcy5jYWxsKGVsLFBST01QVCk7CmVsLmRpc3BhdGNoRXZlbnQobmV3IEV2ZW50KCdpbnB1dCcse2J1YmJsZXM6dHJ1ZX0pKTsKfWVsc2V7CmVsLmZvY3VzKCk7CmVsLmlubmVyVGV4dD1QUk9NUFQ7CmVsLmRpc3BhdGNoRXZlbnQobmV3IElucHV0RXZlbnQoJ2lucHV0Jyx7YnViYmxlczp0cnVlfSkpOwp9Cn1jYXRjaChlKXtSYWluQnJpZGdlLm9uRXJyb3IoJ3NldCBpbnB1dCBmYWlsOiAnK2UubWVzc2FnZSk7cmV0dXJuO30Kc2V0VGltZW91dChmdW5jdGlvbigpewp2YXIgYnRuPWZpbmRTZW5kQnRuKCk7CmlmKGJ0bil7YnRuLmNsaWNrKCk7fQplbHNle2VsLmRpc3BhdGNoRXZlbnQobmV3IEtleWJvYXJkRXZlbnQoJ2tleWRvd24nLHtrZXk6J0VudGVyJyxjb2RlOidFbnRlcicsa2V5Q29kZToxMyx3aGljaDoxMyxidWJibGVzOnRydWV9KSk7fQp2YXIgYmFzZWxpbmU9ZG9jdW1lbnQucXVlcnlTZWxlY3RvckFsbCgnZGl2W2NsYXNzKj1tYXJrZG93bl0nKS5sZW5ndGg7CnZhciBsYXN0PScnOwp2YXIgc2FtZT0wOwp2YXIgc3RhcnRlZD1mYWxzZTsKdmFyIGl2PXNldEludGVydmFsKGZ1bmN0aW9uKCl7CnZhciBtZHM9ZG9jdW1lbnQucXVlcnlTZWxlY3RvckFsbCgnZGl2W2NsYXNzKj1tYXJrZG93bl0nKTsKaWYoIXN0YXJ0ZWQmJm1kcy5sZW5ndGg+YmFzZWxpbmUpc3RhcnRlZD10cnVlOwppZighc3RhcnRlZClyZXR1cm47CnZhciB0PW1kcy5sZW5ndGg+MD9tZHNbbWRzLmxlbmd0aC0xXS5pbm5lclRleHQ6Jyc7CmlmKHQubGVuZ3RoPjAmJnQ9PT1sYXN0KXtzYW1lKys7aWYoc2FtZT49NSl7Y2xlYXJJbnRlcnZhbChpdik7UmFpbkJyaWRnZS5vblJlc3VsdCh0KTt9fQplbHNle3NhbWU9MDtsYXN0PXQ7fQp9LDUwMCk7Cn0sNDAwKTsKfSw1MDApOwp9KSgpOwo="
+
+    private fun decodeJs(b64: String): String {
+        val bytes = Base64.decode(b64, Base64.DEFAULT)
+        return String(bytes, Charset.forName("UTF-8"))
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     fun init(context: Context) {
@@ -50,30 +60,11 @@ object WebAiBridge {
         debugLatch = latch
         debugResult = null
         mainHandler.post {
-            val js = debugJs()
-            wv.evaluateJavascript(js, null)
+            wv.evaluateJavascript(decodeJs(DEBUG_JS_B64), null)
         }
         val ok = latch.await(15, TimeUnit.SECONDS)
         if (!ok) return "ERROR: debug timeout"
         return debugResult ?: "ERROR: null"
-    }
-
-    private fun debugJs(): String {
-        val sb = StringBuilder()
-        sb.append("(function(){")
-        sb.append("var out=[];")
-        sb.append("out.push('URL='+location.href);")
-        sb.append("out.push('TITLE='+document.title);")
-        out.push('--- TEXTAREAS ---')
-        sb.append("var tas=document.querySelectorAll('textarea');out.push('count='+tas.length);for(var i=0;i<tas.length;i++){var t=tas[i];out.push('['+i+'] id='+t.id+' cls='+t.className+' ph='+(t.placeholder||'')+' vis='+(t.offsetParent!==null));}")
-        sb.append("out.push('--- CONTENTEDITABLE ---');var ces=document.querySelectorAll('[contenteditable]');out.push('count='+ces.length);for(var i=0;i<ces.length;i++){var e=ces[i];out.push('['+i+'] tag='+e.tagName+' cls='+e.className+' ce='+e.getAttribute('contenteditable')+' vis='+(e.offsetParent!==null));}")
-        sb.append("out.push('--- BUTTONS ---');var bs=document.querySelectorAll('button');out.push('count='+bs.length);for(var i=0;i<Math.min(bs.length,20);i++){var b=bs[i];out.push('['+i+'] type='+b.type+' cls='+b.className+' aria='+b.getAttribute('aria-label')+' txt='+(b.innerText||'').substring(0,30)+' dis='+b.disabled);}")
-        sb.append("out.push('--- DIV role=button ---');var rbs=document.querySelectorAll('div[role=button]');out.push('count='+rbs.length);for(var i=0;i<Math.min(rbs.length,15);i++){var r=rbs[i];out.push('['+i+'] cls='+r.className+' aria='+r.getAttribute('aria-label')+' dis='+r.getAttribute('aria-disabled'));}")
-        sb.append("out.push('--- MESSAGE CONTAINERS ---');var mcs=document.querySelectorAll('div[class*=markdown]');out.push('md_count='+mcs.length);var mcs2=document.querySelectorAll('div[class*=message]');out.push('msg_count='+mcs2.length);")
-        sb.append("RainBridge.onDebug(out.join('
-'));")
-        sb.append("})();")
-        return sb.toString()
     }
 
     fun sendAndWait(prompt: String): String {
@@ -83,7 +74,7 @@ object WebAiBridge {
         currentResult = null
         val q = JSONObject.quote(prompt)
         mainHandler.post {
-            val js = buildJs(q)
+            val js = decodeJs(BUILD_JS_B64).replace("PROMPT", q)
             wv.evaluateJavascript(js, null)
         }
         val ok = latch.await(180, TimeUnit.SECONDS)
@@ -92,32 +83,6 @@ object WebAiBridge {
             return "ERROR: timeout"
         }
         return currentResult ?: "ERROR: null"
-    }
-
-    private fun buildJs(qPrompt: String): String {
-        val sb = StringBuilder()
-        sb.append("(function(){")
-        sb.append("function findInput(){")
-        sb.append("var t=document.querySelector('textarea');if(t&&t.offsetParent!==null)return t;")
-        sb.append("var es=document.querySelectorAll('[contenteditable=true]');for(var i=0;i<es.length;i++){if(es[i].offsetParent!==null)return es[i];}return null;}")
-        sb.append("function findSendBtn(){")
-        sb.append("var bs=document.querySelectorAll('div[role=button],button');var cand=[];for(var i=0;i<bs.length;i++){var b=bs[i];if(b.getAttribute('aria-disabled')==='true')continue;if(b.disabled)continue;var svg=b.querySelector('svg');if(svg)cand.push(b);}return cand.length>0?cand[cand.length-1]:null;}")
-        sb.append("var tries=0;var maxTries=60;var iv0=setInterval(function(){")
-        sb.append("tries++;var el=findInput();if(!el){if(tries>maxTries){clearInterval(iv0);RainBridge.onError('input not found after 30s');}return;}clearInterval(iv0);")
-        sb.append("try{")
-        sb.append("if(el.tagName.toLowerCase()==='textarea'){var s=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;s.call(el,");el.dispatchEvent(new Event('input',{bubbles:true}));}else{el.focus();el.innerText=";el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:"}));}catch(e){RainBridge.onError('set input fail: '+e.message);return;}")
-        sb.append("setTimeout(function(){")
-        sb.append("var btn=findSendBtn();if(btn){btn.click();}else{el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));}")
-        sb.append("var baseline=document.querySelectorAll('div[class*=markdown]').length;var last='';var same=0;var started=false;")
-        sb.append("var iv=setInterval(function(){")
-        sb.append("var mds=document.querySelectorAll('div[class*=markdown]');")
-        sb.append("if(!started&&mds.length>baseline)started=true;")
-        sb.append("if(!started)return;var t=mds.length>0?mds[mds.length-1].innerText:'';if(t.length>0&&t===last){same++;if(same>=5){clearInterval(iv);RainBridge.onResult(t);}}else{same=0;last=t;}")
-        sb.append("},500);")
-        sb.append("},400);")
-        sb.append("},500);")
-        sb.append("})();")
-        return sb.toString()
     }
 
     class JSInterface {
