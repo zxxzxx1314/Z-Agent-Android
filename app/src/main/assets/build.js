@@ -56,7 +56,7 @@ return bestScore >= 40 ? best : null;
 
 function collectAnswerContainers(){
 var out = [];
-var mds = document.querySelectorAll('div[class*=ds-markdown], div[class*=markdown-body], div[class*=markdown], div[class*=message-content], div[class*=assistant]');
+var mds = document.querySelectorAll('div[class*=ds-markdown], div[class*=markdown-body], div[class*=markdown]');
 for(var i=0;i<mds.length;i++){
 if(isVisible(mds[i])) out.push(mds[i]);
 }
@@ -69,6 +69,13 @@ function lastMarkdownText(){
 var cs = collectAnswerContainers();
 if(cs.length > 0) return cs[cs.length-1].innerText;
 return '';
+}
+
+function inputEmptied(el){
+try{
+if(el.tagName==='TEXTAREA'||el.tagName==='INPUT') return (el.value||'').trim()==='';
+return (el.textContent||'').trim()==='';
+}catch(e){ return false; }
 }
 
 var inp = findInput();
@@ -90,6 +97,7 @@ el.dispatchEvent(new Event('keyup',{bubbles:true}));
 var baseline = countMarkdown();
 var startTs = Date.now();
 var btnTries = 0;
+var sent = false;
 
 function startObserve(){
 var lastText = '';
@@ -107,7 +115,6 @@ var mo = new MutationObserver(function(){
 if(finalized) return;
 var n = countMarkdown();
 if(!started && n > baseline) started = true;
-if(!started && Date.now() - startTs > 3000) started = true;
 if(!started) return;
 var t = lastMarkdownText();
 if(t && t !== lastText){ lastText = t; lastChangeTs = Date.now(); }
@@ -123,25 +130,10 @@ return;
 }
 var n = countMarkdown();
 if(!started && n > baseline) started = true;
-if(!started && Date.now() - startTs > 3000) started = true;
 if(!started) return;
 var t = lastMarkdownText();
 if(t && t !== lastText){ lastText = t; lastChangeTs = Date.now(); }
 if(lastText && Date.now()-lastChangeTs > IDLEDONEMS){ finish(lastText); }
-
-if(!lastText && Date.now() - startTs > 10000) {
-var bt = document.body.innerText;
-if(bt.length > 0) {
-var parts = bt.split(PROMPT);
-if(parts.length > 1) {
-var res = parts[parts.length - 1].trim();
-if(res) { lastText = res; lastChangeTs = Date.now() - 5000; }
-} else {
-if(bt.length > 1000) lastText = bt.slice(-1000); else lastText = bt;
-lastChangeTs = Date.now() - 5000;
-}
-}
-}
 }, 300);
 }
 
@@ -152,17 +144,19 @@ clearInterval(ivBtn);
 RainBridge.onError('send btn timeout');
 return;
 }
+
+if(!sent){
 var btn = findSendBtn(el);
 if(btn){
-clearInterval(ivBtn);
 try{ btn.click(); }catch(e){ RainBridge.onError('click fail: ' + e.message); return; }
-startObserve();
-return;
+sent = true; // 点击后等待输入框清空
 }
-if(btnTries >= 60){
+} else {
+// 等待输入框被清空（消息成功发出）
+if(inputEmptied(el) || Date.now() - startTs > 10000){ // 10s 强制兜底
 clearInterval(ivBtn);
-el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));
 startObserve();
 }
-}, 100);
+}
+}, 200);
 })();
