@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Agoni
+// This file is part of Z-Agent and is released under the MIT License.
+// See the LICENSE file in the project root for full license information.
 package cn.rain.zagent
 
 import android.Manifest
