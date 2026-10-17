@@ -117,6 +117,15 @@ THINK_ENABLED = False # v6.4：由 Kotlin 桥 set_think 切换；真流式思考
 # 逆向自 RainAgent 1.6.5 的 NetAuthReal 协议
 # ============================================================
 FREE_MODE = False
+def _is_free_mode():
+ try:
+ import sys as _s
+ m = _s.modules.get("zagent")
+ if m is not None and bool(getattr(m, "FREE_MODE", False)):
+ return True
+ except Exception:
+ pass
+ return bool(globals().get("FREE_MODE", False))
 FREE_API_URL = "https://agoni.xn--rhyr4ib67a.top/RainAgent/api.php"
 FREE_APP_ID = "APP09EC7766A1CD"
 FREE_ANDROID_ID = ""
@@ -2075,7 +2084,7 @@ def _post(msgs, temperature=0.3):
     }
     payload = {"model": MODEL, "messages": msgs,
         "temperature": temperature, "stream": False}
-    if FREE_MODE:
+    if _is_free_mode():
         _fo = _free_proxy_call(BASE_URL, payload)
         if _fo is None:
             return None
@@ -3163,7 +3172,7 @@ def _post_stream(msgs, temperature=0.3):
     }
     payload = {'model': MODEL, 'messages': msgs,
         'temperature': temperature, 'stream': True}
-    if FREE_MODE:
+    if _is_free_mode():
         _fo = _free_proxy_call(BASE_URL, payload)
         if _fo is None:
             _STREAM_DONE[0] = True

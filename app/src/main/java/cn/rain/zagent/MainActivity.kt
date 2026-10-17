@@ -2293,9 +2293,11 @@ return false
 private fun addLocalizedError(raw: String) {
 hideEmpty()
 val low = raw.lowercase()
+val freeMode = try { JSONObject(PythonBridge.status(this@MainActivity)).optBoolean("free_mode", false) } catch (e: Exception) { false }
 val cn: String
 val tip: String
 when {
+freeMode -> { cn = "免费模式请求失败"; tip = "请确认网页已登录，或查看下方详情" }
 low.contains("401") || low.contains("authentication fails") || low.contains("auth header") -> {
 cn = "API Key 无效或未配置"
 tip = "请在设置 → API Key 中填写正确的 Key（sk- 开头）"
@@ -3061,7 +3063,8 @@ row.addView(headRow)
 
 // 首句短提示 + 去设置按钮（仅 auth/config 类）
 val low = content.lowercase()
-val isKeyIssue = !content.contains("免费模式失败") && (low.contains("key") || low.contains("401") || low.contains("auth") ||
+val freeMode = try { JSONObject(PythonBridge.status(this@MainActivity)).optBoolean("free_mode", false) } catch (e: Exception) { false }
+val isKeyIssue = !content.contains("免费模式失败") && !freeMode && (low.contains("key") || low.contains("401") || low.contains("auth") ||
 content.contains("密钥") || content.contains("未配置"))
 if (isKeyIssue) {
 val btnRow = LinearLayout(this).apply {

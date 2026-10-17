@@ -590,6 +590,16 @@ def set_free_mode(free, android_id, device_code):
         _zag.FREE_MODE = bool(free)
         _zag.FREE_ANDROID_ID = android_id or ""
         _zag.FREE_DEVICE_CODE = device_code or ""
+
+ try:
+ import sys as _sys2
+ _m2 = _sys2.modules.get("zagent")
+ if _m2 is not None:
+ _m2.FREE_MODE = bool(free)
+ _m2.FREE_ANDROID_ID = android_id or ""
+ _m2.FREE_DEVICE_CODE = device_code or ""
+ except Exception:
+ pass
     try:
         import json as _j
         cfg = {}
