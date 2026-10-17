@@ -812,7 +812,7 @@ private fun showWebAiDialog() {
         dialog.setContentView(root)
         dialog.setOnDismissListener {
  try { root.removeView(wv) } catch (e: Exception) {}
- WebAiBridge.reset()
+ // WebAiBridge.reset() // 保留 WebView，维持对话上下文
  }
         dialog.show()
     }
