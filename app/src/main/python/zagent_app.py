@@ -856,6 +856,15 @@ def session_switch(sid):
         return _j.dumps({"ok": False, "err": repr(e)}, ensure_ascii=False)
 
 
+def session_rename(sid, title):
+    import json as _j
+    try:
+        _s, h = _sess()
+        _s.rename(h, sid, title)
+        return _j.dumps({"ok": True, "sid": sid, "title": title}, ensure_ascii=False)
+    except Exception as e:
+        return _j.dumps({"ok": False, "err": repr(e)}, ensure_ascii=False)
+
 def session_delete(sid):
     import json as _j
     try:

@@ -112,6 +112,15 @@ def touch(home, sid, msgs):
         idx.setdefault("items", []).insert(0, {"sid": sid, "title": _tt(msgs), "mtime": int(time.time())})
     save_index(home, idx)
 
+def rename(home, sid, title):
+    idx = load_index(home)
+    for it in idx.get("items", []):
+        if it.get("sid") == sid:
+            it["title"] = title
+            break
+    save_index(home, idx)
+    return True
+
 def remove(home, sid):
     idx = load_index(home)
     idx["items"] = [x for x in idx.get("items", []) if x.get("sid") != sid]

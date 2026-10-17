@@ -344,7 +344,13 @@ object PythonBridge {
             .callAttr("session_delete", sid)?.toString() ?: ""
     }
 
-    fun sessionCurrent(context: Context): String {
+   
+    fun sessionRename(context: Context, sid: String, title: String): String {
+        ensureBootstrapped(context)
+        return Python.getInstance().getModule("zagent_app")
+            .callAttr("session_rename", sid, title)?.toString() ?: ""
+    }
+ fun sessionCurrent(context: Context): String {
         ensureBootstrapped(context)
         return Python.getInstance().getModule("zagent_app")
             .callAttr("session_current")?.toString() ?: ""

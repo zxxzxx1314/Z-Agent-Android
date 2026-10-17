@@ -425,7 +425,7 @@ requestNotifyPermission()
         }
     }
 
-    // showHistorySheet: session list bottom sheet
+    // showHistorySheet: session list bottom sheet（含搜索 / 重命名 / 导出 / 删除）
     private fun showHistorySheet() {
         val json = try { PythonBridge.sessionsList(this) } catch (e: Exception) { "" }
         val sheet = BottomSheetDialog(this)
@@ -434,18 +434,24 @@ requestNotifyPermission()
             setBackgroundResource(R.drawable.bg_sheet)
             setPadding(0, dp(8), 0, dp(18))
         }
-        root.addView(TextView(this).apply {
+        // 标题行
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(22), dp(10), dp(22), dp(6))
+        }
+        header.addView(TextView(this).apply {
             text = "聊天记录"
             textSize = 22f
             setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
             setTypeface(null, android.graphics.Typeface.BOLD)
-            setPadding(dp(22), dp(10), dp(22), dp(10))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
-        root.addView(TextView(this).apply {
-            text = "+ 新建对话"
-            textSize = 15f
+        header.addView(TextView(this).apply {
+            text = "＋ 新建"
+            textSize = 14f
             setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent))
-            setPadding(dp(22), dp(12), dp(22), dp(12))
+            setPadding(dp(10), dp(6), 0, dp(6))
             isClickable = true
             setOnClickListener {
                 haptic(it)
@@ -460,68 +466,202 @@ requestNotifyPermission()
                 } catch (e: Exception) { runOnUiThread { toast("新建失败：" + (e.message ?: "")) } } } }
             }
         })
+        root.addView(header)
+        // 搜索框
+        val searchBox = EditText(this).apply {
+            hint = "搜索标题…"
+            textSize = 14f
+            setSingleLine(true)
+            setHintTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            setBackgroundResource(R.drawable.bg_input)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+        }
+        val lpS = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        lpS.setMargins(dp(22), dp(4), dp(22), dp(8))
+        searchBox.layoutParams = lpS
+        root.addView(searchBox)
+        // 列表容器
+        val listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(listBox)
+        // 解析一次
+        val all = ArrayList<org.json.JSONObject>()
         try {
             val o = org.json.JSONObject(json)
             val arr = o.optJSONArray("items")
-            if (arr != null && arr.length() > 0) {
+            if (arr != null) {
                 for (i in 0 until arr.length()) {
                     val it2 = arr.optJSONObject(i) ?: continue
-                    val sid = it2.optString("sid")
-                    val title = it2.optString("title", "(无标题)")
-                    val cnt = it2.optInt("count", 0)
-                    val isCur = it2.optBoolean("current", false)
-                    val row = LinearLayout(this).apply {
-                        orientation = LinearLayout.VERTICAL
-                        setPadding(dp(22), dp(12), dp(22), dp(12))
-                        isClickable = true
-                    }
-                    row.addView(TextView(this).apply {
-                        text = (if (isCur) "● " else "") + title
-                        textSize = 15f
-                        setTextColor(ContextCompat.getColor(this@MainActivity, if (isCur) R.color.accent else R.color.text_primary))
-                    })
-                    row.addView(TextView(this).apply {
-                        text = cnt.toString() + " 条 · 长按删除"
-                        textSize = 11f
-                        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
-                    })
-                    row.setOnClickListener {
-                        haptic(it)
-                        sheet.dismiss()
-                        threadRun { safeBridge { try {
-                            val r = PythonBridge.sessionSwitch(this@MainActivity, sid)
-                            runOnUiThread { renderHistory(r) }
-                        } catch (e: Exception) { runOnUiThread { toast("切换失败：" + (e.message ?: "")) } } } }
-                    }
-                    row.setOnLongClickListener {
-                        haptic(it)
-                        confirmSheet("删除该对话？", "删除后不可恢复") {
-                            sheet.dismiss()
-                            threadRun { safeBridge { try {
-                                val r = PythonBridge.sessionDelete(this@MainActivity, sid)
-                                runOnUiThread { renderHistory(r); toast("已删除") }
-                            } catch (e: Exception) { runOnUiThread { toast("删除失败：" + (e.message ?: "")) } } } }
-                        }
-                        true
-                    }
-                    root.addView(row)
+                    all.add(it2)
                 }
-            } else {
-                root.addView(TextView(this).apply {
-                    text = "（暂无历史会话）"
+            }
+        } catch (e: Exception) {
+            appendOutput("[历史] 列表解析失败：" + (e.message ?: "") + "
+")
+        }
+        fun refreshList(filter: String) {
+            listBox.removeAllViews()
+            val f = filter.trim().lowercase()
+            val list = if (f.isEmpty()) all else all.filter { x -> x.optString("title", "").lowercase().contains(f) }
+            if (list.isEmpty()) {
+                listBox.addView(TextView(this).apply {
+                    text = if (all.isEmpty()) "（暂无历史会话）" else "（无匹配结果）"
                     textSize = 14f
                     setPadding(dp(22), dp(16), dp(22), dp(16))
                     setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
                 })
+                return
             }
-        } catch (e: Exception) {
-            appendOutput("[历史] 列表解析失败：" + (e.message ?: "") + "\n")
+            for (it2 in list) {
+                val sid = it2.optString("sid")
+                val title = it2.optString("title", "(无标题)")
+                val cnt = it2.optInt("count", 0)
+                val isCur = it2.optBoolean("current", false)
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    setPadding(dp(22), dp(10), dp(10), dp(10))
+                    isClickable = true
+                }
+                val col = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                col.addView(TextView(this).apply {
+                    text = (if (isCur) "● " else "") + title
+                    textSize = 15f
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setTextColor(ContextCompat.getColor(this@MainActivity, if (isCur) R.color.accent else R.color.text_primary))
+                })
+                col.addView(TextView(this).apply {
+                    text = cnt.toString() + " 条"
+                    textSize = 11f
+                    setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+                })
+                row.addView(col)
+                row.addView(TextView(this).apply {
+                    text = "⋯"
+                    textSize = 20f
+                    setPadding(dp(12), 0, dp(6), 0)
+                    setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_tertiary))
+                    isClickable = true
+                    setOnClickListener {
+                        haptic(it)
+                        val popup = android.widget.PopupMenu(this@MainActivity, it)
+                        popup.menu.add(0, 1, 0, "重命名")
+                        popup.menu.add(0, 2, 1, "导出 Markdown")
+                        popup.menu.add(0, 3, 2, "删除")
+                        popup.setOnMenuItemClickListener { mi ->
+                            when (mi.itemId) {
+                                1 -> {
+                                    val input = EditText(this@MainActivity).apply {
+                                        setText(title)
+                                        setSelection(title.length)
+                                    }
+                                    val wrap = android.widget.FrameLayout(this@MainActivity).apply {
+                                        setPadding(dp(20), dp(8), dp(20), 0)
+                                        addView(input, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT))
+                                    }
+                                    androidx.appcompat.app.AlertDialog.Builder(this@MainActivity)
+                                        .setTitle("重命名对话")
+                                        .setView(wrap)
+                                        .setPositiveButton("保存") { _, _ ->
+                                            val nt = input.text.toString().trim()
+                                            if (nt.isNotEmpty()) {
+                                                threadRun { safeBridge { try {
+                                                    val r = PythonBridge.sessionRename(this@MainActivity, sid, nt)
+                                                    runOnUiThread {
+                                                        try {
+                                                            val o = org.json.JSONObject(r)
+                                                            if (o.optBoolean("ok")) {
+                                                                it2.put("title", nt)
+                                                                refreshList(searchBox.text.toString())
+                                                                toast("已重命名")
+                                                            } else toast("重命名失败")
+                                                        } catch (x: Exception) { toast("重命名异常") }
+                                                    }
+                                                } catch (e: Exception) { runOnUiThread { toast("重命名失败：" + (e.message ?: "")) } } } }
+                                            }
+                                        }
+                                        .setNegativeButton("取消", null)
+                                        .show()
+                                    true
+                                }
+                                2 -> {
+                                    threadRun { safeBridge { try {
+                                        val r = PythonBridge.sessionExport(this@MainActivity, sid, "/sdcard/Download/zagent_exports")
+                                        runOnUiThread {
+                                            try {
+                                                val o = org.json.JSONObject(r)
+                                                if (o.optBoolean("ok")) toast("已导出：" + o.optString("file"))
+                                                else toast("导出失败")
+                                            } catch (x: Exception) { toast("导出异常") }
+                                        }
+                                    } catch (e: Exception) { runOnUiThread { toast("导出失败：" + (e.message ?: "")) } } } }
+                                    true
+                                }
+                                3 -> {
+                                    confirmSheet("删除该对话？", "删除后不可恢复") {
+                                        sheet.dismiss()
+                                        threadRun { safeBridge { try {
+                                            val r = PythonBridge.sessionDelete(this@MainActivity, sid)
+                                            runOnUiThread {
+                                                renderHistory(r)
+                                                val k = all.indexOfFirst { x -> x.optString("sid") == sid }
+                                                if (k >= 0) all.removeAt(k)
+                                                refreshList(searchBox.text.toString())
+                                                toast("已删除")
+                                            }
+                                        } catch (e: Exception) { runOnUiThread { toast("删除失败：" + (e.message ?: "")) } } } }
+                                    }
+                                    true
+                                }
+                            else -> false
+                        }
+                        }
+                        popup.show()
+                    }
+                })
+                row.setOnClickListener {
+                    haptic(it)
+                    sheet.dismiss()
+                    threadRun { safeBridge { try {
+                        val r = PythonBridge.sessionSwitch(this@MainActivity, sid)
+                        runOnUiThread { renderHistory(r) }
+                    } catch (e: Exception) { runOnUiThread { toast("切换失败：" + (e.message ?: "")) } } } }
+                }
+                row.setOnLongClickListener {
+                    haptic(it)
+                    confirmSheet("删除该对话？", "删除后不可恢复") {
+                        threadRun { safeBridge { try {
+                            val r = PythonBridge.sessionDelete(this@MainActivity, sid)
+                            runOnUiThread {
+                                renderHistory(r)
+                                val k = all.indexOfFirst { x -> x.optString("sid") == sid }
+                                if (k >= 0) all.removeAt(k)
+                                refreshList(searchBox.text.toString())
+                                toast("已删除")
+                            }
+                        } catch (e: Exception) { runOnUiThread { toast("删除失败：" + (e.message ?: "")) } } } }
+                    }
+                    true
+                }
+                listBox.addView(row)
+            }
         }
+        searchBox.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) { refreshList(s?.toString() ?: "") }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
+        refreshList("")
         val sv = android.widget.ScrollView(this)
         sv.addView(root)
         sheet.setContentView(sv)
         sheet.show()
     }
+
 override fun onResume() {
     super.onResume()
     ensureExternalAccess()
