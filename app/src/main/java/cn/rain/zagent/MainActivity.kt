@@ -221,8 +221,11 @@ historyButton.setOnClickListener { haptic(it); showHistorySheet() }
     backButton.setOnClickListener { haptic(it); showModeSelect() }
     modeFreeCard.setOnClickListener { haptic(it); pickMode("free") }
     modeKeyCard.setOnClickListener { haptic(it); pickMode("key") }
-    if (sp.getString(KEY_APP_MODE, "").isNullOrBlank()) {
+    val savedMode = sp.getString(KEY_APP_MODE, "")
+    if (savedMode.isNullOrBlank()) {
         modeSelectOverlay.visibility = View.VISIBLE
+    } else if (savedMode == "free") {
+        WebAiBridge.init(this)
     }
 inputBar = findViewById(R.id.inputBar)
 segPlan = findViewById(R.id.segPlan)

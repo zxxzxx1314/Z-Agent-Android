@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit
 
 object WebAiBridge {
     private var webView: WebView? = null
+    private var appContext: android.content.Context? = null
     @Volatile var isLoaded = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private var currentLatch: CountDownLatch? = null
@@ -32,6 +33,7 @@ object WebAiBridge {
 
     @SuppressLint("SetJavaScriptEnabled")
     fun init(context: Context) {
+        appContext = context.applicationContext
         if (webView != null) return
         mainHandler.post {
             val wv = WebView(context.applicationContext)
@@ -78,6 +80,14 @@ object WebAiBridge {
     }
 
     fun sendAndWait(prompt: String): String {
+        if (webView == null && appContext != null) {
+            init(appContext!!)
+            var waitInit = 0L
+            while (webView == null && waitInit < 3000L) {
+                Thread.sleep(100L)
+                waitInit += 100L
+            }
+        }
         val wv = webView ?: return "ERROR: not initialized"
         var waited = 0L
         while (!isLoaded && waited < 15000L) {
