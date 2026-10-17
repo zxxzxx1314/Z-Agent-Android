@@ -705,7 +705,7 @@ override fun onPause() {
     uiHandler.removeCallbacks(placeholderRotator)
 }
 
-private val secretRegex = Regex("(ghp_|gho_|ghu_|ghs_|ghr_)([A-Za-z0-9]{20,})|(github_pat_)([A-Za-z0-9_]{12,})|(glpat-)([A-Za-z0-9_-]{20,})|(sk-ant-|sk-proj-|sk-svcacct-)([A-Za-z0-9_-]{20,})|(sk-)([A-Za-z0-9]{20,})|(hf_)([A-Za-z0-9]{20,})|(npm_)([A-Za-z0-9]{20,})|(xox[baprs]-)([A-Za-z0-9-]{12,})|(Bearer +)([A-Za-z0-9._-]{16,})|(AKIA)([0-9A-Z]{16})|(AIza)([0-9A-Za-z_-]{35})|(sk_live_|pk_live_|rk_live_)([A-Za-z0-9]{16,})|(eyJ)([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)"))
+private val secretRegex = Regex("""(ghp_|gho_|ghu_|ghs_|ghr_)([A-Za-z0-9]{20,})|(github_pat_)([A-Za-z0-9_]{12,})|(glpat-)([A-Za-z0-9_-]{20,})|(sk-ant-|sk-proj-|sk-svcacct-)([A-Za-z0-9_-]{20,})|(sk-)([A-Za-z0-9]{20,})|(hf_)([A-Za-z0-9]{20,})|(npm_)([A-Za-z0-9]{20,})|(xox[baprs]-)([A-Za-z0-9-]{12,})|(Bearer +)([A-Za-z0-9._-]{16,})|(AKIA)([0-9A-Z]{16})|(AIza)([0-9A-Za-z_-]{35})|(sk_live_|pk_live_|rk_live_)([A-Za-z0-9]{16,})|(eyJ)([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)"""))
 
 private fun maskOne(s: String): String =
     if (s.length <= 8) s
