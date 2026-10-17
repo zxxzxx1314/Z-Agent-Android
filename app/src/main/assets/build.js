@@ -174,6 +174,11 @@ i'''
  var up = new MouseEvent('mouseup', {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy});
  btn.dispatchEvent(up);
  btn.click();
+// 额外触发 Enter 键发送，作为兜底
+var evt = new KeyboardEvent('keydown', {key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true});
+el.dispatchEvent(evt);
+var evt2 = new KeyboardEvent('keyup', {key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true});
+el.dispatchEvent(evt2);
 ''' catch(e){ RainBridge.onError('click fail: ' + e.message); return; }sent = true; // 点击后等待输入框清空
 }
 } else {

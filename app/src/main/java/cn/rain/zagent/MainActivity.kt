@@ -793,6 +793,8 @@ private fun pickMode(m: String) {
         if (webAiHost == null) {
             webAiHost = android.widget.FrameLayout(this)
             webAiHost!!.setBackgroundColor(0xFFFFFFFF.toInt())
+ webAiHost!!.isFocusable = true
+ webAiHost!!.isFocusableInTouchMode = true
             val lp = android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT)
             (window.decorView as android.view.ViewGroup).addView(webAiHost, 0, lp)
         }
