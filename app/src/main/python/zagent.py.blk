@@ -1,0 +1,46 @@
+def emit_web(obj):
+    try:
+        import json as _j
+        _STREAM_BUF.append(("web", _j.dumps(obj, ensure_ascii=False)))
+    except Exception:
+        pass
+
+
+def fetch_page(url):
+    import re as _re
+    import json as _j
+    import urllib.request as _ur
+    u = (url or "").strip()
+    if not u:
+        return _j.dumps({"ok": False, "err": "empty"}, ensure_ascii=False)
+    req = _ur.Request(u, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        raw = _ur.urlopen(req, timeout=25).read()
+    except Exception as e:
+        return _j.dumps({"ok": False, "err": repr(e)}, ensure_ascii=False)
+    html = raw.decode("utf-8", "replace")
+    m = _re.search(r"(?is)<title[^>*]>(.*?)</title>", html)
+    title = _re.sub(r"<[^>*]+>", "", m.group(1)).strip() if m else u
+    html = _re.sub(r"(?is)<script[^>*]>.*?</script>", " ", html)
+    html = _re.sub(r"(?is)<style[^>*]>.*?</style>", " ", html)
+    text = _re.sub(r"<[^>*]+>", " ", html)
+    text = " ".join(text.split())
+    return _j.dumps({"ok": True, "url": u, "title": title, "text": text[:12000]}, ensure_ascii=False)
+
+
+def _parse_search(raw, query):
+    import re as _re
+    items = []
+    lines = (raw or "").split(chr(10))
+    i = 0
+    while i < len(lines):
+        m = _re.match(r"^\d+\.\s+(.*)$", lines[i])
+        if m and i + 1 < len(lines):
+            t2 = m.group(1).strip()
+            u2 = lines[i + 1].strip()
+            if u2.startswith("http"):
+                items.append({"title": t2, "url": u2})
+                i += 2
+                continue
+        i += 1
+    return {"kind": "search_result", "query": query, "items": items}
