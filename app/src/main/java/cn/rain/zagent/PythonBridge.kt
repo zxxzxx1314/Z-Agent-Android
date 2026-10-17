@@ -243,6 +243,12 @@ object PythonBridge {
     }
 
     /** v6.4 切换 THINK_ENABLED */
+
+    fun setFreeMode(context: Context, free: Boolean, androidId: String, deviceCode: String): String {
+        ensureBootstrapped(context)
+        return Python.getInstance().getModule("zagent_app")
+            .callAttr("set_free_mode", free, androidId, deviceCode)?.toString() ?: ""
+    }
     fun setThink(context: Context, flag: Boolean): String {
         ensureBootstrapped(context)
         return Python.getInstance().getModule("zagent_app")

@@ -111,6 +111,59 @@ MODEL = os.environ.get("RAIN_MODEL", DEFAULT_MODEL)
 
 THINK_ENABLED = False # v6.4：由 Kotlin 桥 set_think 切换；真流式思考
 
+
+# ============================================================
+# 免费模式（服务端代理）：客户端不持有真实 API Key
+# 逆向自 RainAgent 1.6.5 的 NetAuthReal 协议
+# ============================================================
+FREE_MODE = False
+FREE_API_URL = "https://agoni.xn--rhyr4ib67a.top/RainAgent/api.php"
+FREE_APP_ID = "APP09EC7766A1CD"
+FREE_ANDROID_ID = ""
+FREE_DEVICE_CODE = ""
+
+
+def _free_proxy_call(target_url, payload):
+    import json as _j
+    body = {
+        "app_id": FREE_APP_ID,
+        "device_code": FREE_DEVICE_CODE,
+        "android_id": FREE_ANDROID_ID,
+        "key": "",
+        "url": target_url,
+        "json": _j.dumps(payload, ensure_ascii=False),
+    }
+    try:
+        resp = _HTTP_SESSION.post(FREE_API_URL, json=body, timeout=180,
+            headers={"Content-Type": "application/json; charset=utf-8"})
+    except Exception as e:
+        print("[免费模式] 网络错误: %s" % e)
+        return None
+    if resp.status_code != 200:
+        print("[免费模式] 服务端 %d: %s" % (resp.status_code, resp.text[:300]))
+        return None
+    try:
+        return resp.json()
+    except Exception:
+        return {"_raw": resp.text}
+
+
+def _free_extract(obj):
+    if not isinstance(obj, dict):
+        return "", ""
+    for k in ("content", "text", "message", "reply", "data"):
+        v = obj.get(k)
+        if isinstance(v, str) and v:
+            return v, ""
+    if "choices" in obj:
+        try:
+            msg = obj["choices"][0]["message"]
+            return (msg.get("content") or "",
+                    msg.get("reasoning_content") or "")
+        except Exception:
+            pass
+    return "", ""
+
 def _thinking_params_for(base_url):
     """按 BASE_URL 判断厂商，返回思考参数 dict。未知厂商返回 {}。"""
     b = (base_url or "").lower()
@@ -2022,6 +2075,14 @@ def _post(msgs, temperature=0.3):
     }
     payload = {"model": MODEL, "messages": msgs,
         "temperature": temperature, "stream": False}
+    if FREE_MODE:
+        _fo = _free_proxy_call(BASE_URL, payload)
+        if _fo is None:
+            return None
+        _fc, _fr = _free_extract(_fo)
+        if _fr:
+            _REASONING_BUF = _fr
+        return _fc
     _apply_thinking(payload)
     _apply_thinking(payload)
     try:
@@ -3102,6 +3163,19 @@ def _post_stream(msgs, temperature=0.3):
     }
     payload = {'model': MODEL, 'messages': msgs,
         'temperature': temperature, 'stream': True}
+    if FREE_MODE:
+        _fo = _free_proxy_call(BASE_URL, payload)
+        if _fo is None:
+            _STREAM_DONE[0] = True
+            return None
+        _fc, _fr = _free_extract(_fo)
+        if _fr:
+            _STREAM_BUF.append(('reason', _fr))
+            _REASONING_BUF = _fr
+        if _fc:
+            _STREAM_BUF.append(('content', _fc))
+        _STREAM_DONE[0] = True
+        return _extract_btn_tags(_fc)
     _apply_thinking(payload)
     _apply_thinking(payload)
     try:

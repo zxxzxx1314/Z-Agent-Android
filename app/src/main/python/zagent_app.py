@@ -134,6 +134,21 @@ _FACTORY_MANIFEST = {
 }
 
 
+
+def _load_free_mode_noninteractive():
+    """读 config.json 的 free_mode / free_android_id / free_device_code。
+    返回 (free, android_id, device_code)。"""
+    cfg = {}
+    try:
+        import json as _j
+        with open(os.path.join(_state.get("home") or os.path.expanduser(chr(126)), "mind", "config.json"), "r", encoding="utf-8") as f:
+            cfg = _j.load(f)
+    except Exception:
+        pass
+    return (bool(cfg.get("free_mode")),
+            str(cfg.get("free_android_id") or ""),
+            str(cfg.get("free_device_code") or ""))
+
 def _factory_sources_via_files(me):
     """机制1：__file__ 同目录的真实文件（Termux/开发机）。"""
     if not os.path.isfile(os.path.join(me, "zagent.py")):
@@ -362,6 +377,13 @@ def bootstrap(home_path):
     _mn = _load_model_noninteractive()
     if _mn:
         zag.MODEL = _mn
+
+
+    _fm, _faid, _fdc = _load_free_mode_noninteractive()
+    if _fm:
+        zag.FREE_MODE = True
+        zag.FREE_ANDROID_ID = _faid
+        zag.FREE_DEVICE_CODE = _fdc
     zag.BASE_PROMPT = zag.BASE_PROMPT + APK_PROMPT_ADDON
     zag.AUTO_EXECUTE = True                     # APK 默认自动（无终端确认）
     zag.input = _no_input
@@ -556,6 +578,27 @@ def set_think(flag):
     return "THINK_ENABLED=%s" % (bool(flag),)
 
 
+def set_free_mode(free, android_id, device_code):
+    if _zag:
+        _zag.FREE_MODE = bool(free)
+        _zag.FREE_ANDROID_ID = android_id or ""
+        _zag.FREE_DEVICE_CODE = device_code or ""
+    try:
+        import json as _j
+        cfg = {}
+        if os.path.exists(_zag.CONFIG_PATH):
+            with open(_zag.CONFIG_PATH, "r", encoding="utf-8") as f:
+                cfg = _j.load(f)
+        cfg["free_mode"] = bool(free)
+        cfg["free_android_id"] = android_id or ""
+        cfg["free_device_code"] = device_code or ""
+        os.makedirs(os.path.dirname(_zag.CONFIG_PATH), exist_ok=True)
+        with open(_zag.CONFIG_PATH, "w", encoding="utf-8") as f:
+            _j.dump(cfg, f, ensure_ascii=False, indent=1)
+    except Exception:
+        pass
+    return "FREE_MODE=%s" % (bool(free),)
+
 def reset_session():
     zag = _zag
     if not zag:
@@ -575,12 +618,13 @@ def get_status():
           "version": None, "gen": None, "auto": None, "turns": 0,
           "mode": "APK/Chaquopy"}
     if _zag is not None:
-        st.update({"api_key_set": bool(_zag.API_KEY),
+        st.update({"api_key_set": bool(_zag.API_KEY) or bool(getattr(_zag, "FREE_MODE", False)),
                    "base_url": _zag.BASE_URL,
                    "model": _zag.MODEL,
                    "version": _zag.VERSION, "gen": _zag.get_gen(),
                    "auto": bool(_zag.AUTO_EXECUTE),
-                   "turns": len(_zag.messages)})
+                   "turns": len(_zag.messages),
+        "free_mode": bool(getattr(_zag, "FREE_MODE", False))})
     return json.dumps(st, ensure_ascii=False)
 
 

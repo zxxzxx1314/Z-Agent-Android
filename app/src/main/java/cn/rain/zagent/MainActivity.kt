@@ -727,13 +727,20 @@ private fun pickMode(m: String) {
     }.start()
     if (m == "free") {
         appendOutput("[模式] 已切换到免费模式" + (10).toChar())
+        val aid = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: ""
+        val md = java.security.MessageDigest.getInstance("MD5")
+        val dc = md.digest(aid.toByteArray()).joinToString("") { "%02x".format(it) }
+        threadRun { safeBridge { try { PythonBridge.setFreeMode(this@MainActivity, true, aid, dc) } catch (e: Exception) { } } }
     } else {
-        appendOutput("[模式] 已切换到自备 Key 模式" + (10).toChar())
+        appendOutput("[模式] 已切换到自备 Key 模式" + (10).toChar())appendOutput("[模式] 已切换到自备 Key 模式" + (10).toChar())
+        threadRun { safeBridge { try { PythonBridge.setFreeMode(this@MainActivity, false, "", "") } catch (e: Exception) { } } }
         val k = SecurePrefs.getApiKey(this)
         if (k.isNullOrBlank()) {
             uiHandler.postDelayed({ promptApiKey() }, 240)
         }
     }
+
+    refreshStatusQuiet()
 }
 
 private fun haptic(v: View) {
@@ -3225,7 +3232,12 @@ try {
 val o = JSONObject(json)
 val keyOk = o.optBoolean("api_key_set", false)
 val model = if (o.isNull("model")) "" else (o.optString("model", ""))
-tv.text = if (model.isNotBlank()) "已就绪 · " + model else "未选择模型"
+    val freeOn = o.optBoolean("free_mode", false)
+    tv.text = when {
+        freeOn -> "免费模式 · " + (if (model.isNotBlank()) model else "共享通道")
+        model.isNotBlank() -> "已就绪 · " + model
+        else -> "未选择模型"
+    }
 // Key 未配置时用 accent 提示，已配置用常规灰
 val col = if (keyOk) R.color.text_secondary else R.color.warn
 tv.setTextColor(ContextCompat.getColor(this@MainActivity, col))
