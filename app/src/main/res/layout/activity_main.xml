@@ -21,10 +21,25 @@ android:layout_height="wrap_content"
 android:background="@color/bg_elevated"
 android:gravity="center_vertical"
 android:orientation="horizontal"
-android:paddingStart="18dp"
+android:paddingStart="6dp"
 android:paddingTop="10dp"
 android:paddingEnd="8dp"
 android:paddingBottom="10dp">
+<!-- 退出（左上角） -->
+<FrameLayout
+    android:id="@+id/backButton"
+    android:contentDescription="退出到模式选择"
+    android:layout_width="48dp"
+    android:layout_height="48dp"
+    android:background="?attr/selectableItemBackgroundBorderless"
+    android:clickable="true"
+    android:focusable="true">
+    <ImageView
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_gravity="center"
+        android:src="@drawable/ic_back" />
+    </FrameLayout>
 <!-- 聊天记录（左上角） -->
 <FrameLayout
     android:id="@+id/historyButton"
@@ -243,4 +258,88 @@ android:orientation="vertical">
 </LinearLayout>
 </LinearLayout>
 <FrameLayout android:id="@+id/quickBall" android:layout_width="52dp" android:layout_height="52dp" android:layout_gravity="end|bottom" android:layout_marginEnd="16dp" android:layout_marginBottom="150dp" android:background="@drawable/bg_quick_ball" android:clickable="true" android:focusable="true" android:foreground="@drawable/ripple_circle" android:visibility="gone"><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="center" android:text="✻" android:textColor="#FFFFFF" android:textSize="22sp" android:textStyle="bold" /> </FrameLayout>
+
+<!-- 模式选择覆盖层（点左上角 ← 显示） -->
+<LinearLayout
+    android:id="@+id/modeSelectOverlay"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_canvas"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:paddingStart="24dp"
+    android:paddingEnd="24dp"
+    android:visibility="gone">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Z-Agent"
+        android:textSize="40sp"
+        android:textStyle="bold"
+        android:textColor="@color/text_primary"
+        android:fontFamily="sans-serif-medium" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="40dp"
+        android:text="选择运行模式"
+        android:textSize="15sp"
+        android:textColor="@color/text_tertiary" />
+
+    <LinearLayout
+        android:id="@+id/modeFreeCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_prompt_card"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="@drawable/ripple_press"
+        android:orientation="vertical"
+        android:padding="20dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="免费模式"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="无需 API Key，使用共享通道"
+                android:textSize="13sp"
+                android:textColor="@color/text_secondary" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/modeKeyCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/bg_prompt_card"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="@drawable/ripple_press"
+        android:orientation="vertical"
+        android:padding="20dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="自备 Key"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="使用你自己的 DeepSeek API Key"
+                android:textSize="13sp"
+                android:textColor="@color/text_secondary" />
+    </LinearLayout>
+</LinearLayout>
 </FrameLayout>

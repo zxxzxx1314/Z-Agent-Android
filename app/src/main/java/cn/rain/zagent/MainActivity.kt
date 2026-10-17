@@ -63,6 +63,10 @@ private lateinit var sendIcon: android.widget.ImageView
 private lateinit var topBar: LinearLayout
 private lateinit var themeButton: View
 private lateinit var historyButton: View
+private lateinit var backButton: View
+private lateinit var modeSelectOverlay: LinearLayout
+private lateinit var modeFreeCard: LinearLayout
+private lateinit var modeKeyCard: LinearLayout
  private lateinit var themeIcon: ImageView
 private lateinit var inputBar: LinearLayout
 private lateinit var segPlan: TextView
@@ -202,6 +206,17 @@ themeButton = findViewById(R.id.themeButton)
  themeIcon = findViewById(R.id.themeIcon)
 historyButton = findViewById(R.id.historyButton)
 historyButton.setOnClickListener { haptic(it); showHistorySheet() }
+
+    backButton = findViewById(R.id.backButton)
+    modeSelectOverlay = findViewById(R.id.modeSelectOverlay)
+    modeFreeCard = findViewById(R.id.modeFreeCard)
+    modeKeyCard = findViewById(R.id.modeKeyCard)
+    backButton.setOnClickListener { haptic(it); showModeSelect() }
+    modeFreeCard.setOnClickListener { haptic(it); pickMode("free") }
+    modeKeyCard.setOnClickListener { haptic(it); pickMode("key") }
+    if (sp.getString(KEY_APP_MODE, "").isNullOrBlank()) {
+        modeSelectOverlay.visibility = View.VISIBLE
+    }
 inputBar = findViewById(R.id.inputBar)
 segPlan = findViewById(R.id.segPlan)
 segBuild = findViewById(R.id.segBuild)
@@ -695,6 +710,31 @@ private fun maskSecret(s: String): String =
             m.groupValues[3] + maskOne(m.groupValues[4])
     }
 
+
+// 模式选择：显示覆盖层
+private fun showModeSelect() {
+    modeSelectOverlay.alpha = 0f
+    modeSelectOverlay.visibility = View.VISIBLE
+    modeSelectOverlay.animate().alpha(1f).setDuration(180).start()
+}
+
+// 模式选择：应用并关闭
+private fun pickMode(m: String) {
+    sp.edit().putString(KEY_APP_MODE, m).apply()
+    modeSelectOverlay.animate().alpha(0f).setDuration(160).withEndAction {
+        modeSelectOverlay.visibility = View.GONE
+        modeSelectOverlay.alpha = 1f
+    }.start()
+    if (m == "free") {
+        appendOutput("[模式] 已切换到免费模式" + (10).toChar())
+    } else {
+        appendOutput("[模式] 已切换到自备 Key 模式" + (10).toChar())
+        val k = SecurePrefs.getApiKey(this)
+        if (k.isNullOrBlank()) {
+            uiHandler.postDelayed({ promptApiKey() }, 240)
+        }
+    }
+}
 
 private fun haptic(v: View) {
 HapticTokens.tap(v)
@@ -4072,6 +4112,7 @@ private const val KEY_LIGHT_THEME = "light_theme"
  private const val KEY_QUICK_BUTTONS = "quick_buttons_v1"
 private const val KEY_DRAFT = "input_draft"
 private const val KEY_THINK = "think_on"
+private const val KEY_APP_MODE = "app_mode"
 private const val KEY_SEARCH = "search_on"
 private const val KEY_BALL_X = "ball_x"
 private const val KEY_BALL_Y = "ball_y"
