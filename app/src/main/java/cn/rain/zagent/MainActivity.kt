@@ -789,7 +789,10 @@ private fun showWebAiDialog() {
         root.addView(topBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         root.addView(wv, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT))
         dialog.setContentView(root)
-        dialog.setOnDismissListener { root.removeView(wv) }
+        dialog.setOnDismissListener {
+ try { root.removeView(wv) } catch (e: Exception) {}
+ WebAiBridge.reset()
+ }
         dialog.show()
     }
 private fun haptic(v: View) {
@@ -2230,6 +2233,7 @@ flushAi()
 private fun isApiErrorLine(line: String): Boolean {
 val t = line.trim()
 if (t.isEmpty()) return false
+if (t.contains("免费模式失败")) return false
 val low = t.lowercase()
 if (t.startsWith("api error") || t.startsWith("http ") || t.startsWith("error:")) return true
 if (low.contains("authentication fails")) return true
@@ -3009,8 +3013,8 @@ row.addView(headRow)
 
 // 首句短提示 + 去设置按钮（仅 auth/config 类）
 val low = content.lowercase()
-val isKeyIssue = low.contains("key") || low.contains("401") || low.contains("auth") ||
-content.contains("密钥") || content.contains("未配置")
+val isKeyIssue = !content.contains("免费模式失败") && (low.contains("key") || low.contains("401") || low.contains("auth") ||
+content.contains("密钥") || content.contains("未配置"))
 if (isKeyIssue) {
 val btnRow = LinearLayout(this).apply {
 orientation = LinearLayout.HORIZONTAL
