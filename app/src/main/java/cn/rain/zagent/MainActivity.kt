@@ -496,8 +496,7 @@ requestNotifyPermission()
                 }
             }
         } catch (e: Exception) {
-            appendOutput("[历史] 列表解析失败：" + (e.message ?: "") + "
-")
+            appendOutput("[历史] 列表解析失败：" + (e.message ?: ""))
         }
         fun refreshList(filter: String) {
             listBox.removeAllViews()
