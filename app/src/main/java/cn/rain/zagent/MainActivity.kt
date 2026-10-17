@@ -1017,6 +1017,10 @@ val _testRow = settingsRow(R.drawable.ic_refresh, "测试连接", if (apiKeySumm
  _testRow.alpha = if (apiKeySummary == "未设置") 0.5f else 1f
 root.addView(settingsRow(R.drawable.ic_refresh, "自动执行（跳过确认）", if (sp.getBoolean(KEY_AUTO_EXEC, false)) "开启 · 跳过确认" else "关闭 · 每步询问") { toggleAutoExec() })
 root.addView(settingsRow(R.drawable.ic_info, "网页调试", "查看 DeepSeek 网页版 DOM 结构") { showWebDebug() })
+root.addView(settingsRow(R.drawable.ic_globe, "打开网页 AI", "查看登录状态 / 网页版对话") {
+ WebAiBridge.init(this@MainActivity)
+ uiHandler.postDelayed({ showWebAiDialog() }, 150)
+})
 
 // 分组：会话
 root.addView(groupLabel("会话"))
@@ -1457,7 +1461,9 @@ private val presetModels = listOf(
 "qwen3.7-plus",
 "kimi-k3",
 "kimi-k2.7-code",
-"kimi-k2.6"
+"kimi-k2.6",
+ "glm-4-plus",
+ "glm-4-flash"
 )
 
 
