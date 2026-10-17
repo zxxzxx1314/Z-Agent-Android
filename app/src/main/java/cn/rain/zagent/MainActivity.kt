@@ -98,7 +98,7 @@ private var stopRequested = false
 private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
 private val placeholderHints = arrayOf(
-"输入消息…", "解释这个文件", "重构这个函数",
+"把最头疼的那部分丢给我……", "解释这个文件", "重构这个函数",
 "跑一下这段代码", "查这个报错", "帮我做代码审查",
 "写个单元测试", "看看我的待办",
 )
@@ -261,19 +261,19 @@ val _draft = sp.getString(KEY_DRAFT, "") ?: ""; if (_draft.isNotBlank()) { input
 // ── 空状态 Prompt 卡片：点击填入输入框 ──
 findViewById<View>(R.id.promptCard1)?.setOnClickListener {
 haptic(it)
-inputEdit.setText("帮我写一份本周工作周报，按「本周进展 / 遇到的问题 / 下周计划」结构组织")
+inputEdit.setText("帮我排查下面这段代码的报错：\n")
 inputEdit.setSelection(inputEdit.text.length)
-setAppMode("plan"); try { segPlan.thinkingPulseOnce() } catch (x: Throwable) {}
+setAppMode("plan"); applyModeHint("plan"); try { segPlan.thinkingPulseOnce() } catch (x: Throwable) {}
 }
 findViewById<View>(R.id.promptCard2)?.setOnClickListener {
 haptic(it)
-inputEdit.setText("解释下面这段代码的逻辑，指出关键控制流和潜在问题：\n")
+inputEdit.setText("帮我写个抓取网页数据的Python脚本：\n")
 inputEdit.setSelection(inputEdit.text.length)
-setAppMode("build"); try { segBuild.thinkingPulseOnce() } catch (x: Throwable) {}
+setAppMode("build"); applyModeHint("build"); try { segBuild.thinkingPulseOnce() } catch (x: Throwable) {}
 }
 findViewById<View>(R.id.promptCard3)?.setOnClickListener {
 haptic(it)
-inputEdit.setText("深度分析并总结下面这篇文档的核心论点：\n")
+inputEdit.setText("帮我拆解一下这个复杂需求，分步骤说明：\n")
 inputEdit.setSelection(inputEdit.text.length)
 if (!thinkOn) { thinkOn = true; refreshThinkChip(); sp.edit().putBoolean(KEY_THINK, true).apply(); threadRun { safeBridge { try { PythonBridge.setThink(this@MainActivity, true) } catch (e: Exception) { } } } }
 }
@@ -340,8 +340,8 @@ try { pickFile.launch(arrayOf("*/*")) }
 catch (e: Exception) { toast("无法打开文件选择器: " + (e.message ?: "")) }
 }
 
-segPlan.setOnClickListener { haptic(it); setAppMode("plan") }
-segBuild.setOnClickListener { haptic(it); setAppMode("build") }
+segPlan.setOnClickListener { haptic(it); setAppMode("plan"); applyModeHint("plan") }
+segBuild.setOnClickListener { haptic(it); setAppMode("build"); applyModeHint("build") }
 
 chipThink2.setOnClickListener {
     haptic(it)
