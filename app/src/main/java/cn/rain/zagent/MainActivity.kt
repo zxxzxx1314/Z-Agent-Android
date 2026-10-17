@@ -749,7 +749,13 @@ private fun pickMode(m: String) {
     if (m == "free") {
         appendOutput("[模式] 已切换到免费模式" + (10).toChar())
         WebAiBridge.init(this)
-        uiHandler.postDelayed({ showWebAiDialog() }, 500)
+        uiHandler.postDelayed({
+                val wv = WebAiBridge.getWebView()
+                if (wv != null && wv.parent == null) {
+                    try { getWebAiHost().addView(wv, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT)) } catch (e: Exception) {}
+                }
+            }, 100)
+            uiHandler.postDelayed({ showWebAiDialog() }, 500)
         val aid = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: ""
         val md = java.security.MessageDigest.getInstance("MD5")
         val dc = md.digest(aid.toByteArray()).joinToString("") { "%02x".format(it) }
@@ -786,8 +792,9 @@ private fun pickMode(m: String) {
     private fun getWebAiHost(): android.widget.FrameLayout {
         if (webAiHost == null) {
             webAiHost = android.widget.FrameLayout(this)
-            webAiHost!!.layoutParams = android.view.ViewGroup.LayoutParams(1, 1)
-            (window.decorView as android.view.ViewGroup).addView(webAiHost)
+            webAiHost!!.setBackgroundColor(0xFFFFFFFF.toInt())
+            val lp = android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT)
+            (window.decorView as android.view.ViewGroup).addView(webAiHost, 0, lp)
         }
         return webAiHost!!
     }
@@ -822,7 +829,7 @@ private fun showWebAiDialog() {
         dialog.setContentView(root)
         dialog.setOnDismissListener {
  try { root.removeView(wv) } catch (e: Exception) {}
- try { getWebAiHost().addView(wv, android.widget.FrameLayout.LayoutParams(1, 1)) } catch (e: Exception) {}
+ try { getWebAiHost().addView(wv, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT)) } catch (e: Exception) {}
  // WebAiBridge.reset() // 保留 WebView，维持对话上下文
  }
         dialog.show()

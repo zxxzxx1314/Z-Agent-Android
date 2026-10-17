@@ -164,9 +164,17 @@ return;
 
 if(!sent){
 var btn = findSendBtn(el);
-if(btn){
-try{ btn.click(); }catch(e){ RainBridge.onError('click fail: ' + e.message); return; }
-sent = true; // 点击后等待输入框清空
+i'''
+ el.focus();
+ var rect = btn.getBoundingClientRect();
+ var cx = rect.left + rect.width / 2;
+ var cy = rect.top + rect.height / 2;
+ var down = new MouseEvent('mousedown', {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy});
+ btn.dispatchEvent(down);
+ var up = new MouseEvent('mouseup', {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy});
+ btn.dispatchEvent(up);
+ btn.click();
+''' catch(e){ RainBridge.onError('click fail: ' + e.message); return; }sent = true; // 点击后等待输入框清空
 }
 } else {
 // 等待输入框被清空（消息成功发出）
