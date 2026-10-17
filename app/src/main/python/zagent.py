@@ -149,7 +149,11 @@ def _free_proxy_call(target_url, payload):
     try:
         from java import jclass
         WebAiBridge = jclass("cn.rain.zagent.WebAiBridge")
-        res = WebAiBridge.sendAndWait(prompt)
+        try:
+            _inst = WebAiBridge.INSTANCE
+        except AttributeError:
+            _inst = WebAiBridge.getINSTANCE()
+        res = _inst.sendAndWait(prompt)
         if isinstance(res, str) and res.startswith("ERROR:"):
             _LAST_API_ERROR = res[6:].strip() if len(res) > 6 else "unknown"
             print("[free] " + _LAST_API_ERROR)
