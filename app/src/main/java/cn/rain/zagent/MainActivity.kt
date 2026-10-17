@@ -705,70 +705,26 @@ override fun onPause() {
     uiHandler.removeCallbacks(placeholderRotator)
 }
 
-private val secretRegex = Regex("(ghp_|github_pat_|sk-)([A-Za-z0-9_-]{8,})|(Bearer +)([A-Za-z0-9._-]{8,})")
+private val secretRegex = Regex("(ghp_|gho_|ghu_|ghs_|ghr_)([A-Za-z0-9]{20,})|(github_pat_)([A-Za-z0-9_]{12,})|(glpat-)([A-Za-z0-9_-]{20,})|(sk-ant-|sk-proj-|sk-svcacct-)([A-Za-z0-9_-]{20,})|(sk-)([A-Za-z0-9]{20,})|(hf_)([A-Za-z0-9]{20,})|(npm_)([A-Za-z0-9]{20,})|(xox[baprs]-)([A-Za-z0-9-]{12,})|(Bearer +)([A-Za-z0-9._-]{16,})|(AKIA)([0-9A-Z]{16})|(AIza)([0-9A-Za-z_-]{35})|(sk_live_|pk_live_|rk_live_)([A-Za-z0-9]{16,})|(eyJ)([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)"))
 
 private fun maskOne(s: String): String =
     if (s.length <= 8) s
     else s.substring(0, 4) + "..." + s.substring(s.length - 4) + " [已脱敏]"
 
 private fun maskSecret(s: String): String =
-    secretRegex.replace(s) { m ->
-        if (m.groupValues[1].isNotEmpty())
-            m.groupValues[1] + maskOne(m.groupValues[2])
-        else
-            m.groupValues[3] + maskOne(m.groupValues[4])
-    }
-
-
-// 模式选择：显示覆盖层
-private fun showModeSelect() {
-    modeSelectOverlay.alpha = 0f
-    modeSelectOverlay.visibility = View.VISIBLE
-    modeSelectOverlay.animate().alpha(1f).setDuration(180).start()
-}
-
-// 模式选择：应用并关闭
-private fun pickMode(m: String) {
-    sp.edit().putString(KEY_APP_MODE, m).apply()
-    modeSelectOverlay.animate().alpha(0f).setDuration(160).withEndAction {
-        modeSelectOverlay.visibility = View.GONE
-        modeSelectOverlay.alpha = 1f
-    }.start()
-    if (m == "free") {
-        appendOutput("[模式] 已切换到免费模式" + (10).toChar())
-        WebAiBridge.init(this)
-        uiHandler.postDelayed({ showWebAiDialog() }, 500)
-        val aid = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: ""
-        val md = java.security.MessageDigest.getInstance("MD5")
-        val dc = md.digest(aid.toByteArray()).joinToString("") { "%02x".format(it) }
-        try { PythonBridge.setFreeMode(this@MainActivity, true, aid, dc); appendOutput("[模式] 免费模式已就绪" + (10).toChar()) } catch (e: Exception) { appendOutput("[模式] 设置失败：" + (e.message ?: "") + (10).toChar()) }
-    } else {
-        appendOutput("[模式] 已切换到自备 Key 模式" + (10).toChar())
-        threadRun { safeBridge { try { PythonBridge.setFreeMode(this@MainActivity, false, "", "") } catch (e: Exception) { } } }
-        val k = SecurePrefs.getApiKey(this)
-        if (k.isNullOrBlank()) {
-            uiHandler.postDelayed({ promptApiKey() }, 240)
-        }
-    }
-
-    refreshStatusQuiet()
-}
-
-
-    private fun showWebDebug() {
-    threadRun {
-        val info = try { WebAiBridge.debugDom() } catch (e: Exception) { "ERROR: " + e.message }
-        runOnUiThread {
-            val dlg = android.app.AlertDialog.Builder(this@MainActivity)
-                .setTitle("网页 DOM 调试")
-                .setMessage(info)
-                .setPositiveButton("复制") { _, _ -> copyText(info) }
-                .setNegativeButton("关闭", null)
-                .create()
-            dlg.show()
-        }
-    }
-}
+ secretRegex.replace(s) { m ->
+ val gs = m.groupValues
+ var i = 1
+ var out = m.value
+ while (i + 1 < gs.size) {
+ if (gs[i].isNotEmpty()) {
+ out = gs[i] + maskOne(gs[i + 1])
+ break
+ }
+ i += 2
+ }
+ out
+ }
 
 private fun showWebAiDialog() {
         val wv = WebAiBridge.getWebView() ?: return

@@ -1,5 +1,5 @@
 {
-  "pattern": "(ghp_|github_pat_|sk-)([A-Za-z0-9_-]{8,})|(Bearer +)([A-Za-z0-9._-]{8,})",
+  "pattern": "(ghp_|gho_|ghu_|ghs_|ghr_)([A-Za-z0-9]{20,})|(github_pat_)([A-Za-z0-9_]{12,})|(glpat-)([A-Za-z0-9_-]{20,})|(sk-ant-|sk-proj-|sk-svcacct-)([A-Za-z0-9_-]{20,})|(sk-)([A-Za-z0-9]{20,})|(hf_)([A-Za-z0-9]{20,})|(npm_)([A-Za-z0-9]{20,})|(xox[baprs]-)([A-Za-z0-9-]{12,})|(Bearer +)([A-Za-z0-9._-]{16,})|(AKIA)([0-9A-Z]{16})|(AIza)([0-9A-Za-z_-]{35})|(sk_live_|pk_live_|rk_live_)([A-Za-z0-9]{16,})|(eyJ)([A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+)",
   "cases": [
     {"name": "ghp_basic", "input": "ghp_FAKE00000000000000000000000000000", "expect": "ghp_FAKE...0000 [已脱敏]"},
     {"name": "sk_basic", "input": "sk-TEST0000000000000000000000000000", "expect": "sk-TEST...0000 [已脱敏]"},
