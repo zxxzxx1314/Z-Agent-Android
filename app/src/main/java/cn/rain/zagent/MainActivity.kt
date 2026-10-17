@@ -732,7 +732,7 @@ private fun pickMode(m: String) {
         val aid = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: ""
         val md = java.security.MessageDigest.getInstance("MD5")
         val dc = md.digest(aid.toByteArray()).joinToString("") { "%02x".format(it) }
-        threadRun { safeBridge { try { PythonBridge.setFreeMode(this@MainActivity, true, aid, dc) } catch (e: Exception) { } } }
+        try { PythonBridge.setFreeMode(this@MainActivity, true, aid, dc); appendOutput("[模式] 免费模式已就绪" + (10).toChar()) } catch (e: Exception) { appendOutput("[模式] 设置失败：" + (e.message ?: "") + (10).toChar()) }
     } else {
         appendOutput("[模式] 已切换到自备 Key 模式" + (10).toChar())
         threadRun { safeBridge { try { PythonBridge.setFreeMode(this@MainActivity, false, "", "") } catch (e: Exception) { } } }

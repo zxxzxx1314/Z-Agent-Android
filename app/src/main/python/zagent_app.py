@@ -396,9 +396,13 @@ def bootstrap(home_path):
         zag.selfcheck_plugins()
     except Exception as e:
         boot_buf.append("[插件] 初始化告警：%r\n" % e)
-    boot_buf.append("Z-Agent APK 就绪：v%s / Gen-%d / 会话 %d 条%s\n"
-                    % (zag.VERSION, zag.get_gen(), len(zag.messages),
-                       "" if zag.API_KEY else "（API Key 未配置，请在设置中填写）"))
+    _tag = ""
+    if getattr(zag, "FREE_MODE", False):
+        _tag = "（免费模式·网页版AI）"
+    elif not zag.API_KEY:
+        _tag = "（API Key 未配置）"
+    boot_buf.append("Z-Agent APK 就绪：v%s / Gen-%d / 会话 %d 条%s" % (
+        zag.VERSION, zag.get_gen(), len(zag.messages), _tag) + chr(10))
     _state["ready"] = True
     _sync_session()
     return get_status()
@@ -475,8 +479,11 @@ def run_agent(user_input):
             zag.messages.append({"role": "user", "content": enhanced})
             verdict = zag.agent_loop()
             if verdict == "api_error":
-                turn_buf.append("\n[网络/API 异常] 本轮未完成。"
-                                "请检查 API Key 与网络后重试。\n")
+                if getattr(zag, "FREE_MODE", False):
+                    _ed = getattr(zag, "_LAST_API_ERROR", "") or "网页AI无响应"
+                    turn_buf.append(chr(10) + "[免费模式失败] " + _ed + chr(10))
+                else:
+                    turn_buf.append(chr(10) + "[网络/API 异常] 本轮未完成。请检查 API Key 与网络后重试。" + chr(10))
         zag.save_session(zag.messages)
         _sync_session()
     except SystemExit:

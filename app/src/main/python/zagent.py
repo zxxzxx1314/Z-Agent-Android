@@ -121,6 +121,7 @@ FREE_API_URL = "https://agoni.xn--rhyr4ib67a.top/RainAgent/api.php"
 FREE_APP_ID = "APP09EC7766A1CD"
 FREE_ANDROID_ID = ""
 FREE_DEVICE_CODE = ""
+_LAST_API_ERROR = ""
 
 
 def _free_proxy_call(target_url, payload):
@@ -132,16 +133,20 @@ def _free_proxy_call(target_url, payload):
             break
     if not prompt:
         return None
+    global _LAST_API_ERROR
     try:
         from java import jclass
         WebAiBridge = jclass("cn.rain.zagent.WebAiBridge")
         res = WebAiBridge.sendAndWait(prompt)
         if isinstance(res, str) and res.startswith("ERROR:"):
-            print("[免费模式] " + res)
+            _LAST_API_ERROR = res[6:].strip() if len(res) > 6 else "unknown"
+            print("[free] " + _LAST_API_ERROR)
             return None
+        _LAST_API_ERROR = ""
         return {"choices": [{"message": {"content": res}}]}
     except Exception as e:
-        print("[免费模式] 桥接异常: " + str(e))
+        _LAST_API_ERROR = "bridge: " + str(e)
+        print("[free] " + _LAST_API_ERROR)
         return None
 def _free_extract(obj):
     if not isinstance(obj, dict):

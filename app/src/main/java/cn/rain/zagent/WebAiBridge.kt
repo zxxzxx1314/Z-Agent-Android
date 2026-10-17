@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
 
 object WebAiBridge {
     private var webView: WebView? = null
-    var isLoaded = false
+    @Volatile var isLoaded = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private var currentLatch: CountDownLatch? = null
     private var currentResult: String? = null
@@ -34,7 +34,7 @@ object WebAiBridge {
     fun init(context: Context) {
         if (webView != null) return
         mainHandler.post {
-            val wv = WebView(context)
+            val wv = WebView(context.applicationContext)
             val st = wv.settings
             st.javaScriptEnabled = true
             st.domStorageEnabled = true
@@ -69,6 +69,12 @@ object WebAiBridge {
 
     fun sendAndWait(prompt: String): String {
         val wv = webView ?: return "ERROR: not initialized"
+        var waited = 0L
+        while (!isLoaded && waited < 15000L) {
+            Thread.sleep(150L)
+            waited += 150L
+        }
+        if (!isLoaded) return "ERROR: webview not loaded after 15s"
         val latch = CountDownLatch(1)
         currentLatch = latch
         currentResult = null
@@ -83,7 +89,7 @@ object WebAiBridge {
             return "ERROR: timeout"
         }
         return currentResult ?: "ERROR: null"
-    }
+}
 
     class JSInterface {
         @JavascriptInterface
