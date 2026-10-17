@@ -5,8 +5,9 @@ var IDLEDONEMS=4000;
 
 function isVisible(e){
 if(!e) return false;
-var r = e.getBoundingClientRect();
-return r.width > 0 && r.height > 0 && e.offsetParent !== null;
+var style = window.getComputedStyle(e);
+if(style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+return true;
 }
 
 function findInput(){
@@ -100,12 +101,13 @@ if(finalized) return;
 finalized = true;
 try{ mo.disconnect(); }catch(e){}
 try{ clearInterval(iv); }catch(e){}
-RainBridge.onResult(text);
+RainBridge.onResult(text || '（空回复）');
 }
 var mo = new MutationObserver(function(){
 if(finalized) return;
 var n = countMarkdown();
 if(!started && n > baseline) started = true;
+if(!started && Date.now() - startTs > 3000) started = true;
 if(!started) return;
 var t = lastMarkdownText();
 if(t && t !== lastText){ lastText = t; lastChangeTs = Date.now(); }
@@ -121,10 +123,25 @@ return;
 }
 var n = countMarkdown();
 if(!started && n > baseline) started = true;
+if(!started && Date.now() - startTs > 3000) started = true;
 if(!started) return;
 var t = lastMarkdownText();
 if(t && t !== lastText){ lastText = t; lastChangeTs = Date.now(); }
 if(lastText && Date.now()-lastChangeTs > IDLEDONEMS){ finish(lastText); }
+
+if(!lastText && Date.now() - startTs > 10000) {
+var bt = document.body.innerText;
+if(bt.length > 0) {
+var parts = bt.split(PROMPT);
+if(parts.length > 1) {
+var res = parts[parts.length - 1].trim();
+if(res) { lastText = res; lastChangeTs = Date.now() - 5000; }
+} else {
+if(bt.length > 1000) lastText = bt.slice(-1000); else lastText = bt;
+lastChangeTs = Date.now() - 5000;
+}
+}
+}
 }, 300);
 }
 
