@@ -124,30 +124,25 @@ FREE_DEVICE_CODE = ""
 
 
 def _free_proxy_call(target_url, payload):
-    import json as _j
-    body = {
-        "app_id": FREE_APP_ID,
-        "device_code": FREE_DEVICE_CODE,
-        "android_id": FREE_ANDROID_ID,
-        "key": "",
-        "url": target_url,
-        "json": _j.dumps(payload, ensure_ascii=False),
-    }
+    msgs = payload.get("messages", [])
+    prompt = ""
+    for m in reversed(msgs):
+        if m.get("role") == "user":
+            prompt = m.get("content", "")
+            break
+    if not prompt:
+        return None
     try:
-        resp = _HTTP_SESSION.post(FREE_API_URL, json=body, timeout=180,
-            headers={"Content-Type": "application/json; charset=utf-8"})
+        from java import jclass
+        WebAiBridge = jclass("cn.rain.zagent.WebAiBridge")
+        res = WebAiBridge.sendAndWait(prompt)
+        if isinstance(res, str) and res.startswith("ERROR:"):
+            print("[免费模式] " + res)
+            return None
+        return {"choices": [{"message": {"content": res}}]}
     except Exception as e:
-        print("[免费模式] 网络错误: %s" % e)
+        print("[免费模式] 桥接异常: " + str(e))
         return None
-    if resp.status_code != 200:
-        print("[免费模式] 服务端 %d: %s" % (resp.status_code, resp.text[:300]))
-        return None
-    try:
-        return resp.json()
-    except Exception:
-        return {"_raw": resp.text}
-
-
 def _free_extract(obj):
     if not isinstance(obj, dict):
         return "", ""

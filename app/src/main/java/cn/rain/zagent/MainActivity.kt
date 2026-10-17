@@ -727,6 +727,8 @@ private fun pickMode(m: String) {
     }.start()
     if (m == "free") {
         appendOutput("[模式] 已切换到免费模式" + (10).toChar())
+        WebAiBridge.init(this)
+        uiHandler.postDelayed({ showWebAiDialog() }, 500)
         val aid = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: ""
         val md = java.security.MessageDigest.getInstance("MD5")
         val dc = md.digest(aid.toByteArray()).joinToString("") { "%02x".format(it) }
@@ -743,6 +745,38 @@ private fun pickMode(m: String) {
     refreshStatusQuiet()
 }
 
+
+    private fun showWebAiDialog() {
+        val wv = WebAiBridge.getWebView() ?: return
+        if (wv.parent != null) {
+            (wv.parent as? android.view.ViewGroup)?.removeView(wv)
+        }
+        val dialog = android.app.Dialog(this, android.R.style.Theme_DeviceDefault_NoActionBar_Fullscreen)
+        val root = LinearLayout(this)
+        root.orientation = LinearLayout.VERTICAL
+        val topBar = LinearLayout(this)
+        topBar.orientation = LinearLayout.HORIZONTAL
+        topBar.setBackgroundColor(0xFF1E1E1E.toInt())
+        topBar.setPadding(dp(16), dp(16), dp(16), dp(16))
+        val title = TextView(this)
+        title.text = "请登录网页 AI 账号"
+        title.setTextColor(0xFFFFFFFF.toInt())
+        title.textSize = 16f
+        val lpTitle = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        topBar.addView(title, lpTitle)
+        val btnDone = TextView(this)
+        btnDone.text = "登录完成"
+        btnDone.setTextColor(0xFFFFFFFF.toInt())
+        btnDone.textSize = 16f
+        btnDone.setPadding(dp(12), 0, 0, 0)
+        btnDone.setOnClickListener { dialog.dismiss() }
+        topBar.addView(btnDone)
+        root.addView(topBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        root.addView(wv, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT))
+        dialog.setContentView(root)
+        dialog.setOnDismissListener { root.removeView(wv) }
+        dialog.show()
+    }
 private fun haptic(v: View) {
 HapticTokens.tap(v)
 }
