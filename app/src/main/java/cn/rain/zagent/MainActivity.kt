@@ -782,6 +782,16 @@ private fun pickMode(m: String) {
     }
 }
 
+    private var webAiHost: android.widget.FrameLayout? = null
+    private fun getWebAiHost(): android.widget.FrameLayout {
+        if (webAiHost == null) {
+            webAiHost = android.widget.FrameLayout(this)
+            webAiHost!!.layoutParams = android.view.ViewGroup.LayoutParams(1, 1)
+            (window.decorView as android.view.ViewGroup).addView(webAiHost)
+        }
+        return webAiHost!!
+    }
+
 private fun showWebAiDialog() {
         val wv = WebAiBridge.getWebView() ?: return
         if (wv.parent != null) {
