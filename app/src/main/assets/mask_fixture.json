@@ -9,5 +9,14 @@
     {"name": "env_var", "input": "env DEEPSEEK_API_KEY 未设置", "expect": "env DEEPSEEK_API_KEY 未设置"},
     {"name": "plain_text", "input": "本次请求耗时 42ms，无凭证", "expect": "本次请求耗时 42ms，无凭证"},
     {"name": "multi_2", "input": "a=ghp_FAKE00000000000000000000000000000 b=Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", "expect": "a=ghp_FAKE...0000 [已脱敏] b=Bearer eyJh...VCJ9 [已脱敏]"}
-  ]
+  ,
+ {"name": "fp_sk_learn", "input": "sk-learn-ml-doc", "expect": "sk-learn-ml-doc"},
+ {"name": "fp_eyJ_short", "input": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", "expect": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"},
+ {"name": "fp_bare_hf", "input": "hf_", "expect": "hf_"},
+ {"name": "fp_bare_akia", "input": "AKIA", "expect": "AKIA"},
+ {"name": "fp_word_akia", "input": "task-AKIA1234", "expect": "task-AKIA1234"},
+ {"name": "fp_url_sk", "input": "https://example.com/api?sk=12345678", "expect": "https://example.com/api?sk=12345678"},
+ {"name": "fp_file_hf", "input": "文件 hf_notes.txt", "expect": "文件 hf_notes.txt"},
+ {"name": "fp_normal_sk_mid", "input": "normal_identifier_with_sk_in_middle", "expect": "normal_identifier_with_sk_in_middle"}
+ ]
 }
