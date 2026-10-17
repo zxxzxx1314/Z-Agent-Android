@@ -732,7 +732,7 @@ private fun pickMode(m: String) {
         val dc = md.digest(aid.toByteArray()).joinToString("") { "%02x".format(it) }
         threadRun { safeBridge { try { PythonBridge.setFreeMode(this@MainActivity, true, aid, dc) } catch (e: Exception) { } } }
     } else {
-        appendOutput("[模式] 已切换到自备 Key 模式" + (10).toChar())appendOutput("[模式] 已切换到自备 Key 模式" + (10).toChar())
+        appendOutput("[模式] 已切换到自备 Key 模式" + (10).toChar())
         threadRun { safeBridge { try { PythonBridge.setFreeMode(this@MainActivity, false, "", "") } catch (e: Exception) { } } }
         val k = SecurePrefs.getApiKey(this)
         if (k.isNullOrBlank()) {
