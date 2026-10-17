@@ -4,8 +4,47 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+ <!-- Android 10+ 分区存储：直接读写 /sdcard/Download 需要全文件访问 -->
+ <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
-    <application
+ <!-- Android 11+ 包可见性：app.list / app.isInstalled 需要看到全部应用 -->
+ <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+ <!-- Android 17 本地网络访问：server.start 8080 / 局域网互访 -->
+ <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+
+    <!-- Android 11+ 包可见性：常用 Intent 与目标包声明 -->
+ <queries>
+ <!-- 启动器（列出 / 打开所有 App）-->
+ <intent>
+ <action android:name="android.intent.action.MAIN" />
+ <category android:name="android.intent.category.LAUNCHER" />
+ </intent>
+ <!-- 打开链接 / 文件 -->
+ <intent>
+ <action android:name="android.intent.action.VIEW" />
+ <data android:scheme="https" />
+ </intent>
+ <intent>
+ <action android:name="android.intent.action.VIEW" />
+ <data android:scheme="file" />
+ </intent>
+ <intent>
+ <action android:name="android.intent.action.VIEW" />
+ <data android:scheme="content" />
+ </intent>
+ <!-- 安装 APK -->
+ <intent>
+ <action android:name="android.intent.action.INSTALL_PACKAGE" />
+ <data android:scheme="file" />
+ </intent>
+ <!-- 常用目标包 -->
+ <package android:name="com.android.settings" />
+ <package android:name="com.android.shell" />
+ <package android:name="com.termux" />
+ <package android:name="com.termux.api" />
+ </queries>
+ <application
         android:name=".CrashApp"
         android:allowBackup="false"
         android:networkSecurityConfig="@xml/network_security_config"
