@@ -67,6 +67,7 @@ private lateinit var backButton: View
 private lateinit var modeSelectOverlay: LinearLayout
 private lateinit var modeFreeCard: LinearLayout
 private lateinit var modeKeyCard: LinearLayout
+private lateinit var modePluginCard: LinearLayout
  private lateinit var themeIcon: ImageView
 private lateinit var inputBar: LinearLayout
 private lateinit var segPlan: TextView

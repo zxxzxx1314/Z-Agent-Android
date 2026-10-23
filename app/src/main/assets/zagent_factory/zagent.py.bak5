@@ -1,0 +1,4502 @@
+# Copyright (c) 2026 Agoni
+# This file is part of Z-Agent and is released under the MIT License.
+# See the LICENSE file in the project root for full license information.
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+rain.py v4.5 —— 超级智能终端 Agent · 心智+基因+验收版（Termux，纯 requests）
+
+【v4.3 修复清单（响应第二轮代码审查）】
+  1. 【P0·致命】agent_loop 中 feedbacks / error_feedbacks 的初始化
+     上移到验收合同解析循环之前。v4.2 中验收分支在初始化之前就
+     append（AI 提交不合格 [accept:] 合同即触发），函数内赋值使
+     名称局部化 → UnboundLocalError → 宿主崩溃、会话丢失。
+  2. 【P1】unwrap_code 恢复正确围栏判定（ / python / py）。
+     退化版（空字符串判定）因 strip() 后末行不可能为空白而恒 False，
+     围栏永远不剥 → 脚本全靠自我修复兜底，且进化冒烟测试测不出。
+     v4.3 同时在冒烟测试中加入围栏剥离断言，此类退化可被护栏捕获。
+  3. 【P2a】用户拒绝执行验收命令 → verify_contract_once 返回 None
+     哨兵，不计入 AI 的验收失败次数（用户否决 ≠ AI 失败）。
+  4. 【P2b】提示词改为「检查命令严格一行，多语句用分号连接」，
+     与解析器逐行解析的实际能力一致，消除静默截断。
+  5. 【P3a】检查命令防篡改黑名单加入展开路径（~/rain.py、~/mind、
+     ~/evolution 及身份/队列/传记文件）。诚实边界：纯字符串匹配
+     仍可被 chr() 拼接等手段绕过，属纵深防御而非沙箱。
+  6. 【P3b】新增 /contract [放弃] 命令：查看当前合同详情 / 主动
+     放弃。解决「旧合同污染新任务」时用户无感知、无法干预的问题。
+  7. 【P4a】合同 ID 加毫秒后缀，同秒注册不再覆盖审计文件。
+  8. 【P4b】验收收割反思改用脚本外文本（control），脚本字符串里
+     的 [reflect] 字面量不再误入技能库。
+  9. 【P4c/d】删除 main 横幅中永不生效的合同显示死代码（合同不
+     跨会话保留）；settle_contract 的 retry 分支同样落盘存档。
+
+【v4.1 修复清单（全部保留）】
+  1. unwrap_code 结构性剥离围栏，不误伤标识符。
+  2. /plan 宿主硬约束（拒绝执行脚本/插件，非提示词建议）。
+  3. 插件隔离子进程 + 超时强杀 + 确认（进程隔离，非沙箱）。
+  4. 多脚本「失败即停」，并告知 AI 剩余段数。
+  5. 自我修复上限批内逐段硬停。
+  6. /evolve 注入当前完整源码作修改基线。
+  7. atomic_write 原子替换（临时文件+fsync+os.replace）。
+  8. /think 任务写入主对话历史。
+  9. /idle API 失败任务放回队首。
+  10. 控制标签只从脚本外文本解析。
+  11. 冒烟测试隔离 HOME。
+  12. 子进程剥离 DEEPSEEK_API_KEY；输出头尾保留式截断。
+  13. tokenize 感知的结束标签定位。
+
+【v4.2 新增：可执行验收（Acceptance Verification）】
+  - [accept:] 验收合同：任务早期声明「产物路径 + 检查命令 + 成功标准」；
+    AI 宣称完成时由宿主执行客观验收，不再相信文字收尾。
+  - 三层防假裁判（解决"AI 自己写检查命令永远通过"）：
+    ① trivial gate：AST 检查命令必须读取世界状态（open/exists/...），
+       print('done')/assert True/sys.exit(0) 直接拒绝；
+    ② 对照组证伪：正向通过后，宿主把产物临时移开再跑同一条命令，
+       它必须失败——不看产物的假裁判必然暴露（藏文件由宿主执行，
+       AI 无法欺骗）；
+    ③ 合同锁定：首次验收触发即锁定，AI 只能修产物不能改裁判；
+       合同只允许追加收紧，不允许删除放宽。
+  - 验收通过才：沉淀 [reflect]、未完待办转自主问题队列、/idle 移除任务。
+  - 验收失败：真实输出回传给 AI 继续修复；连续 MAX_VERIFY_ATTEMPTS 次
+    → 终局失败，任务带失败记录回队。
+  - 已知边界：防"假完成"不防"低质量完成"——读了产物但弱断言的命令
+    两层都会放行；对照组只对第一个产物证伪；内容强度靠协议与测试员自觉。
+
+【语法安全铁律（进化候选同样被机器验证）】
+  · 函数内给全局变量赋值前必须 global，且 global 必须是函数体
+    第一条语句（docstring 之后）——v4.2 的 P0 崩溃正是违背了
+    "先初始化后使用"的近亲错误，本轮已修复并纳入测试。
+  · 自查命令：python -m py_compile rain.py（无输出即通过）。
+
+【发给朋友的使用说明】
+  1. 手机上安装 Termux 与 Termux:API 两个应用（均可在 F-Droid 下载）。
+  2. 打开 Termux，执行：pkg install python termux-api -y
+  3. 安装网络依赖：pip install requests
+     卡住可换清华源：pip install requests -i https://pypi.tuna.tsinghua.edu.cn/simple
+  4. 把 rain.py 拷进 Termux 家目录，运行：python rain.py
+  5. 首次运行会自动装好内置插件，并提示输入 DeepSeek API Key，
+     粘贴后自动保存，下次免输；随后即可对话，如「查电量」「发通知」。
+"""
+from zcore.util import _hide_artifact, _kill_process_tree, _restore_artifact, _without_scripts, apply_patch_tag, atomic_write, auto_notify, check_global_positions, extract_version, mask_literal, safe_child_env, show_exec_result, unwrap_code
+from zcore import gate as _gate
+from zcore import proc as zproc
+from zcore import checkpoint as zckpt
+from zcore import limiter as zlim
+from zcore import events as zevt
+from zcore import facts as zfacts
+
+import ast
+import io
+import json
+import os
+import re
+import sys
+import time
+import signal
+import shutil
+import tempfile
+import tokenize
+import subprocess
+import importlib.util
+
+import requests        # 唯一网络依赖；绝不使用 openai 库
+
+
+
+# action pipeline v2: fall back to legacy when import fails
+try:
+    from zcore import actions as _acts
+except Exception:
+    _acts = None
+
+# ============================================================
+# 0. 配置区（你只需要改这里）
+# ============================================================
+API_KEY = "" # 空占位
+BASE_URL = os.environ.get("RAIN_BASE_URL", "https://api.deepseek.com/chat/completions")
+# 模型名不再硬编码：优先 env(RAIN_MODEL) → mind/config.json 的 model 字段
+# （APK 设置界面「设置模型名称」写入）→ DEFAULT_MODEL 出厂默认。
+# 详见下方 load_model()；zagent_app.bootstrap / main() 会用它刷新本变量。
+DEFAULT_MODEL = "deepseek-flash"
+MODEL = os.environ.get("RAIN_MODEL", DEFAULT_MODEL)
+
+THINK_ENABLED = False # v6.4：由 Kotlin 桥 set_think 切换；真流式思考
+
+
+# ============================================================
+# 免费模式（服务端代理）：客户端不持有真实 API Key
+# 逆向自 RainAgent 1.6.5 的 NetAuthReal 协议
+# ============================================================
+FREE_MODE = False
+def _is_free_mode():
+    try:
+        import sys as _s
+        m = _s.modules.get("zagent")
+        if m is not None and bool(getattr(m, "FREE_MODE", False)):
+            return True
+    except Exception:
+        pass
+    return bool(globals().get("FREE_MODE", False))
+FREE_API_URL = "https://agoni.xn--rhyr4ib67a.top/RainAgent/api.php"
+FREE_APP_ID = "APP09EC7766A1CD"
+FREE_ANDROID_ID = ""
+FREE_DEVICE_CODE = ""
+_LAST_API_ERROR = ""
+
+
+def _free_proxy_call(target_url, payload):
+    msgs = payload.get("messages", [])
+    if not msgs:
+        return None
+    sys_text = ""
+    conv = []
+    for m in msgs:
+        r = m.get("role")
+        c = m.get("content") or ""
+        if not c:
+            continue
+        if r == "system":
+            if sys_text:
+                sys_text = sys_text + "\n\n" + c
+            else:
+                sys_text = c
+        elif r == "user" or r == "assistant":
+            conv.append((r, c))
+    if len(conv) > 6:
+        conv = conv[-6:]
+    L = []
+    if sys_text:
+        L.append("===== 系统设定（最高优先级，必须严格遵守） =====")
+        L.append(sys_text.strip())
+        L.append("===== 系统设定结束 =====")
+        L.append("")
+    L.append("===== 对话历史 =====")
+    for r, c in conv[:-1]:
+        tag = "【用户】" if r == "user" else "【助手】"
+        L.append(tag + c)
+    if conv:
+        L.append("===== 当前输入 =====")
+        L.append(conv[-1][1])
+    L.append("")
+    L.append("===== 强制要求 =====")
+    L.append("你现在是 Z-Agent（Android 本地 AI Agent），不是普通聊天助手。")
+    L.append("必须严格按上面系统设定的工具调用格式输出（文件写入/读取/执行等指令）。")
+    L.append("禁止回复「我是语言模型」「无法操作文件」之类的拒绝话语。直接输出指令。")
+    prompt = "\n".join(L)
+    if len(prompt) > 12000:
+        prompt = prompt[:12000] + "\n[上下文已截断，请基于以上内容作答]"
+    global _LAST_API_ERROR
+    try:
+        from java import jclass
+        WebAiBridge = jclass("cn.rain.zagent.WebAiBridge")
+        try:
+            _inst = WebAiBridge.INSTANCE
+        except AttributeError:
+            _inst = WebAiBridge.getINSTANCE()
+        res = _inst.sendAndWait(prompt)
+        res = _normalize_fenced_to_tags(res)
+        if isinstance(res, str) and res.startswith("ERROR:"):
+            _LAST_API_ERROR = res[6:].strip() if len(res) > 6 else "unknown"
+            print("[free] " + _LAST_API_ERROR)
+            return None
+        _LAST_API_ERROR = ""
+        if isinstance(res, str) and res.startswith("T_SEP"):
+            parts = res.split("C_SEP", 1)
+            th = parts[0][6:]
+            ct = parts[1] if len(parts) > 1 else ""
+            return {"choices": [{"message": {"content": ct, "reasoning_content": th}}]}
+        return {"choices": [{"message": {"content": res}}]}
+    except Exception as e:
+        _LAST_API_ERROR = "bridge: " + str(e)
+        print("[free] " + _LAST_API_ERROR)
+        return None
+
+
+def _free_extract(obj):
+    if not isinstance(obj, dict):
+        return "", ""
+    for k in ("content", "text", "message", "reply", "data"):
+        v = obj.get(k)
+        if isinstance(v, str) and v:
+            return v, ""
+    if "choices" in obj:
+        try:
+            msg = obj["choices"][0]["message"]
+            return (msg.get("content") or "",
+                    msg.get("reasoning_content") or "")
+        except Exception:
+            pass
+    return "", ""
+
+def _thinking_params_for(base_url):
+    """按 BASE_URL 判断厂商，返回思考参数 dict。未知厂商返回 {}。"""
+    b = (base_url or "").lower()
+    if not b:
+        return {}
+    if ("deepseek" in b) or ("volces" in b) or ("siliconflow" in b) or ("sglang" in b):
+        return {"thinking": {"type": "enabled"}}
+    if ("bigmodel" in b) or ("zhipu" in b) or ("glm" in b) or ("chatglm" in b):
+        return {"thinking": {"type": "enabled"}}
+    if ("dashscope" in b) or ("aliyun" in b) or ("qwen" in b) or ("bailian" in b):
+        return {"enable_thinking": True}
+    if ("openai" in b) or ("azure" in b):
+        return {"reasoning_effort": "medium"}
+    return {"thinking": {"type": "enabled"}}
+
+def _apply_thinking(payload):
+    if not THINK_ENABLED:
+        return payload
+    extra = _thinking_params_for(BASE_URL)
+    if extra:
+        payload.update(extra)
+    return payload
+VERSION = 6.1             # v6.1: 字面区协议（标签误抓历史终结）+ /restart 自重启闭环 + 影子剧本 T0/T6；AI 进化时必须递增
+
+AUTO_EXECUTE = False      # False = 执行代码/插件/进化/验收前必须 y 确认
+EXEC_TIMEOUT = 180        # 单段脚本最长执行秒数
+PLUGIN_TIMEOUT = 120      # 单个插件最长执行秒数（隔离子进程）
+VERIFY_TIMEOUT = 60       # 单条验收命令最长执行秒数
+MAX_VERIFY_ATTEMPTS = 3   # 验收失败重试上限（之后终局判定）
+MAX_ROUNDS = 12           # 单轮最大「AI→执行→回传」往返次数（防死循环）
+MAX_SELF_REPAIR = 5       # 脚本自我修复上限
+MAX_EVOLVE_RETRY = 3      # 进化验证失败重试上限（有害突变淘汰线）
+OBSERVER_AFTER = 2        # 连续失败达此次数 → 触发观察者进程纠偏
+THINK_ROUNDS = 2          # /think 深度思考的「批判→重构」轮数
+REFLECT_EVOLVE_HINT = 5   # 反思每积累几条就建议一次 /evolve
+MAX_OUTPUT_CHARS = 24000  # 回传给 AI 的单段输出截断上限（头尾保留）
+MAX_SOURCE_BYTES = 2 * 1024 * 1024   # 进化候选源码大小上限
+SHADOW_TIMEOUT = 300        # v6.0 影子沙箱单次验证超时（秒）
+
+# ===== 元认知层（soft 默认；META_LEVEL=off 一键关闭）=====
+META_LEVEL = "soft"
+
+# 权限分级（P1）
+L0_OBSERVE = 0 # 观察：只读，零副作用
+L1_ADVISE = 1 # 建议：可输出建议，不能执行
+L2_SEMI = 2 # 半自主：低风险执行，事后审计
+L3_AUTO = 3 # 自主：高风险执行，事前签名
+
+GRANT_LEVEL = 2 # 当前授予等级，默认 L2 半自主
+GRANT_TS = 0 # 授予时间戳
+GRANT_TTL = 3600 # 授予有效期（秒）；0=永久；过期自动降回默认
+
+
+def grant_level(level, reason='', ttl=3600, actor='human:local'):
+    global GRANT_LEVEL, GRANT_TS, GRANT_TTL
+    GRANT_LEVEL = int(level)
+    GRANT_TS = int(time.time())
+    GRANT_TTL = int(ttl)
+    append_meta_log('grant', {
+        'level': GRANT_LEVEL, 'reason': reason, 'ttl': GRANT_TTL},
+        actor=actor)
+    return GRANT_LEVEL
+
+
+def current_level():
+    global GRANT_LEVEL, GRANT_TS, GRANT_TTL
+    if GRANT_TTL > 0 and GRANT_TS > 0:
+        if (time.time() - GRANT_TS) > GRANT_TTL:
+            GRANT_LEVEL = 2 # 过期降回 L2
+            GRANT_TS = int(time.time())
+    return GRANT_LEVEL
+
+
+def required_level(action):
+    lv = classify_action(action)
+    if lv == 'HIGH': return 3
+    if lv == 'MED': return 2
+    return 1
+
+MAX_SECONDS = 600
+MAX_LLM_CALLS = 30
+MAX_SUB_PROC = 50
+META_LOG = '' # 惰性：首次使用时按 HOME 计算
+META_BUDGET = {"t0": 0, "llm": 0, "proc": 0, "active": False}
+
+def meta_level():
+ return META_LEVEL
+
+
+HOME = os.path.expanduser("~")
+SKILLS_DIR = os.path.join(HOME, "skills")       # 表型记忆（经验笔记）
+PLUGINS_DIR = os.path.join(HOME, "plugins")     # 插件（能力器官）
+
+# -- plugin enable state --
+PLUGINS_STATE = os.path.join(PLUGINS_DIR, ".state.json")
+
+
+def _load_plugin_state():
+    try:
+        import json
+        with open(PLUGINS_STATE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_plugin_state(st):
+    try:
+        import json
+        os.makedirs(PLUGINS_DIR, exist_ok=True)
+        with open(PLUGINS_STATE, "w", encoding="utf-8") as f:
+            json.dump(st, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def plugin_is_enabled(pid):
+    st = _load_plugin_state()
+    return st.get(pid, True) is not False
+
+
+def plugin_set_enabled(pid, enabled):
+    st = _load_plugin_state()
+    st[pid] = bool(enabled)
+    _save_plugin_state(st)
+    return True
+
+MIND_DIR = os.path.join(HOME, "mind")           # 心智目录
+CONFIG_PATH = os.path.join(MIND_DIR, "config.json")     # 敏感配置（API Key 等）
+IDENTITY_PATH = os.path.join(MIND_DIR, "identity.md")   # 身份核心
+JOURNAL_PATH = os.path.join(MIND_DIR, "journal.md")     # 心智传记
+PROBLEMS_PATH = os.path.join(MIND_DIR, "problems.md")   # 自主问题队列
+CONTRACTS_DIR = os.path.join(MIND_DIR, "contracts")     # 验收合同存档
+EVOLUTION_DIR = os.path.join(HOME, "evolution") # 基因库（版本档案）
+SESSION_PATH = os.path.join(MIND_DIR, "session.json")   # 会话记忆（跨进程持久化）
+SELF_PATH = os.path.abspath(__file__)           # 自身源码路径（进化目标）
+
+# 检查命令防篡改黑名单（字符串匹配纵深防御，非沙箱，可被拼接绕过）
+_FORBIDDEN_PATHS = tuple(p for p in (
+    SELF_PATH,
+    os.path.expanduser("~/rain.py"),
+    CONTRACTS_DIR, MIND_DIR, EVOLUTION_DIR,
+    IDENTITY_PATH, JOURNAL_PATH, PROBLEMS_PATH,
+) if p)
+
+# ---- 标签正则（集中定义）----
+PLUGIN_CALL_RE = r'\[plugin:([^\[\]]+?)\]'
+DESC_RE = r'\[desc\](.*?)\[/desc\]'
+REFLECT_RE = r'\[reflect\](.*?)\[/reflect\]'
+PROBLEM_RE = r'\[problem\](.*?)\[/problem\]'
+IDENTITY_RE = r'\[identity\](.*?)\[/identity\]'
+ACCEPT_RE = r'\[accept:\]\s*(.*?)\s*\[/accept\]'
+
+# tokenize 中视作「字面量」的 token 类型（兼容 3.12 的 f-string 拆分）
+_LITERAL_TOKENS = {tokenize.STRING, tokenize.COMMENT}
+for _name in ("FSTRING_START", "FSTRING_MIDDLE", "FSTRING_END"):
+    if hasattr(tokenize, _name):
+        _LITERAL_TOKENS.add(getattr(tokenize, _name))
+
+# ============================================================
+# 1. 全局状态（赋值前必须先声明 global）
+# ============================================================
+MODE = "build"
+messages = []
+_LAST_USAGE = [None]
+_USAGE_STALE = [True]
+_CONTEXT_WINDOW = [None]
+TODOS = []
+LAST_SCRIPT = ""
+LAST_DESC = ""
+ACTIVE_CONTRACT = None      # 当前任务的验收合同（dict / None）
+CURRENT_TASK = ""           # 当前任务描述（合同归属）
+
+# ============================================================
+# 2. 通用工具：原子写入 / 输出截断 / 围栏剥离
+# ============================================================
+
+
+def clip_output(text, limit=MAX_OUTPUT_CHARS):
+    """超长输出头尾保留式截断（优先保住末尾 traceback）。"""
+    text = text or ""
+    if len(text) <= limit:
+        return text
+    half = limit // 2
+    return (text[:half]
+            + "\n...[输出已截断，总长度 %d 字符，仅保留头尾各 %d]...\n"
+            % (len(text), half)
+            + text[-half:])
+
+
+
+
+# ============================================================
+# 2.5 API Key 加载（v4.4 新增：config.json 优先 + 交互输入）
+# ============================================================
+def welcome_onboarding(force=False):
+    """首次启动欢迎引导：无配置时展示欢迎横幅与三步上手指引。
+    force=True 时无视环境强制展示（供测试）。返回 True 表示已展示。"""
+    if not force:
+        if os.environ.get("DEEPSEEK_API_KEY", "").strip():
+            return False
+        if os.path.exists(CONFIG_PATH):
+            return False
+        try:
+            if not sys.stdin.isatty():
+                return False
+        except Exception:
+            return False
+    print("=" * 56)
+    print("  \U0001f680 \u6b22\u8fce\u4f7f\u7528 Z-Agent\uff01")
+    print("=" * 56)
+    print("  \u68c0\u6d4b\u5230\u8fd9\u662f\u9996\u6b21\u542f\u52a8\uff0c\u4e09\u6b65\u4e0a\u624b\uff1a")
+    print("")
+    print("  1. \u83b7\u53d6 Key\uff1a\u8bbf\u95ee platform.deepseek.com \u6ce8\u518c\u5e76\u521b\u5efa API Key")
+    print("  2. \u7c98\u8d34 Key\uff1a\u4e0b\u65b9\u63d0\u793a\u5904\u8f93\u5165\uff08\u81ea\u52a8\u4fdd\u5b58\uff0c\u4e0b\u6b21\u514d\u8f93\uff09")
+    print("  3. \u5f00\u59cb\u5bf9\u8bdd\uff1a\u76f4\u63a5\u8f93\u5165\u9700\u6c42\uff0c\u5982 \u67e5\u7535\u91cf / \u53d1\u901a\u77e5")
+    print("")
+    print("  \u5e38\u7528\u547d\u4ee4\uff1a/help \u5e2e\u52a9  \u7a7a\u683c  /clear \u6e05\u7a7a  \u7a7a\u683c  /idle \u81ea\u4e3b  \u7a7a\u683c  /exit \u9000\u51fa")
+    print("=" * 56)
+    return True
+
+
+def load_api_key():
+    """按优先级获取 API Key：环境变量 -> config.json -> 交互输入并保存。
+    返回 Key 字符串（可能为空，由调用方决定是否退出）。
+    全程 UTF-8；config.json 损坏/读失败时优雅降级到输入流程。"""
+    env_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    if env_key:
+        return env_key
+
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            key = str(cfg.get("api_key", "")).strip()
+            if key:
+                return key
+        except (json.JSONDecodeError, OSError, ValueError):
+            print("[配置] %s 读取失败或格式损坏，将走输入流程。" % CONFIG_PATH)
+
+    print("-" * 46)
+    print("未检测到 API Key。请粘贴你的 DeepSeek API Key（回车确认）：")
+    print("（将保存到 %s，下次启动自动读取）" % CONFIG_PATH)
+    print("-" * 46)
+    try:
+        key = input("API Key: ").strip()
+    except (KeyboardInterrupt, EOFError):
+        print("\n已取消输入。")
+        return ""
+    while not key:
+        try:
+            key = input("不能为空，请重新输入 API Key: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\n已取消输入。")
+            return ""
+
+    cfg = {}
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            if not isinstance(cfg, dict):
+                cfg = {}
+        except (json.JSONDecodeError, OSError, ValueError):
+            cfg = {}
+    cfg["api_key"] = key
+    try:
+        atomic_write(CONFIG_PATH, json.dumps(cfg, ensure_ascii=False, indent=2))
+        print("[配置] 已保存到 %s" % CONFIG_PATH)
+    except Exception as e:
+        print("[配置] 保存失败（不影响本次运行）：%s" % e)
+    return key
+
+
+def load_model():
+    """按优先级获取模型名：环境变量(RAIN_MODEL) -> config.json(model) -> DEFAULT_MODEL。
+    config.json 里的 model 由 zagent_app.set_model / APK 设置界面
+    「设置模型名称」写入。全程非交互，与 factory 版 zagent.py 保持一致。"""
+    env_model = os.environ.get("RAIN_MODEL", "").strip()
+    if env_model:
+        return env_model
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            if isinstance(cfg, dict):
+                raw = str(cfg.get("model", "")).strip()
+                if raw:
+                    return raw
+        except (json.JSONDecodeError, OSError, ValueError):
+            pass
+    return DEFAULT_MODEL
+
+
+def _load_context_window():
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            cw = cfg.get("context_window")
+            if cw:
+                return int(cw)
+        except Exception:
+            pass
+    return None
+
+
+# ============================================================
+# 3. 技能记忆库（表型学习层）
+# ============================================================
+def load_skills() -> str:
+    """读取 ~/skills/ 下 .md/.txt 注入 System Prompt（只读，无需 global）。"""
+    if not os.path.isdir(SKILLS_DIR):
+        return ""
+    parts = []
+    for fn in sorted(os.listdir(SKILLS_DIR)):
+        if not (fn.endswith(".md") or fn.endswith(".txt")):
+            continue
+        try:
+            with open(os.path.join(SKILLS_DIR, fn), "r",
+                      encoding="utf-8", errors="ignore") as f:
+                content = f.read().strip()
+        except Exception:
+            continue
+        if content:
+            parts.append("## 技能文件：%s\n%s" % (fn, content))
+    if not parts:
+        return ""
+    return "\n\n【技能记忆库（历史沉淀，优先参考其中的经验）】\n" + "\n\n".join(parts)
+
+
+def save_reflection(content: str):
+    """[reflect] 经验自动写入 ~/skills/（并按阈值建议基因进化）。"""
+    content = content.strip()
+    if not content:
+        return None
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    path = os.path.join(SKILLS_DIR, "反思_" + stamp + ".md")
+    n = 1
+    while os.path.exists(path):
+        path = os.path.join(SKILLS_DIR, "反思_%s_%d.md" % (stamp, n))
+        n += 1
+    header = ("# 任务反思（AI 自动生成）\n# 时间：%s\n\n"
+              % time.strftime("%Y-%m-%d %H:%M:%S"))
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(header + content + "\n")
+    print("\n[自我进化] 经验已写入技能库：%s" % path)
+    append_journal("反思入库", content)
+    refresh_system()
+    if os.path.isdir(SKILLS_DIR):
+        count = len([f for f in os.listdir(SKILLS_DIR)
+                     if f.startswith("反思_")])
+        if count and count % REFLECT_EVOLVE_HINT == 0:
+            print("[进化建议] 反思已积累 %d 条，输入 /evolve 可让 AI "
+                  "把经验固化进自身基因（源码）。" % count)
+    return path
+
+
+def handle_skill(u: str):
+    """/skill add 名 内容 与 /skill list。"""
+    if re.match(r'/skill\s+list', u, re.I):
+        if os.path.isdir(SKILLS_DIR):
+            files = [f for f in sorted(os.listdir(SKILLS_DIR))
+                     if f.endswith(".md") or f.endswith(".txt")]
+            print("技能库（%d 个）：" % len(files))
+            for f in files:
+                print("  - " + f)
+        else:
+            print("技能库为空。")
+        return
+    m = re.match(r'/skill\s+add\s+(\S+)\s+(.+)', u, re.S)
+    if not m:
+        print("用法：/skill add 文件名 技能内容")
+        return
+    fname, content = m.group(1), m.group(2).strip()
+    if not (fname.endswith(".md") or fname.endswith(".txt")):
+        fname += ".md"
+    path = os.path.join(SKILLS_DIR, fname)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content + "\n")
+    print("技能已保存：%s" % path)
+    refresh_system()
+
+# ============================================================
+# 4. 心智系统（身份 / 问题队列 / 传记）
+# ============================================================
+MEMORY_CONFLICT = "MEMORY_CONFLICT"
+
+
+def file_revision(path):
+    """返回文件内容的 SHA-256 前 16 位；文件不存在或读取失败返回空串。"""
+    import hashlib
+    try:
+        with open(path, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()[:16]
+    except Exception:
+        return ""
+
+def load_identity() -> str:
+    """读取身份核心，注入 System Prompt 最前端。"""
+    try:
+        with open(IDENTITY_PATH, "r", encoding="utf-8", errors="ignore") as f:
+            text = f.read().strip()
+    except Exception:
+        return ""
+    return ("【身份核心（自我定义，可被 [identity] 重写）】\n" + text + "\n") if text else ""
+
+
+def save_identity(text: str, expected_revision=None):
+    """写入身份核心。task 24 支持乐观并发控制。
+
+    expected_revision=None：不校验直接写；
+    expected_revision=""：要求文件当前不存在（首次创建）；
+    expected_revision="<hex>"：revision 不符时返回 MEMORY_CONFLICT 且不写盘。
+    写盘走 zcore.util.atomic_write（临时文件 + fsync + os.replace）。
+    """
+    text = text.strip()
+    if not text:
+        return False
+    if expected_revision is not None:
+        cur = file_revision(IDENTITY_PATH)
+        if cur != expected_revision:
+            print("[心智] 身份重写冲突：expected=%r actual=%r，已放弃写入。"
+                  % (expected_revision, cur))
+            return MEMORY_CONFLICT
+    payload = text + chr(10)
+    try:
+        from zcore.util import atomic_write as _aw
+    except Exception:
+        _aw = None
+    if _aw is not None:
+        _aw(IDENTITY_PATH, payload)
+    else:
+        with open(IDENTITY_PATH, "w", encoding="utf-8") as f:
+            f.write(payload)
+    append_journal("身份重写", text[:300])
+    refresh_system()
+    print("[心智] 身份核心已重写并即时注入 System Prompt。")
+    return True
+
+SESSION_MAX_TURNS = 40   # 会话记忆最多保留的对话条数（防文件膨胀）
+
+
+def load_session():
+    """从磁盘恢复会话记忆（进程重启后不丢上下文）。"""
+    try:
+        with open(SESSION_PATH, "r", encoding="utf-8", errors="ignore") as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return [m for m in data if isinstance(m, dict)
+                    and m.get("role") in ("user", "assistant")]
+    except Exception:
+        pass
+    return []
+
+
+def _redact_msgs(msgs):
+    try:
+        from zcore.actions import redact_text
+    except Exception:
+        return msgs
+    out = []
+    for m in msgs:
+        if not isinstance(m, dict):
+            out.append(m)
+            continue
+        c = m.get("content")
+        if isinstance(c, str) and "[act:" in c:
+            m = dict(m)
+            m["content"] = redact_text(c)
+        out.append(m)
+    return out
+
+def save_session(msgs):
+    """把会话记忆落盘（只保留最近 SESSION_MAX_TURNS 条）。"""
+    try:
+        tail = msgs[-SESSION_MAX_TURNS:] if len(msgs) > SESSION_MAX_TURNS else msgs
+        tail = _redact_msgs(tail)
+        tmp = SESSION_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(tail, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, SESSION_PATH)
+    except Exception as e:
+        print("[会话] 保存失败：%s" % e)
+
+
+def clear_session():
+    """Clear the session file itself (called on /clear)."""
+    try:
+        if os.path.exists(SESSION_PATH):
+            os.remove(SESSION_PATH)
+        tmp = SESSION_PATH + ".tmp"
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        return True
+    except Exception as e:
+        print("[会话] 清空失败：%s" % e)
+        return False
+
+
+def load_problems():
+    """读取自主问题队列（每行一个问题）。"""
+    try:
+        with open(PROBLEMS_PATH, "r", encoding="utf-8", errors="ignore") as f:
+            return [l.strip() for l in f.read().splitlines() if l.strip()]
+    except Exception:
+        return []
+
+
+def save_problem(text: str):
+    """登记新问题到队列。task 24：原子写 + 去重。"""
+    text = text.strip()
+    if not text:
+        return
+    line = text.replace(chr(10), " ").strip()
+    if not line:
+        return
+    lines = load_problems()
+    if line in lines:
+        append_journal("问题已存在", line)
+        return
+    lines.append(line)
+    payload = chr(10).join(lines) + chr(10)
+    try:
+        from zcore.util import atomic_write as _aw
+    except Exception:
+        _aw = None
+    if _aw is not None:
+        _aw(PROBLEMS_PATH, payload)
+    else:
+        with open(PROBLEMS_PATH, "w", encoding="utf-8") as f:
+            f.write(payload)
+    append_journal("发现新问题", line)
+    print("[好奇心] 新问题已登记：%s" % line)
+
+def take_problem():
+    """从队列取出第一个问题（/idle 自主模式领取任务）。"""
+    lines = load_problems()
+    if not lines:
+        return None
+    rest = lines[1:]
+    with open(PROBLEMS_PATH, "w", encoding="utf-8") as f:
+        f.write("\n".join(rest) + ("\n" if rest else ""))
+    return lines[0]
+
+
+def requeue_problem_front(task):
+    """/idle 失败时把任务放回队列头部，避免任务丢失。"""
+    lines = load_problems()
+    if task not in lines:
+        lines.insert(0, task)
+    with open(PROBLEMS_PATH, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + ("\n" if lines else ""))
+
+
+def append_journal(tag: str, text: str):
+    """向心智传记追加一条带时间戳的记录。"""
+    try:
+        os.makedirs(MIND_DIR, exist_ok=True)
+        with open(JOURNAL_PATH, "a", encoding="utf-8") as f:
+            f.write("[%s] %s ｜ %s\n"
+                    % (time.strftime("%Y-%m-%d %H:%M:%S"), tag,
+                       text.replace("\n", " ")[:500]))
+    except Exception:
+        pass    # 传记写失败不影响主流程
+
+
+def extract_problems(text: str):
+    """提取 AI 输出里的所有 [problem]...[/problem]。"""
+    return [p.strip() for p in re.findall(PROBLEM_RE, text, re.S) if p.strip()]
+
+
+def extract_identity(text: str) -> str:
+    """提取 [identity]...[/identity]（身份自我重写）。"""
+    m = re.search(IDENTITY_RE, text, re.S)
+    return m.group(1).strip() if m else ""
+
+# ============================================================
+# 5. 插件系统（扫描在宿主；执行走隔离子进程）
+# ============================================================
+
+# ---------------- 内嵌插件（单文件分发，首次启动自动落地） ----------------
+BUNDLED_PLUGINS = {
+ "web_control": "IyBAbmFtZTogd2ViX2NvbnRyb2wKIyBAZGVzYzogT3BlbiBVUkwgYW5kIGV4ZWN1dGUgSlMsIHJldHVybiByZXN1bHQKaW1wb3J0IGFuZHJvaWRfYXBpCmltcG9ydCBqc29uCgpkZWYgcnVuKHVybCwganMpOgogICAgcmV0dXJuIGFuZHJvaWRfYXBpLmV2YWxfanModXJsLCBqcykK",
+ "time_context": "IyBAbmFtZTog5pe26Ze05oSf55+lCgpAZGVzYzog6L+U5Zue5b2T5YmN5pe26Ze044CB5pif5pyf44CB6Led5LiK5qyh6LCD55So55qE6Ze06ZqUCgppbXBvcnQgdGltZSBhcyBfdAppbXBvcnQgZGF0ZXRpbWUgYXMgX2R0CgpfTEFTVCA9IFswLjBdCgpkZWYgcnVuKCk6Cm5vdyA9IF90LnRpbWUoKQpnYXAgPSAiIgppZiBfTEFTVFswXToKZCA9IG5vdyAtIF9MQVNUWzBdCmlmIGQgPCA2MDoKZ2FwID0gIui3neS4iuasoeiwg+eUqCAlZCDnp5IiICUgaW50KGQpCmVsaWYgZCA8IDM2MDA6CmdhcCA9ICLot53kuIrmrKHosIPnlKggJS4xZiDliIbpkp8iICUgKGQgLyA2MC4wKQplbHNlOgpnYXAgPSAi6Led5LiK5qyh6LCD55SoICUuMWYg5bCP5pe2IiAlIChkIC8gMzYwMC4wKQpfTEFTVFswXSA9IG5vdwp3ZCA9ICLkuIDkuozkuInlm5vkupTlha3ml6UiW19kdC5kYXRldGltZS5ub3coKS53ZWVrZGF5KCldCnJldHVybiAi5b2T5YmN5pe26Ze077yaJXMg5ZGoJXNcbiVzIiAlICgKX2R0LmRhdGV0aW1lLm5vdygpLnN0cmZ0aW1lKCIlWS0lbS0lZCAlSDolTTolUyIpLCB3ZCwgZ2FwKQ==",
+ "schedule": "IyBAbmFtZTog5Lu75Yqh6LCD5bqmCgpAZGVzYzog5b6F5YqeL+WumuaXtuS7u+WKoea4heWNle+8iOWinuWIoOafpe+8iQoKaW1wb3J0IG9zCmltcG9ydCBqc29uCgpkZWYgX2YoKToKcmV0dXJuIG9zLnBhdGguam9pbihvcy5lbnZpcm9uLmdldCgiSE9NRSIsICIuIiksICJzY2hlZHVsZS5qc29uIikKCmRlZiBfbG9hZCgpOgp0cnk6CndpdGggb3BlbihfZigpLCBlbmNvZGluZz0idXRmLTgiKSBhcyBmcDoKcmV0dXJuIGpzb24ubG9hZChmcCkKZXhjZXB0IEV4Y2VwdGlvbjoKcmV0dXJuIFtdCgpkZWYgX3NhdmUoaXRlbXMpOgp3aXRoIG9wZW4oX2YoKSwgInciLCBlbmNvZGluZz0idXRmLTgiKSBhcyBmcDoKanNvbi5kdW1wKGl0ZW1zLCBmcCwgZW5zdXJlX2FzY2lpPUZhbHNlLCBpbmRlbnQ9MikKCmRlZiBhZGQod2hlbiwgdGV4dCk6Cml0ZW1zID0gX2xvYWQoKQppdGVtcy5hcHBlbmQoeyJ3aGVuIjogd2hlbiwgInRleHQiOiB0ZXh0LCAiZG9uZSI6IEZhbHNlfSkKX3NhdmUoaXRlbXMpCnJldHVybiAi5bey5re75Yqg5Lu75Yqh77yaJXMgQCAlcyIgJSAodGV4dCwgd2hlbikKCmRlZiBybShpZHgpOgppdGVtcyA9IF9sb2FkKCkKdHJ5OgppdCA9IGl0ZW1zLnBvcChpbnQoaWR4KSkKX3NhdmUoaXRlbXMpCnJldHVybiAi5bey5Yig6Zmk77yaJXMiICUgaXRbInRleHQiXQpleGNlcHQgRXhjZXB0aW9uIGFzIGU6CnJldHVybiAi5Yig6Zmk5aSx6LSl77yaJXIiICUgZQoKZGVmIHJ1bihjbWQ9IiIpOgpjbWQgPSAoY21kIG9yICIiKS5zdHJpcCgpCmlmIGNtZC5zdGFydHN3aXRoKCJhZGQgIik6CnBhcnRzID0gY21kWzQ6XS5zcGxpdCgiICIsIDEpCmlmIGxlbihwYXJ0cykgPT0gMjoKcmV0dXJuIGFkZChwYXJ0c1swXSwgcGFydHNbMV0pCnJldHVybiAi55So5rOV77yaYWRkIDzml7bpl7Q+IDzlhoXlrrk+IgppZiBjbWQuc3RhcnRzd2l0aCgicm0gIik6CnJldHVybiBybShjbWRbMzpdLnN0cmlwKCkpCml0ZW1zID0gX2xvYWQoKQppZiBub3QgaXRlbXM6CnJldHVybiAi5Lu75Yqh5riF5Y2V5Li656m644CC55So5rOV77yaYWRkIDzml7bpl7Q+IDzlhoXlrrk+IC8gcm0gPOW6j+WPtz4iCmxpbmVzID0gWyLku7vliqHmuIXljZXvvJoiXQpmb3IgaSwgaXQgaW4gZW51bWVyYXRlKGl0ZW1zKToKbWFyayA9ICJbeF0iIGlmIGl0LmdldCgiZG9uZSIpIGVsc2UgIlsgXSIKbGluZXMuYXBwZW5kKCIlZC4gJXMgJXMgQCAlcyIgJSAoaSwgbWFyaywgaXRbInRleHQiXSwgaXRbIndoZW4iXSkpCnJldHVybiAiXG4iLmpvaW4obGluZXMp",
+ "web_search": "IyBAbmFtZTog572R6aG15pCc57SiCiMgQGRlc2M6IER1Y2tEdWNrR28g5pCc57Si5YWz6ZSu6K+N77yM6L+U5Zue5qCH6aKYK+mTvuaOpQoKaW1wb3J0IHJlCmltcG9ydCB1cmxsaWIucGFyc2UKaW1wb3J0IHVybGxpYi5yZXF1ZXN0CgpkZWYgcnVuKHF1ZXJ5PSIiKToKICAgIHEgPSAocXVlcnkgb3IgIiIpLnN0cmlwKCkKICAgIGlmIG5vdCBxOgogICAgICAgIHJldHVybiAi55So5rOV77ya5YWz6ZSu6K+NIgogICAgdXJsID0gImh0dHBzOi8vaHRtbC5kdWNrZHVja2dvLmNvbS9odG1sLz9xPSIgKyB1cmxsaWIucGFyc2UucXVvdGUocSkKICAgIHJlcSA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsLCBoZWFkZXJzPXsKICAgICAgICAiVXNlci1BZ2VudCI6ICJNb3ppbGxhLzUuMCAoTGludXg7IEFuZHJvaWQgMTMpIgogICAgfSkKICAgIHRyeToKICAgICAgICBodG1sID0gdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9MjApLnJlYWQoKS5kZWNvZGUoInV0Zi04IiwgInJlcGxhY2UiKQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgICAgIHJldHVybiAi5pCc57Si5aSx6LSl77yaJXIiICUgZQogICAgaGl0cyA9IHJlLmZpbmRhbGwocidyZXN1bHRfX2FbXj5dKmhyZWY9IihbXiJdKykiW14+XSo+KC4qPyk8L2E+JywgaHRtbCwgcmUuUykKICAgIGlmIG5vdCBoaXRzOgogICAgICAgIHJldHVybiAi5rKh5pyJ5om+5Yiw57uT5p6c44CCIgogICAgb3V0ID0gWyLmkJzntKLjgIwlc+OAje+8miIgJSBxXQogICAgZm9yIGksIChsaW5rLCB0aXRsZSkgaW4gZW51bWVyYXRlKGhpdHNbOjhdKToKICAgICAgICB0ID0gcmUuc3ViKHInPFtePl0rPicsICcnLCB0aXRsZSkuc3RyaXAoKQogICAgICAgIGxpbmsgPSB1cmxsaWIucGFyc2UudW5xdW90ZShsaW5rKQogICAgICAgIG0gPSByZS5zZWFyY2gocid1ZGRnPShbXiZdKyknLCBsaW5rKQogICAgICAgIGlmIG06CiAgICAgICAgICAgIGxpbmsgPSBtLmdyb3VwKDEpCiAgICAgICAgb3V0LmFwcGVuZCgiJWQuICVzIiAlIChpICsgMSwgdCkpCiAgICAgICAgb3V0LmFwcGVuZCgiICIgKyBsaW5rKQogICAgcmV0dXJuIGNocigxMCkuam9pbihvdXQp",
+ "sys_info": "IyBAbmFtZTog57O757uf5L+h5oGvCgpAZGVzYzog55S16YePL+WFheeUtS/mnLrlnosv57O757uf54mI5pysL+WtmOWCqAoKaW1wb3J0IG9zCmltcG9ydCBzaHV0aWwKCmRlZiBydW4oKToKbGluZXMgPSBbXQp0cnk6CmltcG9ydCBhbmRyb2lkX2FwaQpiID0gYW5kcm9pZF9hcGkuYmF0dGVyeV9pbmZvKCkKZCA9IGFuZHJvaWRfYXBpLmRldmljZV9pbmZvKCkKaWYgInBlcmNlbnQiIGluIGI6CmxpbmVzLmFwcGVuZCgi55S16YeP77yaJXMlJSAlcyIgJSAoCmIuZ2V0KCJwZXJjZW50IiksICLlhYXnlLXkuK0iIGlmIGIuZ2V0KCJjaGFyZ2luZyIpIGVsc2UgIuacquWFheeUtSIpKQppZiAibW9kZWwiIGluIGQ6CmxpbmVzLmFwcGVuZCgi5py65Z6L77yaJXMgJXMiICUgKGQuZ2V0KCJicmFuZCIsICIiKSwgZC5nZXQoIm1vZGVsIiwgIiIpKSkKaWYgImFuZHJvaWQiIGluIGQ6CmxpbmVzLmFwcGVuZCgi57O757uf77yaQW5kcm9pZCAlcyAoU0RLICVzKSIgJSAoCmQuZ2V0KCJhbmRyb2lkIiksIGQuZ2V0KCJzZGsiKSkpCmV4Y2VwdCBFeGNlcHRpb24gYXMgZToKbGluZXMuYXBwZW5kKCJBbmRyb2lkIOS/oeaBr+S4jeWPr+eUqO+8miVyIiAlIGUpCnRyeToKdG90YWwsIHVzZWQsIGZyZWUgPSBzaHV0aWwuZGlza191c2FnZSgiL3NkY2FyZCIpCmdiID0gMTAyNC4wICoqIDMKbGluZXMuYXBwZW5kKCLlrZjlgqjvvJolLjFmRyDlj6/nlKggLyAlLjFmRyDmgLsiICUgKGZyZWUgLyBnYiwgdG90YWwgLyBnYikpCmV4Y2VwdCBFeGNlcHRpb246CnBhc3MKcmV0dXJuICJcbiIuam9pbihsaW5lcykgaWYgbGluZXMgZWxzZSAi57O757uf5L+h5oGv5LiN5Y+v55SoIg==",
+ "file_search": "IyBAbmFtZTog5paH5Lu25pCc57SiCgpAZGVzYzog5oyJ5ZCN56ew5ZyoIC9zZGNhcmQg6YeM5pCc5paH5Lu2CgppbXBvcnQgb3MKCmRlZiBydW4ocXVlcnk9IiIpOgpxID0gKHF1ZXJ5IG9yICIiKS5zdHJpcCgpLmxvd2VyKCkKaWYgbm90IHE6CnJldHVybiAi55So5rOV77ya5YWz6ZSu6K+NIFvnm67lvZVdIgpwYXJ0cyA9IHEuc3BsaXQoKQprdyA9IHBhcnRzWzBdCnJvb3QgPSBwYXJ0c1sxXSBpZiBsZW4ocGFydHMpID4gMSBlbHNlICIvc2RjYXJkIgppZiBub3Qgb3MucGF0aC5pc2Rpcihyb290KToKcmV0dXJuICLnm67lvZXkuI3lrZjlnKjvvJolcyIgJSByb290CmhpdHMgPSBbXQpuID0gMApmb3IgZGlycGF0aCwgZGlybmFtZXMsIGZpbGVuYW1lcyBpbiBvcy53YWxrKHJvb3QpOgpkaXJuYW1lc1s6XSA9IFtkIGZvciBkIGluIGRpcm5hbWVzIGlmIG5vdCBkLnN0YXJ0c3dpdGgoIi4iKV0KZm9yIGZuIGluIGZpbGVuYW1lczoKbiArPSAxCmlmIGt3IGluIGZuLmxvd2VyKCk6CmhpdHMuYXBwZW5kKG9zLnBhdGguam9pbihkaXJwYXRoLCBmbikpCmlmIGxlbihoaXRzKSA+PSA0MDoKYnJlYWsKaWYgbGVuKGhpdHMpID49IDQwOgpicmVhawppZiBub3QgaGl0czoKcmV0dXJuICLmnKrmib7liLDlkKvjgIwlc+OAjeeahOaWh+S7tu+8iOW3suaJqyAlZCDkuKrvvIkiICUgKGt3LCBuKQpyZXR1cm4gIuaJvuWIsCAlZCDkuKrvvJpcbiVzIiAlIChsZW4oaGl0cyksICJcbiIuam9pbihoaXRzWzoyMF0pKQ==",
+ "phone_butler": "IyBAbmFtZTog5omL5py6566h5a62CiMgQGRlc2M6IEFuZHJvaWQg5Y6f55Sf6IO95Yqb5bel5YW3566x77yIVGVybXV4IOi1sCB0ZXJtdXgtYXBp77yMQVBLIOi1sCBhbmRyb2lkX2Fwae+8jOWPjOaooeiHquWKqOWIh+aNou+8iQoKaW1wb3J0IG9zCmltcG9ydCBqc29uCmltcG9ydCBzaHV0aWwKaW1wb3J0IHN1YnByb2Nlc3MKCgojIC0tLSDov5DooYznjq/looPmjqLmtYsgLS0tCgpfTU9ERSA9IE5vbmUKCgpkZWYgX2RldGVjdF9tb2RlKCk6CiAgICBnbG9iYWwgX01PREUKICAgIGlmIF9NT0RFOiByZXR1cm4gX01PREUKICAgIGlmIHNodXRpbC53aGljaCgndGVybXV4LW5vdGlmaWNhdGlvbicpOiBfTU9ERSA9ICd0ZXJtdXgnCiAgICBlbHNlOiBfTU9ERSA9ICdhcGsnCiAgICByZXR1cm4gX01PREUKCgpkZWYgX3J1bihjbWQsIHRpbWVvdXQ9MTApOgogICAgaWYgbm90IHNodXRpbC53aGljaChjbWRbMF0pOiByZXR1cm4gKC0xLCAnJywgJ25vdCBmb3VuZDogJyArIGNtZFswXSkKICAgIHRyeToKICAgICAgICByID0gc3VicHJvY2Vzcy5ydW4oY21kLCBjYXB0dXJlX291dHB1dD1UcnVlLCB0ZXh0PVRydWUsCiAgICAgICAgICAgICAgICBlbmNvZGluZz0ndXRmLTgnLCBlcnJvcnM9J3JlcGxhY2UnLCB0aW1lb3V0PXRpbWVvdXQpCiAgICAgICAgcmV0dXJuIChyLnJldHVybmNvZGUsIHIuc3Rkb3V0LCByLnN0ZGVycikKICAgIGV4Y2VwdCBzdWJwcm9jZXNzLlRpbWVvdXRFeHBpcmVkOiByZXR1cm4gKC0yLCAnJywgJ3RpbWVvdXQnKQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOiByZXR1cm4gKC0zLCAnJywgc3RyKGUpKQoKIyAtLS0g6YCa55+lIC8g5o+Q56S6IC8g5oyv5YqoIC0tLQoKCmRlZiBub3RpZnkodGl0bGUsIGNvbnRlbnQsIHNvdW5kPVRydWUpOgogICAgaWYgX2RldGVjdF9tb2RlKCkgPT0gJ2Fwayc6CiAgICAgICAgdHJ5OgogICAgICAgICAgICBpbXBvcnQgYW5kcm9pZF9hcGkKICAgICAgICAgICAgcmV0dXJuIHsnb2snOiBib29sKGFuZHJvaWRfYXBpLm5vdGlmeShzdHIodGl0bGUpLCBzdHIoY29udGVudCkpKX0KICAgICAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGU6IHJldHVybiB7J29rJzogRmFsc2UsICdlcnJvcic6IHJlcHIoZSl9CiAgICBjbWQgPSBbJ3Rlcm11eC1ub3RpZmljYXRpb24nLCAnLS10aXRsZScsIHN0cih0aXRsZSksICctLWNvbnRlbnQnLCBzdHIoY29udGVudCldCiAgICBpZiBzb3VuZDogY21kLmFwcGVuZCgnLS1zb3VuZCcpCiAgICBjb2RlLCBvdXQsIGVyciA9IF9ydW4oY21kKQogICAgcmV0dXJuIHsnb2snOiBjb2RlID09IDAsICdlcnJvcic6IGVyciBpZiBjb2RlICE9IDAgZWxzZSBOb25lfQoKCmRlZiB0b2FzdCh0ZXh0KToKICAgIGlmIF9kZXRlY3RfbW9kZSgpID09ICdhcGsnOgogICAgICAgIHRyeToKICAgICAgICAgICAgaW1wb3J0IGFuZHJvaWRfYXBpCiAgICAgICAgICAgIHJldHVybiB7J29rJzogYm9vbChhbmRyb2lkX2FwaS50b2FzdChzdHIodGV4dCkpKX0KICAgICAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGU6IHJldHVybiB7J29rJzogRmFsc2UsICdlcnJvcic6IHJlcHIoZSl9CiAgICBjb2RlLCBvdXQsIGVyciA9IF9ydW4oWyd0ZXJtdXgtdG9hc3QnLCAnLWcnLCAnbWlkZGxlJywgc3RyKHRleHQpXSkKICAgIHJldHVybiB7J29rJzogY29kZSA9PSAwLCAnZXJyb3InOiBlcnIgaWYgY29kZSAhPSAwIGVsc2UgTm9uZX0KCgpkZWYgdmlicmF0ZShtcz01MDApOgogICAgaWYgX2RldGVjdF9tb2RlKCkgPT0gJ2Fwayc6CiAgICAgICAgdHJ5OgogICAgICAgICAgICBpbXBvcnQgYW5kcm9pZF9hcGkKICAgICAgICAgICAgcmV0dXJuIGFuZHJvaWRfYXBpLnZpYnJhdGUoaW50KG1zKSkKICAgICAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGU6IHJldHVybiB7J29rJzogRmFsc2UsICdlcnJvcic6IHJlcHIoZSl9CiAgICBjb2RlLCBvdXQsIGVyciA9IF9ydW4oWyd0ZXJtdXgtdmlicmF0ZScsICctZCcsIHN0cihpbnQobXMpKV0pCiAgICByZXR1cm4geydvayc6IGNvZGUgPT0gMCwgJ2Vycm9yJzogZXJyIGlmIGNvZGUgIT0gMCBlbHNlIE5vbmV9CgoKIyAtLS0g5Ymq6LS05p2/IC8g55S16YePIC8g5py65Z6LIC8g6Z+z6YePIC8gVVJMIC0tLQoKCmRlZiBjbGlwX2dldCgpOgogICAgaWYgX2RldGVjdF9tb2RlKCkgPT0gJ2Fwayc6CiAgICAgICAgdHJ5OgogICAgICAgICAgICBpbXBvcnQgYW5kcm9pZF9hcGkKICAgICAgICAgICAgcmV0dXJuIGFuZHJvaWRfYXBpLmNsaXBib2FyZF9nZXQoKQogICAgICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZTogcmV0dXJuIHsnb2snOiBGYWxzZSwgJ2Vycm9yJzogcmVwcihlKX0KICAgIGNvZGUsIG91dCwgZXJyID0gX3J1bihbJ3Rlcm11eC1jbGlwYm9hcmQtZ2V0J10pCiAgICByZXR1cm4geydvayc6IFRydWUsICd0ZXh0Jzogb3V0LnN0cmlwKCl9IGlmIGNvZGUgPT0gMCBlbHNlIHsnb2snOiBGYWxzZSwgJ2Vycm9yJzogZXJyfQoKCmRlZiBjbGlwX3NldCh0ZXh0KToKICAgIGlmIF9kZXRlY3RfbW9kZSgpID09ICdhcGsnOgogICAgICAgIHRyeToKICAgICAgICAgICAgaW1wb3J0IGFuZHJvaWRfYXBpCiAgICAgICAgICAgIHJldHVybiBhbmRyb2lkX2FwaS5jbGlwYm9hcmRfc2V0KHN0cih0ZXh0KSkKICAgICAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGU6IHJldHVybiB7J29rJzogRmFsc2UsICdlcnJvcic6IHJlcHIoZSl9CiAgICBjb2RlLCBvdXQsIGVyciA9IF9ydW4oWyd0ZXJtdXgtY2xpcGJvYXJkLXNldCcsIHN0cih0ZXh0KV0pCiAgICByZXR1cm4geydvayc6IGNvZGUgPT0gMCwgJ2Vycm9yJzogZXJyIGlmIGNvZGUgIT0gMCBlbHNlIE5vbmV9CgoKZGVmIGJhdHRlcnkoKToKICAgIGlmIF9kZXRlY3RfbW9kZSgpID09ICdhcGsnOgogICAgICAgIHRyeToKICAgICAgICAgICAgaW1wb3J0IGFuZHJvaWRfYXBpCiAgICAgICAgICAgIGIgPSBhbmRyb2lkX2FwaS5iYXR0ZXJ5X2luZm8oKQogICAgICAgICAgICByZXR1cm4geydvayc6IEZhbHNlLCAnZXJyb3InOiBiWydlcnJvciddfSBpZiAnZXJyb3InIGluIGIgZWxzZSB7J29rJzogVHJ1ZSwgJ2RhdGEnOiBifQogICAgICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZTogcmV0dXJuIHsnb2snOiBGYWxzZSwgJ2Vycm9yJzogcmVwcihlKX0KICAgIGNvZGUsIG91dCwgZXJyID0gX3J1bihbJ3Rlcm11eC1iYXR0ZXJ5LXN0YXR1cyddKQogICAgcmV0dXJuIHsnb2snOiBUcnVlLCAnZGF0YSc6IGpzb24ubG9hZHMob3V0KX0gaWYgY29kZSA9PSAwIGVsc2Ugeydvayc6IEZhbHNlLCAnZXJyb3InOiBlcnJ9CgoKZGVmIGRldmljZV9pbmZvKCk6CiAgICBpZiBfZGV0ZWN0X21vZGUoKSA9PSAnYXBrJzoKICAgICAgICB0cnk6CiAgICAgICAgICAgIGltcG9ydCBhbmRyb2lkX2FwaQogICAgICAgICAgICBkID0gYW5kcm9pZF9hcGkuZGV2aWNlX2luZm8oKQogICAgICAgICAgICByZXR1cm4geydvayc6IEZhbHNlLCAnZXJyb3InOiBkWydlcnJvciddfSBpZiAnZXJyb3InIGluIGQgZWxzZSB7J29rJzogVHJ1ZSwgJ2RhdGEnOiBkfQogICAgICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZTogcmV0dXJuIHsnb2snOiBGYWxzZSwgJ2Vycm9yJzogcmVwcihlKX0KICAgIGNvZGUsIG91dCwgZXJyID0gX3J1bihbJ3Rlcm11eC10ZWxlcGhvbnktZGV2aWNlaW5mbyddKQogICAgcmV0dXJuIHsnb2snOiBUcnVlLCAnZGF0YSc6IGpzb24ubG9hZHMob3V0KX0gaWYgY29kZSA9PSAwIGVsc2Ugeydvayc6IEZhbHNlLCAnZXJyb3InOiBlcnJ9CgoKZGVmIHZvbHVtZShzdHJlYW09J211c2ljJywgbGV2ZWw9Tm9uZSk6CiAgICBpZiBfZGV0ZWN0X21vZGUoKSA9PSAnYXBrJzoKICAgICAgICB0cnk6CiAgICAgICAgICAgIGltcG9ydCBhbmRyb2lkX2FwaQogICAgICAgICAgICBpZiBsZXZlbCBpcyBOb25lOiByZXR1cm4gYW5kcm9pZF9hcGkudm9sdW1lKCkKICAgICAgICAgICAgcmV0dXJuIGFuZHJvaWRfYXBpLnNldF92b2x1bWUoaW50KGxldmVsKSkKICAgICAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGU6IHJldHVybiB7J29rJzogRmFsc2UsICdlcnJvcic6IHJlcHIoZSl9CiAgICBpZiBsZXZlbCBpcyBOb25lOgogICAgICAgIGNvZGUsIG91dCwgZXJyID0gX3J1bihbJ3Rlcm11eC12b2x1bWUnXSkKICAgICAgICByZXR1cm4geydvayc6IFRydWUsICdkYXRhJzoganNvbi5sb2FkcyhvdXQpfSBpZiBjb2RlID09IDAgZWxzZSB7J29rJzogRmFsc2UsICdlcnJvcic6IGVycn0KICAgIGNvZGUsIG91dCwgZXJyID0gX3J1bihbJ3Rlcm11eC12b2x1bWUnLCBzdHIoc3RyZWFtKSwgc3RyKGludChsZXZlbCkpXSkKICAgIHJldHVybiB7J29rJzogY29kZSA9PSAwLCAnZXJyb3InOiBlcnIgaWYgY29kZSAhPSAwIGVsc2UgTm9uZX0KCgpkZWYgb3Blbl91cmwodXJsKToKICAgIGlmIF9kZXRlY3RfbW9kZSgpID09ICdhcGsnOgogICAgICAgIHRyeToKICAgICAgICAgICAgaW1wb3J0IGFuZHJvaWRfYXBpCiAgICAgICAgICAgIHJldHVybiBhbmRyb2lkX2FwaS5vcGVuX3VybChzdHIodXJsKSkKICAgICAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGU6IHJldHVybiB7J29rJzogRmFsc2UsICdlcnJvcic6IHJlcHIoZSl9CiAgICBjb2RlLCBvdXQsIGVyciA9IF9ydW4oWyd0ZXJtdXgtb3Blbi11cmwnLCBzdHIodXJsKV0pCiAgICByZXR1cm4geydvayc6IGNvZGUgPT0gMCwgJ2Vycm9yJzogZXJyIGlmIGNvZGUgIT0gMCBlbHNlIE5vbmV9CgojIC0tLSDku4UgVGVybXV4IOiDveWKm++8iEFQSyDmmI7noa7pmY3nuqfvvIkgLS0tCgoKZGVmIF90ZXJtdXhfb25seShuYW1lLCBjbWQsIHRpbWVvdXQ9MTAsIHBhcnNlX2pzb249VHJ1ZSk6CiAgICBpZiBfZGV0ZWN0X21vZGUoKSA9PSAnYXBrJzoKICAgICAgICByZXR1cm4geydvayc6IEZhbHNlLCAnZXJyb3InOiBuYW1lICsgJyDpnIDopoEgVGVybXV4IOeOr+Wig++8jEFQSyDph4zkuI3lj6/nlKgnLCAnbmVlZCc6ICd0ZXJtdXgnfQogICAgY29kZSwgb3V0LCBlcnIgPSBfcnVuKGNtZCwgdGltZW91dD10aW1lb3V0KQogICAgaWYgY29kZSAhPSAwOiByZXR1cm4geydvayc6IEZhbHNlLCAnZXJyb3InOiBlcnJ9CiAgICBpZiBub3QgcGFyc2VfanNvbjogcmV0dXJuIHsnb2snOiBUcnVlLCAnZGF0YSc6IG91dC5zdHJpcCgpfQogICAgdHJ5OiByZXR1cm4geydvayc6IFRydWUsICdkYXRhJzoganNvbi5sb2FkcyhvdXQpfQogICAgZXhjZXB0IEV4Y2VwdGlvbjogcmV0dXJuIHsnb2snOiBUcnVlLCAncmF3Jzogb3V0LnN0cmlwKCl9CgoKZGVmIGxvY2F0aW9uKHByb3ZpZGVyPSdncHMnLCB0aW1lb3V0PTMwKToKICAgIHJldHVybiBfdGVybXV4X29ubHkoJ+WumuS9jScsIFsndGVybXV4LWxvY2F0aW9uJywgJy1wJywgcHJvdmlkZXIsICctcicsICdvbmNlJ10sIHRpbWVvdXQ9dGltZW91dCkKCgpkZWYgd2lmaV9pbmZvKHRpbWVvdXQ9MTApOgogICAgcmV0dXJuIF90ZXJtdXhfb25seSgnV2lGaSDkv6Hmga8nLCBbJ3Rlcm11eC13aWZpLWNvbm5lY3Rpb25pbmZvJ10sIHRpbWVvdXQ9dGltZW91dCkKCgpkZWYgd2lmaV9zY2FuKCk6CiAgICByZXR1cm4gX3Rlcm11eF9vbmx5KCdXaUZpIOaJq+aPjycsIFsndGVybXV4LXdpZmktc2NhbmluZm8nXSwgdGltZW91dD0xNSkKCgpkZWYgc21zX2xpc3QobGltaXQ9Myk6CiAgICByZXR1cm4gX3Rlcm11eF9vbmx5KCfnn63kv6Hor7vlj5YnLCBbJ3Rlcm11eC1zbXMtbGlzdCcsICctbCcsIHN0cihpbnQobGltaXQpKV0pCgoKZGVmIHNtc19zZW5kKG51bWJlciwgdGV4dCk6CiAgICByZXR1cm4gX3Rlcm11eF9vbmx5KCfnn63kv6Hlj5HpgIEnLCBbJ3Rlcm11eC1zbXMtc2VuZCcsICctbicsIHN0cihudW1iZXIpLCBzdHIodGV4dCldLCBwYXJzZV9qc29uPUZhbHNlKQoKCmRlZiBjb250YWN0X2xpc3QoKToKICAgIHJldHVybiBfdGVybXV4X29ubHkoJ+iBlOezu+S6uicsIFsndGVybXV4LWNvbnRhY3QtbGlzdCddKQoKCmRlZiBjYWxsX2xvZyhsaW1pdD0xMCk6CiAgICByZXR1cm4gX3Rlcm11eF9vbmx5KCfpgJror53orrDlvZUnLCBbJ3Rlcm11eC1jYWxsLWxvZycsICctbCcsIHN0cihpbnQobGltaXQpKV0pCgoKZGVmIGNhbWVyYV9waG90byhwYXRoPU5vbmUsIGNhbWVyYV9pZD0wKToKICAgIGlmIHBhdGggaXMgTm9uZToKICAgICAgICBpbXBvcnQgdGltZSBhcyB0CiAgICAgICAgcGF0aCA9IG9zLnBhdGguam9pbihvcy5wYXRoLmV4cGFuZHVzZXIoJ34nKSwgJ3Bob3RvJyArIHN0cihpbnQoX3QudGltZSgpKSkgKyAnLmpwZycpCiAgICByZXR1cm4gX3Rlcm11eF9vbmx5KCfmi43nhacnLCBbJ3Rlcm11eC1jYW1lcmEtcGhvdG8nLCAnLWMnLCBzdHIoaW50KGNhbWVyYV9pZCkpLCBwYXRoXSwgdGltZW91dD0zMCwgcGFyc2VfanNvbj1GYWxzZSkKCgpkZWYgdG9yY2gob249VHJ1ZSk6CiAgICByZXR1cm4gX3Rlcm11eF9vbmx5KCfmiYvnlLXnrZInLCBbJ3Rlcm11eC10b3JjaCcsICdvbicgaWYgb24gZWxzZSAnb2ZmJ10sIHBhcnNlX2pzb249RmFsc2UpCgoKZGVmIHNlbnNvcihuYW1lPSdhY2NlbGVyb21ldGVyJywgY291bnQ9MSk6CiAgICByZXR1cm4gX3Rlcm11eF9vbmx5KCfkvKDmhJ/lmagnLCBbJ3Rlcm11eC1zZW5zb3InLCAnLXMnLCBzdHIobmFtZSksICctbicsIHN0cihpbnQoY291bnQpKV0sIHRpbWVvdXQ9MTUpCgoKZGVmIHJlY29yZChzZWNvbmRzPTUsIHBhdGg9Tm9uZSk6CiAgICBpZiBwYXRoIGlzIE5vbmU6CiAgICAgICAgaW1wb3J0IHRpbWUgYXMgdAogICAgICAgIHBhdGggPSBvcy5wYXRoLmpvaW4ob3MucGF0aC5leHBhbmR1c2VyKCd+JyksICdyZWNvcmQnICsgc3RyKGludChfdC50aW1lKCkpKSArICcubTRhJykKICAgIHJldHVybiBfdGVybXV4X29ubHkoJ+W9lemfsycsIFsndGVybXV4LW1pY3JvcGhvbmUtcmVjb3JkJywgJy1kJywgc3RyKGludChzZWNvbmRzKSksICctZicsIHBhdGhdLCB0aW1lb3V0PWludChzZWNvbmRzKSArIDEwLCBwYXJzZV9qc29uPUZhbHNlKQoKCmRlZiBzcGVhayh0ZXh0KToKICAgIHJldHVybiBfdGVybXV4X29ubHkoJ1RUUycsIFsndGVybXV4LXR0cy1zcGVhaycsIHN0cih0ZXh0KV0sIHRpbWVvdXQ9NjAsIHBhcnNlX2pzb249RmFsc2UpCgoKZGVmIGZpbmdlcnByaW50KCk6CiAgICByZXR1cm4gX3Rlcm11eF9vbmx5KCfmjIfnurknLCBbJ3Rlcm11eC1maW5nZXJwcmludCddLCB0aW1lb3V0PTYwKQoKCmRlZiBicmlnaHRuZXNzKGxldmVsPU5vbmUpOgogICAgaWYgbGV2ZWwgaXMgTm9uZToKICAgICAgICByZXR1cm4geydvayc6IEZhbHNlLCAnZXJyb3InOiAn5Lqu5bqm6K+75Y+W6ZyAIFRlcm11eO+8m0FQSyDkuI3mlK/mjIEnfQogICAgcmV0dXJuIF90ZXJtdXhfb25seSgn5Lqu5bqmJywgWyd0ZXJtdXgtYnJpZ2h0bmVzcycsIHN0cihsZXZlbCldLCBwYXJzZV9qc29uPUZhbHNlKQoKCmRlZiBkaWFsb2codGl0bGU9J0lucHV0JywgaGludD0nRW50ZXIgdGV4dCcpOgogICAgcmV0dXJuIF90ZXJtdXhfb25seSgn5a+56K+d5qGGJywgWyd0ZXJtdXgtZGlhbG9nJywgJ3RleHQnLCAnLXQnLCBzdHIodGl0bGUpLCAnLWknLCBzdHIoaGludCldLCB0aW1lb3V0PTYwKQoKCmRlZiBkb3dubG9hZCh1cmwsIHBhdGg9Tm9uZSk6CiAgICBjbWQgPSBbJ3Rlcm11eC1kb3dubG9hZCcsIHN0cih1cmwpXQogICAgaWYgcGF0aDogY21kLmV4dGVuZChbJy1wJywgc3RyKHBhdGgpXSkKICAgIHJldHVybiBfdGVybXV4X29ubHkoJ+S4i+i9vScsIGNtZCwgdGltZW91dD02MCwgcGFyc2VfanNvbj1GYWxzZSkKCgpkZWYgc2hhcmUocGF0aCk6CiAgICByZXR1cm4gX3Rlcm11eF9vbmx5KCfliIbkuqsnLCBbJ3Rlcm11eC1zaGFyZScsIHN0cihwYXRoKV0sIHBhcnNlX2pzb249RmFsc2UpCgoKZGVmIG1lZGlhX3BsYXkocGF0aCk6CiAgICByZXR1cm4gX3Rlcm11eF9vbmx5KCfmkq3mlL4nLCBbJ3Rlcm11eC1tZWRpYS1wbGF5ZXInLCAncGxheScsIHN0cihwYXRoKV0sIHBhcnNlX2pzb249RmFsc2UpCgoKZGVmIG1lZGlhX3NjYW4ocGF0aCk6CiAgICByZXR1cm4gX3Rlcm11eF9vbmx5KCflqpLkvZPmiavmj48nLCBbJ3Rlcm11eC1tZWRpYS1zY2FuJywgc3RyKHBhdGgpXSwgcGFyc2VfanNvbj1GYWxzZSkKCgpkZWYgbm90aWZ5X3JlbW92ZShuaWQpOgogICAgcmV0dXJuIF90ZXJtdXhfb25seSgn5pKk6ZSA6YCa55+lJywgWyd0ZXJtdXgtbm90aWZpY2F0aW9uLXJlbW92ZScsIHN0cihuaWQpXSwgcGFyc2VfanNvbj1GYWxzZSkKCgpkZWYgc3RvcmFnZV9nZXQob3V0cHV0X2ZpbGUpOgogICAgcmV0dXJuIF90ZXJtdXhfb25seSgn5paH5Lu26YCJ5oupJywgWyd0ZXJtdXgtc3RvcmFnZS1nZXQnLCBzdHIob3V0cHV0X2ZpbGUpXSwgdGltZW91dD0xMjAsIHBhcnNlX2pzb249RmFsc2UpCgoKZGVmIHVzYigpOgogICAgcmV0dXJuIF90ZXJtdXhfb25seSgnVVNCJywgWyd0ZXJtdXgtdXNiJywgJy1sJ10pCgoKZGVmIHRlbGVwaG9ueV9jZWxsaW5mbygpOgogICAgcmV0dXJuIF90ZXJtdXhfb25seSgn5Z+656uZJywgWyd0ZXJtdXgtdGVsZXBob255LWNlbGxpbmZvJ10pCgoKZGVmIGluZnJhcmVkKCk6CiAgICByZXR1cm4gX3Rlcm11eF9vbmx5KCfnuqLlpJYnLCBbJ3Rlcm11eC1pbmZyYXJlZC1mcmVxdWVuY2llcyddKQoKCmRlZiBhdWRpb19pbmZvKCk6CiAgICByZXR1cm4gX3Rlcm11eF9vbmx5KCfpn7PpopHorr7lpIcnLCBbJ3Rlcm11eC1hdWRpby1pbmZvJ10sIHBhcnNlX2pzb249RmFsc2UpCgoKZGVmIGtleXN0b3JlKGFjdGlvbj0nbGlzdCcsIGFsaWFzPU5vbmUsIGRhdGE9Tm9uZSk6CiAgICBjbWQgPSBbJ3Rlcm11eC1rZXlzdG9yZScsIHN0cihhY3Rpb24pXQogICAgaWYgYWxpYXM6IGNtZCArPSBbJy1hJywgc3RyKGFsaWFzKV0KICAgIGlmIGRhdGEgaXMgbm90IE5vbmU6IGNtZCArPSBbJy1kJywgc3RyKGRhdGEpXQogICAgcmV0dXJuIF90ZXJtdXhfb25seSgnS2V5c3RvcmUnLCBjbWQsIHBhcnNlX2pzb249RmFsc2UpCgoKZGVmIGpvYl9zY2hlZHVsZXIoc2NyaXB0LCBqb2JfaWQ9MSwgcGVyaW9kX21zPTApOgogICAgY21kID0gWyd0ZXJtdXgtam9iLXNjaGVkdWxlcicsICctcycsIHN0cihzY3JpcHQpLCAnLS1qb2ItaWQnLCBzdHIoaW50KGpvYl9pZCkpLCAnLS1wZXJpb2QtbXMnLCBzdHIoaW50KHBlcmlvZF9tcykpXQogICAgcmV0dXJuIF90ZXJtdXhfb25seSgn5a6a5pe25Lu75YqhJywgY21kLCBwYXJzZV9qc29uPUZhbHNlKQoKCmRlZiBsaXN0X2pvYnMoKToKICAgIHJldHVybiBfdGVybXV4X29ubHkoJ+S7u+WKoeWIl+ihqCcsIFsndGVybXV4LWpvYi1zY2hlZHVsZXInLCAnLXAnXSwgcGFyc2VfanNvbj1GYWxzZSkKCgpkZWYgY2FuY2VsX2pvYihqb2JfaWQpOgogICAgcmV0dXJuIF90ZXJtdXhfb25seSgn5Y+W5raI5Lu75YqhJywgWyd0ZXJtdXgtam9iLXNjaGVkdWxlcicsICctLWNhbmNlbCcsICctLWpvYi1pZCcsIHN0cihpbnQoam9iX2lkKSldLCBwYXJzZV9qc29uPUZhbHNlKQoKIyAtLS0g5YWl5Y+jIC0tLQoKCmRlZiBfbGlzdF9jYXBzKG1vZGUpOgogICAgYm90aCA9IFsibm90aWZ5IiwgInRvYXN0IiwgInZpYnJhdGUiLCAiY2xpcF9nZXQiLCAiY2xpcF9zZXQiLCAiYmF0dGVyeSIsICJkZXZpY2VfaW5mbyIsICJ2b2x1bWUiLCAib3Blbl91cmwiXQogICAgdGVybXV4ID0gWyJsb2NhdGlvbiIsICJ3aWZpX2luZm8iLCAid2lmaV9zY2FuIiwgInNtc19saXN0IiwgInNtc19zZW5kIiwgImNvbnRhY3RfbGlzdCIsICJjYWxsX2xvZyIsICJjYW1lcmFfcGhvdG8iLCAidG9yY2giLCAic2Vuc29yIiwgInJlY29yZCIsICJzcGVhayIsICJmaW5nZXJwcmludCIsICJicmlnaHRuZXNzIiwgImRpYWxvZyIsICJkb3dubG9hZCIsICJzaGFyZSIsICJtZWRpYV9wbGF5IiwgIm1lZGlhX3NjYW4iLCAibm90aWZ5X3JlbW92ZSIsICJzdG9yYWdlX2dldCIsICJ1c2IiLCAidGVsZXBob255X2NlbGxpbmZvIiwgImluZnJhcmVkIiwgImF1ZGlvX2luZm8iLCAia2V5c3RvcmUiLCAiam9iX3NjaGVkdWxlciIsICJsaXN0X2pvYnMiLCAiY2FuY2VsX2pvYiJdCiAgICBvdXQgPSBbIuW9k+WJjeaooeW8j++8miIgKyBtb2RlLCAiIiwgIumAmueUqO+8iOWPjOaooemDveWPr+eUqO+8ie+8miJdCiAgICBmb3IgYyBpbiBib3RoOiBvdXQuYXBwZW5kKCIgLSAiICsgYykKICAgIG91dC5hcHBlbmQoIiIpCiAgICB0YWcgPSAi5LuFIFRlcm11eCDlj6/nlKgiIGlmIG1vZGUgPT0gInRlcm11eCIgZWxzZSAi5LuFIFRlcm11eCDlj6/nlKjvvIjlvZPliY3lt7LpmY3nuqfvvIkiCiAgICBvdXQuYXBwZW5kKHRhZyArICLvvJoiKQogICAgZm9yIGMgaW4gdGVybXV4OiBvdXQuYXBwZW5kKCIgLSAiICsgYykKICAgIHJldHVybiBjaHIoMTApLmpvaW4ob3V0KQoKCmRlZiBydW4oY21kPSIiKToKICAgIGNtZCA9IChjbWQgb3IgIiIpLnN0cmlwKCkubG93ZXIoKQogICAgbSA9IF9kZXRlY3RfbW9kZSgpCiAgICBpZiBjbWQgaW4gKCJsaXN0IiwgImhlbHAiLCAiIik6CiAgICAgICAgcmV0dXJuIF9saXN0X2NhcHMobSkKICAgIGlmIGNtZCBpbiAoImJhdHRlcnkiLCAiYmF0Iik6CiAgICAgICAgYiA9IGJhdHRlcnkoKQogICAgICAgIGlmIGIuZ2V0KCJvayIpOgogICAgICAgICAgICBkID0gYlsiZGF0YSJdCiAgICAgICAgICAgIHBjdCA9IGQuZ2V0KCJwZXJjZW50IiwgZC5nZXQoInBlcmNlbnRhZ2UiLCAiPyIpKQogICAgICAgICAgICBjaGcgPSBkLmdldCgiY2hhcmdpbmciLCBGYWxzZSkKICAgICAgICAgICAgcmV0dXJuICLmqKHlvI/vvJoiICsgbSArIGNocigxMCkgKyAi55S16YeP77yaIiArIHN0cihwY3QpICsgIiUiICsgKCIg5YWF55S15LitIiBpZiBjaGcgZWxzZSAiIOacquWFheeUtSIpCiAgICAgICAgcmV0dXJuICLmqKHlvI/vvJoiICsgbSArIGNocigxMCkgKyAi55S16YeP5LiN5Y+v55So77yaIiArIHN0cihiLmdldCgiZXJyb3IiKSkKICAgIGlmIGNtZCBpbiAoImluZm8iLCAiZGV2aWNlIik6CiAgICAgICAgcmV0dXJuIGpzb24uZHVtcHMoZGV2aWNlX2luZm8oKSwgZW5zdXJlX2FzY2lpPUZhbHNlLCBpbmRlbnQ9MikKICAgIGlmIGNtZCA9PSAidm9sIjoKICAgICAgICByZXR1cm4ganNvbi5kdW1wcyh2b2x1bWUoKSwgZW5zdXJlX2FzY2lpPUZhbHNlLCBpbmRlbnQ9MikKICAgIGlmIGNtZCA9PSAiY2xpcCI6CiAgICAgICAgcmV0dXJuIGpzb24uZHVtcHMoY2xpcF9nZXQoKSwgZW5zdXJlX2FzY2lpPUZhbHNlKQogICAgcmV0dXJuICLnlKjms5XvvJpydW4oKSB8IGxpc3QgfCBiYXR0ZXJ5IHwgaW5mbyB8IHZvbCB8IGNsaXAiCg==",
+}
+
+
+def install_bundled_plugins(force=False):
+    """把内嵌插件释放到 PLUGINS_DIR（已存在则不覆盖，除非 force=True）。"""
+    import base64
+    try:
+        os.makedirs(PLUGINS_DIR, exist_ok=True)
+    except Exception:
+        return []
+    installed = []
+    for pname, b64 in BUNDLED_PLUGINS.items():
+        path = os.path.join(PLUGINS_DIR, pname + '.py')
+        if os.path.exists(path) and not force:
+            continue
+        try:
+            text = base64.b64decode(b64).decode('utf-8')
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(text)
+            installed.append(pname)
+        except Exception:
+            pass
+    return installed
+
+
+def _act_ctx():
+    # host capabilities injected via ctx; plugins stay declarative
+    return {
+        "session": dict(_SESSION_CTX or {}),
+        "cap": dict(_SESSION_CAP or {}),
+        "host": {
+            "run_python_code": _impl_run_python_code,
+            "run_plugin": _impl_run_plugin,
+            "run_patch_tag": _impl_run_patch_tag,
+            "confirm_execute": confirm_execute,
+            "apply_evolution": apply_evolution,
+            "confirm_evolve": confirm_evolve,
+        },
+    }
+
+
+CORE_ACTIONS_DIRS = ()
+
+
+def _core_action_dirs():
+    cands = []
+    home = os.path.expanduser("~")
+    here = ""
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+    except Exception:
+        here = ""
+    for cand in (os.path.join(home, "factory", "plugins_core"),
+            os.path.join(home, "genome", "plugins_core"),
+            os.path.join(home, "plugins_core"),
+            (os.path.join(here, "plugins_core") if here else "")):
+        if cand and cand not in cands:
+            cands.append(cand)
+    return cands
+
+
+def scan_actions():
+    # scan action plugin dirs, rebuild global registry
+    if _acts is None:
+        return {"ok": False, "err": "zcore.actions not loaded"}
+    roots = []
+    if os.path.isdir(PLUGINS_DIR):
+        roots.append(PLUGINS_DIR)
+    for cand in _core_action_dirs():
+        if os.path.isdir(cand) and cand not in roots:
+            roots.append(cand)
+    try:
+        _acts.REGISTRY.scan(roots)
+    except Exception as e:
+        append_meta_log("actions-scan", {"err": repr(e)})
+        return {"ok": False, "err": repr(e)}
+
+    def _approver(manifest, act_args):
+        try:
+            return bool(confirm_execute("act %s level=%d" % (manifest["id"], manifest["level"])))
+        except Exception:
+            return True
+
+    _acts.set_approver(_approver)
+    _ids = _acts.REGISTRY.ids()
+    append_meta_log("actions-scan", {"count": len(_ids), "ids": _ids[:40], "bad": len(_acts.REGISTRY.bad)})
+    return {"ok": True, "count": len(_ids), "bad": len(_acts.REGISTRY.bad)}
+
+
+def selfcheck_plugins():
+    """插件自检：语法正确且含 run() 才算正常。返回 (ok_list, bad_list)。"""
+    import ast
+    ok_list = []
+    bad_list = []
+    if not os.path.isdir(PLUGINS_DIR):
+        return ok_list, bad_list
+    for fn in sorted(os.listdir(PLUGINS_DIR)):
+        if not fn.endswith(".py") or fn.startswith("_"):
+            continue
+        name = fn[:-3]
+        path = os.path.join(PLUGINS_DIR, fn)
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                code = f.read()
+            tree = ast.parse(code)
+            has_run = any(
+                isinstance(nd, (ast.FunctionDef, ast.AsyncFunctionDef)) and nd.name == "run"
+                for nd in ast.walk(tree)
+            )
+            if has_run:
+                ok_list.append(name)
+            else:
+                bad_list.append(name + " 缺 run")
+        except SyntaxError:
+            bad_list.append(name + " 语法错误")
+        except Exception:
+            bad_list.append(name + " 读取失败")
+    return ok_list, bad_list
+
+
+def scan_plugins():
+ # 扫描 ~/plugins/*.py 或 ~/plugins/<dir>/manifest.json，返回 (plugins, prompt_text)。
+ plugins = {}
+ prompt_parts = []
+ if not os.path.isdir(PLUGINS_DIR):
+  return plugins, ""
+ for fn in sorted(os.listdir(PLUGINS_DIR)):
+  if fn.startswith("_"):
+   continue
+  path = os.path.join(PLUGINS_DIR, fn)
+  if fn.endswith(".py") and os.path.isfile(path):
+   pid = fn[:-3]
+   if not plugin_is_enabled(pid):
+    continue
+   try:
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+     head = f.read(3000)
+   except Exception:
+    continue
+   m = re.search(r"@name[:：]?\s(.+)", head)
+   name = m.group(1).strip() if m else pid
+   m = re.search(r"@desc[:：]?\s(.+)", head)
+   desc = m.group(1).strip() if m else ""
+   plugins[pid] = {"name": name, "desc": desc}
+   prompt_parts.append("## 插件 " + name + " (" + pid + ")\n" + desc)
+  elif os.path.isdir(path):
+   pid = fn
+   manifest_path = os.path.join(path, "manifest.json")
+   if not os.path.exists(manifest_path):
+    continue
+   if not plugin_is_enabled(pid):
+    continue
+   try:
+    with open(manifest_path, "r", encoding="utf-8") as f:
+     manifest = json.load(f)
+   except Exception:
+    continue
+   name = manifest.get("name", pid)
+   desc = manifest.get("desc", "")
+   plugins[pid] = {"name": name, "desc": desc}
+   prompt_file = os.path.join(path, "prompt.md")
+   if os.path.exists(prompt_file):
+    try:
+     with open(prompt_file, "r", encoding="utf-8") as f:
+      prompt_content = f.read().strip()
+     if prompt_content:
+      prompt_parts.append(prompt_content)
+    except Exception:
+     pass
+ if not plugins:
+  return plugins, ""
+ lines = ["\n\n【可用插件列表（[plugin:插件ID 参数] 调用）】"]
+ for pid, info in plugins.items():
+  lines.append("- %s ｜ @name: %s ｜ @desc: %s" % (pid, info["name"], info["desc"] or "无描述"))
+ if prompt_parts:
+  lines.append("\n\n【插件工具说明书】")
+  lines.extend(prompt_parts)
+ return plugins, "\n".join(lines)
+def emit_web(obj):
+    try:
+        import json as _j
+        _STREAM_BUF.append(("web", _j.dumps(obj, ensure_ascii=False)))
+    except Exception:
+        pass
+
+
+def fetch_page(url):
+    import re as _re
+    import json as _j
+    import urllib.request as _ur
+    MAX_BYTES = 2 * 1024 * 1024
+    MAX_HTML = 512000
+    MAX_TEXT = 16000
+    TIMEOUT = 20
+    u = (url or "").strip()
+    if not u:
+        return _j.dumps({"ok": False, "outcome": "not_submitted", "err": "empty"}, ensure_ascii=False)
+    req = _ur.Request(u, headers={"User-Agent": "Mozilla/5.0"})
+    truncated = False
+    try:
+        with _ur.urlopen(req, timeout=TIMEOUT) as resp:
+            raw = resp.read(MAX_BYTES + 1)
+        if len(raw) > MAX_BYTES:
+            raw = raw[:MAX_BYTES]
+            truncated = True
+    except Exception as e:
+        return _j.dumps({"ok": False, "outcome": "unknown", "err": repr(e)}, ensure_ascii=False)
+    html = raw.decode("utf-8", "replace")
+    html_truncated = False
+    if len(html) > MAX_HTML:
+        html = html[:MAX_HTML]
+        html_truncated = True
+    m = _re.search("(?is)<title[^>]>(.*?)</title>", html)
+    title = _re.sub("<[^>]+>", "", m.group(1)).strip() if m else u
+    html = _re.sub("(?is)<script[^>]>.*?</script>", " ", html)
+    html = _re.sub("(?is)<style[^>]>.*?</style>", " ", html)
+    text = _re.sub("<[^>]+>", " ", html)
+    text = " ".join(text.split())
+    return _j.dumps({
+        "ok": True, "outcome": "ok", "url": u, "title": title,
+        "text": text[:MAX_TEXT],
+        "text_truncated": len(text) > MAX_TEXT,
+        "html_truncated": html_truncated,
+        "source_truncated": truncated,
+        "source_bytes": len(raw),
+    }, ensure_ascii=False)
+def _parse_search(raw, query):
+    import re as _re
+    items = []
+    lines = (raw or "").split(chr(10))
+    i = 0
+    while i < len(lines):
+        m = _re.match(r"^\d+\.\s+(.*)$", lines[i])
+        if m and i + 1 < len(lines):
+            t2 = m.group(1).strip()
+            u2 = lines[i + 1].strip()
+            if u2.startswith("http"):
+                items.append({"title": t2, "url": u2})
+                i += 2
+                continue
+        i += 1
+    return {"kind": "search_result", "query": query, "items": items}
+
+def _impl_run_plugin(pid, arg=None):
+    pid = pid.strip()
+    if pid.endswith(".py"):
+        pid = pid[:-3]
+    if not plugin_is_enabled(pid):
+        return "PLUGIN_DISABLED: %s" % pid
+    path_file = os.path.join(PLUGINS_DIR, pid + ".py")
+    path_dir = os.path.join(PLUGINS_DIR, pid, "main.py")
+    if os.path.exists(path_file):
+        path = path_file
+    elif os.path.exists(path_dir):
+        path = path_dir
+    else:
+        return "PLUGIN_NOT_FOUND: %s" % pid
+    if os.environ.get("ZAGENT_NO_SUBPROCESS") == "1":
+        try:
+            with open(path, encoding="utf-8", errors="replace") as _f:
+                _src = _f.read(20000)
+            if "termux-" in _src:
+                return ("插件 %s 依赖 termux-* 命令，APK 环境不支持。"
+                        "请改用 android_api 模块：battery_info() / notify() / toast()。"
+                        % pid)
+        except Exception:
+            pass
+    runner_code = _PLUGIN_RUNNER.replace("@@PLGPATH@@", repr(path))
+    runner_code = runner_code.replace("@@PLGARG@@", repr(arg or ""))
+    rc, out, err, timed_out = _run_process(
+        [sys.executable, "-c", runner_code], PLUGIN_TIMEOUT)
+    if timed_out:
+        return "插件 %s 执行超时（>%d 秒）。" % (pid, PLUGIN_TIMEOUT)
+    if rc == 3:
+        return (out or "插件缺少 run() 函数")
+    if rc != 0:
+        _msg = "插件执行异常（退出码 %d）：" % rc
+        _detail = clip_output(err) or clip_output(out)
+        return _msg + chr(10) + _detail
+    return clip_output(out) if out.strip() else "(插件 run() 无返回值)"
+
+
+def run_plugin(pid, arg=None):
+    if _acts is None or _acts.REGISTRY.get("plugin.call") is None:
+        return _impl_run_plugin(pid, arg)
+    r = _acts.execute("plugin.call", {"id": str(pid), "arg": str(arg or "")}, ctx=_act_ctx())
+    if r.get("ok"):
+        return str(r.get("data") or "")
+    return str(r.get("err") or "plugin.call failed")
+# ============================================================
+def get_gen() -> int:
+    """当前基因代数 = 基因库中历史版本数 + 1。"""
+    if not os.path.isdir(EVOLUTION_DIR):
+        return 1
+    gens = []
+    for fn in os.listdir(EVOLUTION_DIR):
+        m = re.match(r'rain_gen(\d+)_', fn)
+        if m:
+            gens.append(int(m.group(1)))
+    return max(gens) + 1 if gens else 1
+
+
+
+
+
+
+def verify_candidate(source: str):
+    """静态验证：结构完整 → 版本递增 → 语法编译 → AST global 位置。
+    返回 (是否通过, 新版本号或错误消息)。"""
+    for marker in ("def main", "def call_api", "def apply_evolution",
+                   "def verify_contract_once", "def is_trivial_check"):
+        if marker not in source:
+            return False, "候选源码结构不完整（缺少 %s），疑似误传。" % marker
+    new_ver = extract_version(source)
+    if new_ver is None:
+        return False, "候选源码缺少 VERSION 声明。"
+    if new_ver <= VERSION:
+        return False, "候选版本 %s 未高于当前版本 %s，拒绝倒退。" % (new_ver, VERSION)
+    try:
+        compile(source, "<candidate>", "exec")          # 护栏：语法编译
+    except SyntaxError as e:
+        return False, "语法错误: 第 %d 行: %s" % (e.lineno, e.msg)
+    problems = check_global_positions(source)           # 护栏：global 位置
+    if problems:
+        return False, "global 声明位置违规的函数: %s" % ", ".join(problems)
+    return True, new_ver
+
+
+def smoke_test(cand_path: str):
+    """护栏：在独立子进程 + 隔离 HOME 下导入候选模块并冒烟测试。
+    候选的模块级副作用只会落在临时 HOME，碰不到真实家目录。
+    v4.3：新增围栏剥离断言——unwrap_code 退化（如反引号丢失）
+    会被护栏当场捕获，不再静默通过。"""
+    test_code = (
+        "import sys, types\n"
+        "try:\n"
+        "    import requests\n"
+        "except Exception:\n"
+        "    sys.modules['requests'] = types.ModuleType('requests')\n"
+        "import importlib.util\n"
+        "spec = importlib.util.spec_from_file_location('candidate', %r)\n"
+        "mod = importlib.util.module_from_spec(spec)\n"
+        "spec.loader.exec_module(mod)\n"
+        "pairs = mod.extract_scripts('[desc]t[/desc][script:]print(1)[script]')\n"
+        "assert pairs and pairs[0][0] == 'print(1)', 'extract_scripts 失效'\n"
+        "assert mod.unwrap_code('print(1)') == 'print(1)', 'unwrap 误伤代码'\n"
+        "_bt = chr(96)*3\n"      # v5.9：反引号经 chr(96) 构造，免疫宿主转义吞字
+        "fenced = mod.unwrap_code(_bt + 'python\\nimport os\\n' + _bt)\n"
+        "assert fenced == 'import os', 'unwrap 围栏剥离失效（退化型缺陷）'\n"
+        "mod.update_todos('[todo]a|b[/todo]')\n"
+        "assert len(mod.TODOS) == 2, 'todo 解析失效'\n"
+        "sp = mod.build_system_prompt()\n"
+        "assert 'Z-Agent' in sp, 'System Prompt 组装失效'\n"
+        "rc, out, err = mod.run_python_code(\"print('smoke_ok')\")\n"
+        "assert rc == 0 and 'smoke_ok' in out, '子进程执行失效'\n"
+        "assert mod.extract_reflection('[reflect]r[/reflect]') == 'r', '反思解析失效'\n"
+        "assert mod.extract_problems('[problem]p[/problem]') == ['p'], '问题解析失效'\n"
+        "assert mod.extract_identity('[identity]i[/identity]') == 'i', '身份解析失效'\n"
+        "evos = mod.extract_evolution('[evolve:r]def x(): pass\\n[/evolve]')\n"
+        "assert evos and evos[0][0] == 'r' and 'def x' in evos[0][1], '进化解析失效'\n"
+        "bad, _r = mod.is_trivial_check(\"print('x')\")\n"
+        "assert bad, '验收 trivial gate 失效'\n"
+        "cl = mod.parse_accept_blocks('[accept:]\\n产物: /tmp/x\\n"
+        "检查: open(\"/tmp/x\")\\n标准: s\\n[/accept]')\n"
+        "assert cl and cl[0]['artifacts'] == ['/tmp/x'], '验收合同解析失效'\n"
+        "print('SMOKE_OK')\n"
+    ) % cand_path
+    env = safe_child_env()
+    smoke_home = tempfile.mkdtemp(prefix="rain_smoke_home_")
+    env["HOME"] = smoke_home          # 隔离：候选读写的 ~ 全部指向临时目录
+    try:
+        rc, out, err, timed_out = _run_process(
+            [sys.executable, "-c", test_code], 120, env=env)
+        if timed_out:
+            return False, "冒烟测试超时（>120 秒）"
+        if rc == 0 and "SMOKE_OK" in out:
+            return True, "冒烟测试通过（隔离 HOME）"
+        return False, ("冒烟测试失败（退出码 %d）: %s"
+                       % (rc, clip_output(err or out)[-800:]))
+    finally:
+        shutil.rmtree(smoke_home, ignore_errors=True)
+
+
+def shadow_gate(cand_path: str):
+    """v6.0 影子闸门：进化候选必须先在影子沙箱里完整活过一轮真实会话。
+
+    冒烟测试只能拦「倒下」（语法/导入/单函数级故障）；「站错型」缺陷
+    （如 render_todos/TODOS 这类运行时才炸的逻辑错误）静态全绿、
+    启动正常、跑五秒才崩。影子沙箱用假 LLM + 隔离 HOME 把候选的
+    agent_loop/脚本执行/验收合同/反思/会话持久化真跑一遍并断言
+    不变量——不过闸，不落盘。安全网不在位时拒绝一切自我手术（fail-closed）。
+    返回 (是否放行, 报告文本)。"""
+    if os.environ.get("ZAGENT_NO_SUBPROCESS") == "1":
+        # APK/Chaquopy：无子进程沙箱环境，影子闸门无法运行。
+        # fail-closed：宁可拒绝进化，绝不盲飞放行。
+        return False, ("影子沙箱在当前宿主（APK/Chaquopy）不可用：进化被"
+                       "fail-closed 拒绝。基因手术请在 Termux 开发环境完成"
+                       "（那里有完整影子闸门与 8 用例自测），验证通过后"
+                       "随出厂基因重新打包更新。")
+    shadow_py = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "zguard", "shadow_test.py")
+    if not os.path.exists(shadow_py):
+        return False, ("影子沙箱缺失（%s）——安全网不在位，拒绝自我手术。"
+                       "请先恢复 zguard/shadow_test.py 再进化。" % shadow_py)
+    rc, out, err, timed_out = _run_process(
+        [sys.executable, shadow_py,
+         "--candidate", cand_path,
+         "--live-root", os.path.dirname(os.path.abspath(SELF_PATH))],
+        SHADOW_TIMEOUT, env=safe_child_env())
+    if timed_out:
+        return False, "影子沙箱超时（>%d 秒），候选疑似死循环，淘汰。" % SHADOW_TIMEOUT
+    out_text = (out or b"").decode("utf-8", "replace") if isinstance(out, bytes) else (out or "")
+    if rc == 0 and "SHADOW_PASS" in out_text:
+        return True, "影子沙箱通过（候选在真实会话剧本下存活）"
+    detail = ""
+    for line in out_text.splitlines():
+        if line.startswith("SHADOW_FAIL") or line.startswith("SHADOW_PASS"):
+            detail = line[:400]
+    if not detail:
+        detail = ((err or "")[-300:]) if not isinstance(err, bytes) else \
+            (err or b"").decode("utf-8", "replace")[-300:]
+    return False, ("影子沙箱拦截——候选属「站错型」缺陷：静态/冒烟全绿，"
+                   "但真实会话中崩溃或违约（旧基因完好无损）。%s" % detail)
+
+
+def apply_evolution(source: str, reason: str):
+    """进化主流程：静态验证 → 原子落盘候选 → 隔离冒烟 → 影子闸门
+    （假 LLM 全链路会话）→ 备份旧基因 → 原子替换主文件。
+    任何一步失败，旧版本毫发无损。"""
+    _gate.check_or_raise("evolve", {"reason": (reason or "")[:200]})
+    source = source.strip()
+    if len(source.encode("utf-8", "ignore")) > MAX_SOURCE_BYTES:
+        return False, "候选源码超过 %d 字节上限，疑似异常输出。" % MAX_SOURCE_BYTES
+    ok, info = verify_candidate(source)
+    if not ok:
+        return False, info
+    new_ver = info
+    os.makedirs(EVOLUTION_DIR, exist_ok=True)
+    cand_dir = os.path.join(EVOLUTION_DIR, "candidates")
+    os.makedirs(cand_dir, exist_ok=True)
+    cand_path = os.path.join(cand_dir, "rain_candidate.py")
+    atomic_write(cand_path, source + "\n")
+    ok2, msg2 = smoke_test(cand_path)
+    if not ok2:
+        return False, msg2        # 有害突变：候选被淘汰，旧基因保留
+    ok3, msg3 = shadow_gate(cand_path)     # v6.0：站错型缺陷在此拦截
+    if not ok3:
+        return False, msg3
+    gen = get_gen()
+    backup = os.path.join(EVOLUTION_DIR,
+                          "rain_gen%d_%s.py" % (gen, time.strftime("%Y%m%d_%H%M%S")))
+    try:
+        with open(SELF_PATH, "r", encoding="utf-8", errors="ignore") as f:
+            cur_text = f.read()
+        atomic_write(backup, cur_text)
+    except Exception as e:
+        return False, "备份当前基因失败：%s（未做任何替换）" % e
+    atomic_write(SELF_PATH, source + "\n")   # 原子替换主文件
+    print("\n[自主进化] v%s → v%s 成功！旧基因备份：%s" % (VERSION, new_ver, backup))
+    print("[自主进化] 当前进程仍运行旧基因，重启后新基因生效。")
+    return True, ("进化成功！自身源码已升级为 v%s（原因：%s）。\n"
+                  "旧基因已备份，可用 /versions 查看谱系、/rollback 回滚。\n"
+                  "注意：当前进程仍运行旧代码，请在总结里提醒用户重启 "
+                  "python %s（或输入 /restart）以激活新基因；"
+                  "不要再输出 [evolve] 或 [script:]。"
+                  % (new_ver, reason or "未说明", SELF_PATH))
+
+
+def _gen_sort_key(fn):
+    """谱系自然排序键：代数按整数、其后缀按字典序。
+
+    命名 rain_gen<代数>_<yyyymmdd_hhmmss>.py：裸 sorted 是字典序，
+    rain_gen10 会排在 rain_gen2 前（'1'<'2'），/versions 展示与
+    /rollback 的「第 N 代」索引语义都依赖本键，不能省。
+    时间戳定宽大端，字典序即时间序；同代多份备份按时间稳定排序。"""
+    m = re.match(r'rain_gen(\d+)_(.*)$', fn)
+    if not m:                              # 不合规名垫底（正常已被过滤）
+        return (float('inf'), fn)
+    return (int(m.group(1)), m.group(2))
+
+
+def list_versions():
+    """/versions：打印基因谱系（按代数自然排序）。"""
+    if not os.path.isdir(EVOLUTION_DIR):
+        print("基因库为空（尚未进化过）。")
+        return []
+    files = sorted([f for f in os.listdir(EVOLUTION_DIR)
+                    if re.match(r'rain_gen\d+_', f)], key=_gen_sort_key)
+    if not files:
+        print("基因库为空（尚未进化过）。")
+        return files
+    print("基因谱系（共 %d 代历史，当前运行 Gen-%d）：" % (len(files), get_gen()))
+    for i, fn in enumerate(files, 1):
+        print("  [%d] %s" % (i, fn))
+    return files
+
+
+def rollback(idx: int):
+    """/rollback N：把第 N 代基因恢复为主文件（先备份当前，原子替换）。"""
+    files = list_versions()
+    if not files or idx < 1 or idx > len(files):
+        print("序号无效，用 /versions 查看谱系。")
+        return
+    src_path = os.path.join(EVOLUTION_DIR, files[idx - 1])
+    with open(src_path, "r", encoding="utf-8", errors="ignore") as f:
+        src_text = f.read()
+    ver = extract_version(src_text)
+    gen = get_gen()
+    backup = os.path.join(EVOLUTION_DIR,
+                          "rain_gen%d_%s.py" % (gen, time.strftime("%Y%m%d_%H%M%S")))
+    try:
+        with open(SELF_PATH, "r", encoding="utf-8", errors="ignore") as f:
+            cur_text = f.read()
+        atomic_write(backup, cur_text)
+    except Exception as e:
+        print("备份当前基因失败：%s（未做替换）" % e)
+        return
+    atomic_write(SELF_PATH, src_text)
+    print("已回滚到 %s（版本 v%s），当前基因已另存。重启后生效。"
+          % (files[idx - 1], ver))
+
+# ============================================================
+# 6.5 验收引擎（可执行验收 + 三层防假裁判）
+# ============================================================
+def _dotted_name(node):
+    """AST 调用节点 → 点分名（如 os.path.exists）。"""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        base = _dotted_name(node.value)
+        return base + "." + node.attr if base else None
+    return None
+
+# 「世界状态探针」白名单：检查命令必须至少调用其一
+_PROBE_NAMES = {"open", "glob", "iglob", "subprocess", "requests",
+                "Path", "urlopen", "filecmp"}
+_PROBE_DOTTED = {"os.path.exists", "os.path.isfile", "os.path.isdir",
+                 "os.listdir", "os.stat", "os.lstat", "os.scandir",
+                 "os.access", "os.path.getsize", "os.path.getmtime",
+                 "os.environ", "os.walk"}
+_PROBE_ATTRS = {"exists", "isfile", "isdir", "read_text", "read_bytes",
+                "scandir", "stat"}
+
+
+def is_trivial_check(cmd):
+    """第 1 层防线：检查命令必须「读取世界状态」。
+    print('done') / assert True / sys.exit(0) 这类纯字面量假裁判，
+    在合同注册时直接拒绝。返回 (是否平凡, 原因)。"""
+    try:
+        tree = ast.parse(cmd)
+    except SyntaxError as e:
+        return True, "检查命令无法编译（第 %d 行: %s）" % (e.lineno, e.msg)
+    has_probe = False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            name = _dotted_name(node.func)
+            if name:
+                if name in _PROBE_NAMES or name in _PROBE_DOTTED:
+                    has_probe = True
+                elif name.split(".")[-1] in _PROBE_ATTRS:
+                    has_probe = True
+    if not has_probe:
+        return True, ("命令未读取任何世界状态（文件/目录/网络/环境），"
+                      "纯字面量输出无法验证任何产物")
+    return False, ""
+
+
+def parse_accept_blocks(text):
+    """解析 [accept:] 合同声明。格式（每行一条，检查命令严格一行）：
+    [accept:]
+    产物: /sdcard/Download/report.md
+    检查: import os; assert os.path.exists("...")
+    标准: 文件存在且含汇总表
+    [/accept]
+    返回 [{"artifacts":[绝对路径], "checks":[命令], "criteria":文本}]"""
+    blocks = []
+    for m in re.finditer(ACCEPT_RE, text, re.S):
+        artifacts, checks, criteria = [], [], []
+        for line in m.group(1).splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            ma = re.match(r'^(?:产物|artifact)\s*[：:]\s*(.+)$', line, re.I)
+            if ma:
+                p = os.path.abspath(os.path.expanduser(ma.group(1).strip()))
+                if p:
+                    artifacts.append(p)
+                continue
+            mc = re.match(r'^(?:检查|check)\s*[：:]\s*(.+)$', line, re.I)
+            if mc:
+                checks.append(mc.group(1).strip())
+                continue
+            mr = re.match(r'^(?:标准|criteria)\s*[：:]\s*(.+)$', line, re.I)
+            if mr:
+                criteria.append(mr.group(1).strip())
+        blocks.append({"artifacts": artifacts, "checks": checks,
+                       "criteria": "；".join(criteria)})
+    return blocks
+
+
+def _contract_path(cid):
+    return os.path.join(CONTRACTS_DIR, cid + ".json")
+
+
+def save_contract(c):
+    """合同存档到 ~/mind/contracts/（审计用，写失败不影响当次验收）。"""
+    try:
+        os.makedirs(CONTRACTS_DIR, exist_ok=True)
+        with open(_contract_path(c["id"]), "w", encoding="utf-8") as f:
+            json.dump(c, f, ensure_ascii=False, indent=1)
+    except Exception as e:
+        print("[验收] 合同存档失败（不影响当次验收）：%s" % e)
+
+
+def register_contract(clause, task_desc, append_to=None):
+    """登记/追加验收合同。返回 (合同或None, 错误消息或None)。
+    只允许追加收紧（新产物/新检查），不允许删除已有条款。"""
+    art = clause.get("artifacts") or []
+    chk = clause.get("checks") or []
+    if not art:
+        return None, "合同缺少「产物:」声明——没有预期产物就无法客观验收。"
+    if not chk:
+        return None, "合同缺少「检查:」命令。"
+    for c in chk:                                  # 第 1 层：trivial gate
+        bad, reason = is_trivial_check(c)
+        if bad:
+            return None, ("检查命令被拒绝（%s）。请写真正读取产物并断言"
+                          "其内容/结构的命令。" % reason)
+    for c in chk:                                  # 第 3 层：防篡改（纵深防御）
+        for forbidden in _FORBIDDEN_PATHS:
+            if forbidden and forbidden in c:
+                return None, "检查命令禁止引用自身源码/心智目录/基因库。"
+    if append_to is None:
+        # v4.3：ID 加毫秒后缀，同秒注册不互相覆盖
+        cid = ("task_" + time.strftime("%Y%m%d_%H%M%S")
+               + "_" + str(int(time.time() * 1000) % 10000))
+        c = {"id": cid, "task": task_desc or CURRENT_TASK,
+             "created": time.strftime("%Y-%m-%d %H:%M:%S"),
+             "artifacts": [{"path": p, "existed": os.path.exists(p),
+                            "size": (os.path.getsize(p)
+                                     if os.path.exists(p) else 0)}
+                           for p in art],
+             "checks": [{"cmd": c, "added": time.strftime("%H:%M:%S")}
+                        for c in chk],
+             "criteria": clause.get("criteria", ""),
+             "locked": False, "verify_attempts": 0, "status": "open"}
+        save_contract(c)
+        print("\n[验收] 合同已登记：%d 个产物 × %d 条检查%s"
+              % (len(art), len(chk),
+                 ("（标准：%s）" % c["criteria"]) if c["criteria"] else ""))
+        return c, None
+    # 追加收紧（仅未锁定时；锁定路径在 agent_loop 已拦截，此处兜底）
+    if append_to.get("locked"):
+        return None, "验收已触发，合同锁定，禁止修改裁判。只能修复产物本身。"
+    known = {a["path"] for a in append_to["artifacts"]}
+    append_to["artifacts"].extend(
+        [{"path": p, "existed": os.path.exists(p),
+          "size": os.path.getsize(p) if os.path.exists(p) else 0}
+         for p in art if p not in known])
+    append_to["checks"].extend(
+        [{"cmd": c, "added": time.strftime("%H:%M:%S")} for c in chk])
+    if clause.get("criteria"):
+        append_to["criteria"] = (append_to.get("criteria", "")
+                                 + "；" + clause["criteria"])
+    save_contract(append_to)
+    print("[验收] 合同已追加收紧（现有 %d 产物 × %d 检查）"
+          % (len(append_to["artifacts"]), len(append_to["checks"])))
+    return append_to, None
+
+
+
+
+
+
+def _run_check_cmd(cmd):
+    """在隔离子进程中执行一条验收检查命令。"""
+    return _run_process([sys.executable, "-c", cmd], VERIFY_TIMEOUT)
+
+
+def verify_contract_once(c):
+    """执行一轮完整验收。返回 (passed, 报告文本)：
+    passed=True/False 为正常判定；passed=None 表示用户拒绝执行检查
+    命令（用户否决不计入 AI 的验收失败次数）。
+    第 2 层防线——对照组证伪：正向通过后，逐一藏起每个产物再跑同一条
+    命令，至少一次隐藏必须让它失败；全藏仍通过 = 假裁判（永远通过型），
+    验收判负。文件操纵由宿主执行，AI 无法欺骗。
+    v5.8：对照组由「只藏首个产物」升级为「逐一藏起全部产物」，修复
+    多产物合同下「检查只读非首项产物被误判为假裁判」的结构缺陷。"""
+    arts = c["artifacts"]
+    missing = [a["path"] for a in arts if not os.path.exists(a["path"])]
+    if missing:
+        return False, ("预期产物不存在：%s\n请先真正产出它，再宣称完成。"
+                       % "\n  ".join(missing))
+    lines = []
+    for chk in c["checks"]:
+        cmd = chk["cmd"]
+        if not confirm_execute("验收检查命令：%s"
+                               % (c.get("criteria") or cmd[:60])):
+            return None, "用户拒绝执行验收命令，本次验收中止（不计失败次数）。"
+        rc, out, err, timed = _run_check_cmd(cmd)
+        if timed:
+            return False, "检查命令超时（>%d 秒）。" % VERIFY_TIMEOUT
+        if rc != 0:
+            return False, ("检查命令未通过（退出码 %d）:\n%s"
+                           % (rc, clip_output(err or out)))
+        weakened = False
+        tried = 0
+        for art in arts:
+            apath = art["path"]
+            if not os.path.exists(apath):
+                continue
+            tried += 1
+            try:
+                backup = _hide_artifact(apath)
+            except OSError:
+                continue
+            try:
+                rc2, _out2, _err2, timed2 = _run_check_cmd(cmd)
+            finally:
+                _restore_artifact(apath, backup)
+            if rc2 != 0 or timed2:
+                weakened = True
+                break
+        if tried == 0:
+            return False, "没有可做对照证伪的产物（全部缺失）。"
+        if not weakened:
+            return False, ("【假裁判】已把全部 %d 个产物逐一临时移开，"
+                           "检查命令始终通过——它没有真正在验证任何产物"
+                           "（永远通过型命令）。请改写为真正读取并断言"
+                           "产物内容的命令；若确实不可行，向用户文字说明。"
+                           % len(arts))
+        lines.append("检查通过（含对照证伪）：%.60s..."
+                     % cmd.replace("\n", " "))
+    return True, ("全部 %d 条检查通过（每条均经对照组证伪：藏起产物后"
+                  "命令按预期失败，证明裁判有效）。\n  - %s"
+                  % (len(c["checks"]), "\n  - ".join(lines)))
+
+
+def settle_contract(passed, reply_text):
+    """验收结算：通过→收割反思（v4.3：只从脚本外文本 reply_text 收割，
+    脚本字符串里的 [reflect] 字面量不再误入库）+未完待办转问题；
+    失败→计数并落盘。返回 "verified" / "retry" / "failed" / "ok"。"""
+    c = ACTIVE_CONTRACT
+    if c is None:
+        return "ok"
+    c["verify_attempts"] += 1
+    if passed:
+        _cl = extract_claims(reply_text or '')
+        _cok, _crep = validate_claims(_cl)
+        if not _cok and _cl:
+            print('[claim 校验失败] ' + _crep)
+            append_meta_log('claim-fail', {'reason': _crep})
+        c["status"] = "passed"
+        try:
+            zevt.emit('verify.passed', task=str(c.get('task', ''))[:120])
+        except Exception:
+            pass
+        try:
+            zckpt.clear('active_task')
+        except Exception:
+            pass
+        save_contract(c)
+        append_journal("验收通过", c["task"])
+        # 未完成待办 → 登记为自主问题（好奇心联动：未竟之事不消失）
+        undone = [t for done, t in TODOS if not done]
+        for t in undone:
+            save_problem("未竟待办（来自已验收任务）：%s" % t)
+        if undone:
+            print("[验收] %d 个未完成待办已转入自主问题队列。" % len(undone))
+        refl = extract_reflection(reply_text or "")
+        if refl:
+            save_reflection(refl)
+        print("\n[验收] ✅ 通过——经验获准沉淀，任务正式关闭。")
+        return "verified"
+    save_contract(c)      # v4.3：retry 时同样落盘，审计不丢次数
+    if c["verify_attempts"] >= MAX_VERIFY_ATTEMPTS:
+        c["status"] = "failed_final"
+        try:
+            zevt.emit('verify.failed_final', task=str(c.get('task', ''))[:120])
+        except Exception:
+            pass
+        try:
+            zckpt.clear('active_task')
+        except Exception:
+            pass
+        save_contract(c)
+        append_journal("验收终局失败",
+                       "%s（%d 次未过）" % (c["task"], c["verify_attempts"]))
+        print("\n[验收] ❌ 连续 %d 次未通过——终局判定为未完成。"
+              % MAX_VERIFY_ATTEMPTS)
+        return "failed"
+    return "retry"
+
+
+def begin_task_slot(desc):
+    """开启新任务槽：挂起未决合同（如有），记录任务描述。"""
+    global ACTIVE_CONTRACT, CURRENT_TASK
+    if ACTIVE_CONTRACT and ACTIVE_CONTRACT.get("status") == "open":
+        ACTIVE_CONTRACT["status"] = "abandoned"
+        save_contract(ACTIVE_CONTRACT)
+        append_journal("合同挂起",
+                       "%s（新任务开始，旧合同未验收）"
+                       % ACTIVE_CONTRACT["task"])
+    ACTIVE_CONTRACT = None
+    CURRENT_TASK = (desc or "")[:200]
+    try:
+        zevt.emit('task.begin', task=(CURRENT_TASK or '')[:120])
+    except Exception:
+        pass
+
+
+    try:
+        zckpt.save('active_task', {'task': CURRENT_TASK, 'pid': os.getpid()}, note='open')
+    except Exception:
+        pass
+
+
+
+
+
+
+# ---------------- 附件预处理 ----------------
+_IMG_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".heic", ".heif")
+_TEXT_EXTS = (".txt", ".md", ".log", ".json", ".csv", ".py", ".js", ".ts",
+                  ".kt", ".java", ".c", ".cpp", ".h", ".html", ".htm", ".xml",
+                  ".yaml", ".yml", ".ini", ".cfg", ".conf", ".sh", ".bat",
+                  ".css", ".sql", ".toml", ".env", ".gradle", ".properties")
+_ARCHIVE_EXTS = (".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".rar")
+
+
+def _ext(path):
+    i = path.rfind(".")
+    return path[i:].lower() if i >= 0 else ""
+
+
+def _safe_member_names(names, root):
+    import os as _o
+    ra = _o.path.abspath(root)
+    out = []
+    for n in names:
+        t = str(n).replace(chr(92), chr(47))
+        parts = [x for x in t.split(chr(47)) if x not in (chr(39)+chr(39), chr(46))]
+        if not parts or t.startswith(chr(47)) or (chr(46)+chr(46)) in parts:
+            continue
+        d = _o.path.abspath(_o.path.join(ra, *parts))
+        if d != ra and not d.startswith(ra + _o.sep):
+            continue
+        out.append(n)
+    return out
+
+def _extract_archive(path):
+    ext = _ext(path)
+    out_dir = path + "_extracted"
+    try:
+        os.makedirs(out_dir, exist_ok=True)
+    except Exception as e:
+        return None, "无法创建目录: %s" % e
+    if ext == ".zip":
+        try:
+            import zipfile
+            with zipfile.ZipFile(path) as z:
+                names = z.namelist()
+                z.extractall(out_dir, members=_safe_member_names(names, out_dir))
+            return out_dir, "zip 解压 %d 项" % len(names)
+        except Exception as e:
+            return None, "zip 解压失败: %s" % e
+    if ext in (".tar", ".gz", ".tgz", ".bz2", ".xz"):
+        try:
+            import tarfile
+            with tarfile.open(path) as t:
+                names = t.getnames()
+                _safe = set(_safe_member_names(t.getnames(), out_dir))
+                _members = [m for m in t.getmembers()
+                            if m.name in _safe
+                            and not (m.issym() or m.islnk())]
+                t.extractall(out_dir, members=_members)
+            return out_dir, "tar 解压 %d 项" % len(names)
+        except Exception as e:
+            return None, "tar 解压失败: %s" % e
+    if ext == ".7z":
+        try:
+            import py7zr
+            with py7zr.SevenZipFile(path, "r") as z:
+                z.extractall(out_dir)
+            return out_dir, "7z 解压完成"
+        except ImportError:
+            return None, "7z 需要 py7zr"
+        except Exception as e:
+            return None, "7z 解压失败: %s" % e
+    if ext == ".rar":
+        try:
+            import rarfile
+            with rarfile.RarFile(path) as r:
+                r.extractall(out_dir)
+            return out_dir, "rar 解压完成"
+        except ImportError:
+            return None, "rar 需要 rarfile"
+        except Exception as e:
+            return None, "rar 解压失败: %s" % e
+    return None, "不支持的压缩格式: %s" % ext
+
+
+def _list_dir_brief_impl(d, max_n=50):
+    out = []
+    base_len = len(d.rstrip("/")) + 1
+    cnt = 0
+    for root, dirs, files in os.walk(d):
+        for f in sorted(files):
+            if cnt >= max_n:
+                out.append(" ...(更多省略)")
+                return out
+            full = os.path.join(root, f)
+            rel = full[base_len:]
+            try:
+                sz = os.path.getsize(full)
+            except OSError:
+                sz = 0
+            out.append(" %s (%d B)" % (rel, sz))
+            cnt += 1
+    return out
+
+
+def _list_dir_brief(d, max_n=50):
+    # P1 fact cache: dir listing most-repeated probe; 60s TTL.
+    key = "list_dir:" + os.path.abspath(d) + ":" + str(max_n)
+    hit = zfacts.get(key)
+    if hit is not None:
+        return hit
+    out = _list_dir_brief_impl(d, max_n)
+    zfacts.set(key, out, ttl=60)
+    return out
+
+
+def _describe_image(path):
+    # P1.5 fact cache: key on (path, mtime, size); 300s TTL
+    try:
+        st = os.stat(path)
+        key = "desc_image:" + os.path.abspath(path) + ":" + str(int(st.st_mtime)) + ":" + str(st.st_size)
+    except OSError:
+        key = None
+    if key:
+        hit = zfacts.get(key)
+        if hit is not None:
+            return hit
+    out = _describe_image_impl(path)
+    if key:
+        zfacts.set(key, out, ttl=300)
+    return out
+
+def _describe_image_impl(path):
+    lines = []
+    try:
+        sz = os.path.getsize(path)
+        lines.append(" 大小: %d B (%.1f KB)" % (sz, sz / 1024.0))
+    except Exception:
+        sz = 0
+    try:
+        from PIL import Image
+        with Image.open(path) as im:
+            lines.append(" 尺寸: %dx%d, 格式: %s, 模式: %s" % (im.size[0], im.size[1], im.format, im.mode))
+    except ImportError:
+        lines.append(" (未装 pillow)")
+    except Exception as e:
+        lines.append(" PIL 读取失败: %s" % e)
+    try:
+        if sz <= 512 * 1024:
+            import base64 as _b64
+            with open(path, "rb") as f:
+                data = f.read()
+            b = _b64.b64encode(data).decode("ascii")
+            ext2 = _ext(path).lstrip(".")
+            if ext2 == "jpg":
+                ext2 = "jpeg"
+            lines.append(" [base64 内嵌，可多模态识图]")
+            lines.append(" data:image/%s;base64,%s" % (ext2, b))
+        else:
+            lines.append(" (图片 > 512KB，未内嵌)")
+    except Exception as e:
+        lines.append(" base64 失败: %s" % e)
+    return lines
+
+
+def _describe_text(path, max_bytes=10000):
+    # P1.5 fact cache: key on (path, mtime, size); 300s TTL
+    try:
+        st = os.stat(path)
+        key = "desc_text:" + os.path.abspath(path) + ":" + str(int(st.st_mtime)) + ":" + str(st.st_size)
+    except OSError:
+        key = None
+    if key:
+        hit = zfacts.get(key)
+        if hit is not None:
+            return hit
+    out = _describe_text_impl(path, max_bytes=10000)
+    if key:
+        zfacts.set(key, out, ttl=300)
+    return out
+
+def _describe_text_impl(path, max_bytes=10000):
+    lines = []
+    try:
+        sz = os.path.getsize(path)
+        with open(path, "rb") as f:
+            data = f.read(max_bytes)
+        try:
+            txt = data.decode("utf-8")
+        except UnicodeDecodeError:
+            txt = data.decode("utf-8", "replace")
+        lines.append(" 文本 %d B (读前 %d B):" % (sz, len(data)))
+        lines.append(" ")
+        txt2 = txt.replace(chr(10), chr(10) + " ")
+        lines.append(" " + txt2)
+        lines.append("")
+    except Exception as e:
+        lines.append(" 读取失败: %s" % e)
+    return lines
+
+
+def _describe_pdf(path, max_pages=20):
+    # P1.5 fact cache: key on (path, mtime, size); 300s TTL
+    try:
+        st = os.stat(path)
+        key = "desc_pdf:" + os.path.abspath(path) + ":" + str(int(st.st_mtime)) + ":" + str(st.st_size)
+    except OSError:
+        key = None
+    if key:
+        hit = zfacts.get(key)
+        if hit is not None:
+            return hit
+    out = _describe_pdf_impl(path, max_pages=20)
+    if key:
+        zfacts.set(key, out, ttl=300)
+    return out
+
+def _describe_pdf_impl(path, max_pages=20):
+    lines = []
+    try:
+        import pypdf
+        with open(path, "rb") as f:
+            r = pypdf.PdfReader(f)
+            n = len(r.pages)
+            lines.append(" PDF %d 页" % n)
+            for i, pg in enumerate(r.pages[:max_pages]):
+                try:
+                    t = pg.extract_text() or ""
+                except Exception:
+                    t = ""
+                lines.append(" --- 第 %d 页 ---" % (i + 1))
+                t2 = t[:3000].replace(chr(10), " ")
+                lines.append(" " + t2)
+    except ImportError:
+        lines.append(" (未装 pypdf)")
+    except Exception as e:
+        lines.append(" PDF 抽取失败: %s" % e)
+    return lines
+
+
+def preprocess_attachments(text):
+    """扫描 [附件] 路径，自动解压/抽取内容，返回增强文本。"""
+    if not text or "[附件]" not in text:
+        return text
+    import re as _re
+    pat = chr(92) + "[附件" + chr(92) + "]" + chr(92) + "s*(.+?)(?:" + chr(92) + "n|$)"
+    m = _re.search(pat, text, _re.S)
+    if not m:
+        return text
+    paths = m.group(1).strip().split()
+    if not paths:
+        return text
+    report = []
+    for p in paths:
+        if not os.path.exists(p):
+            report.append("【附件】%s（不存在）" % p)
+            continue
+        ext = _ext(p)
+        name = os.path.basename(p)
+        report.append("")
+        report.append("==== 附件: %s ====" % name)
+        report.append("路径: %s" % p)
+        if ext in _ARCHIVE_EXTS:
+            out_dir, msg = _extract_archive(p)
+            report.append("解压: %s" % msg)
+            if out_dir:
+                report.append("解压目录: %s" % out_dir)
+                report.append("内容:")
+                report.extend(_list_dir_brief(out_dir))
+        elif ext in _IMG_EXTS:
+            report.extend(_describe_image(p))
+        elif ext == ".pdf":
+            report.extend(_describe_pdf(p))
+        elif ext in _TEXT_EXTS:
+            report.extend(_describe_text(p))
+        else:
+            try:
+                sz = os.path.getsize(p)
+            except OSError:
+                sz = 0
+            report.append("未知类型 (%s), 大小 %d B" % (ext or "无扩展名", sz))
+    sep = chr(10)
+    tail = sep + sep + "【附件预处理报告（宿主自动生成）】" + sep
+    return text + tail + sep.join(report)
+
+def note_task(desc):
+    """记录任务描述；合同存续期间视为同一任务延续，不覆盖。"""
+    global CURRENT_TASK
+    if not (ACTIVE_CONTRACT and ACTIVE_CONTRACT.get("status") == "open"):
+        CURRENT_TASK = (desc or "")[:200]
+
+# ============================================================
+# 7. 协议解析（tokenize 感知：字面量里的标签不算协议）
+# ============================================================
+def _literal_spans(source):
+    """返回 (字符串/注释字面量区间列表, tokenize 是否完整成功)。"""
+    starts = [0]
+    for line in source.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+
+    def offset(pos):
+        row, col = pos
+        idx = row - 1
+        if idx >= len(starts):
+            return len(source)
+        return starts[idx] + col
+
+    spans = []
+    ok = True
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type in _LITERAL_TOKENS:
+                spans.append((offset(token.start), offset(token.end)))
+    except (tokenize.TokenError, IndentationError, SyntaxError, ValueError):
+        ok = False
+    return spans, ok
+
+
+def _find_code_end(text, start, markers):
+    """在 text[start:] 中找结束标签（必须位于字面量之外）。
+    markers 可为 str 或字符串序列；多候选时取最先出现的有效标签。
+    返回 (位置, 命中的标签)；未找到返回 (-1, None)。
+    tokenize 失败（残缺代码）时退化为取最后一个匹配（rfind 语义）。"""
+    if isinstance(markers, str):
+        markers = (markers,)
+    else:
+        markers = tuple(markers)
+    source = text[start:]
+    spans, ok = _literal_spans(source)
+
+    def _earliest(offset):
+        best_pos, best_marker = -1, None
+        for m in markers:
+            p = source.find(m, offset)
+            if p >= 0 and (best_pos < 0 or p < best_pos):
+                best_pos, best_marker = p, m
+        return best_pos, best_marker
+
+    if not ok:
+        best_pos, best_marker = -1, None
+        for m in markers:
+            p = source.find(m)
+            if p >= 0 and (best_pos < 0 or p < best_pos):
+                best_pos, best_marker = p, m
+        return (-1, None) if best_pos < 0 else (start + best_pos, best_marker)
+
+    cursor = 0
+    while True:
+        pos, marker = _earliest(cursor)
+        if pos < 0:
+            return -1, None
+        if not any(left <= pos < right for left, right in spans):
+            return start + pos, marker
+        cursor = pos + len(marker)
+def _evolution_parts(text):
+    """解析进化块。返回 (block 或 None, 错误消息 或 None)。
+    block = (起始, 结束后, 原因, 源码)。"""
+    match = re.search(r"\[evolve:([^\]\r\n]*)\]", text)
+    if not match:
+        return None, None
+    try:
+        end, end_tag = _find_code_end(text, match.end(), "[/evolve]")
+    except Exception:
+        end, end_tag = -1, None
+    if end < 0:
+        # 无有效结束标签：仅当后半段像源码时才视为残缺进化块
+        # （防止闲聊中提到 [evolve: 被误判；也防止其内部代码被执行）
+        if "def " in text[match.end():]:
+            return None, "进化块缺少有效的 [/evolve] 结束标签"
+        return None, None
+    source = unwrap_code(text[match.end():end])
+    if not source or "def " not in source:
+        return None, None      # 只是提及格式，不是真实进化
+    return (match.start(), end + len(end_tag),
+            match.group(1).strip(), source), None
+
+
+def evolution_status(text):
+    """返回 (进化块列表, 解析错误或 None)。"""
+    block, err = _evolution_parts(text)
+    return ([(block[2], block[3])] if block else []), err
+
+
+def extract_evolution(text):
+    """兼容旧接口：只返回进化块列表。"""
+    return evolution_status(text)[0]
+
+
+def strip_evolution(text):
+    """把进化块整段剥离；残缺进化块（缺结束标签）从起始标签起
+    全部剥离，防止其内部 [script:] 被误执行。"""
+    block, err = _evolution_parts(text)
+    if block:
+        return (text[:block[0]]
+                + "\n[进化源码已提取，交由进化引擎验证]\n"
+                + text[block[1]:])
+    if err:
+        match = re.search(r"\[evolve:([^\]\r\n]*)\]", text)
+        return (text[:match.start()]
+                + "\n[进化块缺少 [/evolve] 结束标签，已整体剥离以防内部代码被误执行]\n")
+    return text
+
+
+def _script_blocks(text):
+    """解析所有 [script:]...[/script] 或 [script:]...[script] 块
+    （结束标签需在字面量之外，多候选时取最先出现的有效者）。
+    返回 [(起始, 结束后, 代码, 就近 desc), ...]；缺结束标签抛 ValueError。"""
+    blocks = []
+    cursor = 0
+    end_markers = ("[/script]", "[script]")
+    while True:
+        start = text.find("[script:]", cursor)
+        if start < 0:
+            return blocks
+        body_start = start + len("[script:]")
+        end, end_tag = _find_code_end(text, body_start, end_markers)
+        if end < 0:
+            code = text[body_start:]
+            if "def " in code or "import " in code or "print(" in code:
+                blocks.append((start, len(text), unwrap_code(code), "auto-close"))
+                return blocks
+            raise ValueError("脚本块缺少有效的 [/script] 或 [script] 结束标签")
+        desc_matches = list(re.finditer(DESC_RE, text[cursor:start], re.S))
+        desc = desc_matches[-1].group(1).strip() if desc_matches else ""
+        blocks.append((start, end + len(end_tag),
+                    unwrap_code(text[body_start:end]), desc))
+        cursor = end + len(end_tag)
+def extract_scripts(text):
+    """[(代码, 就近 desc), ...]。"""
+    try:
+        blocks = _script_blocks(text)
+    except ValueError:
+        return []
+    return [(code, desc) for _s, _e, code, desc in blocks if code]
+
+
+
+
+def update_todos(text):
+    """[todo] 重建清单（去重）；[tododone] 精确匹配打勾。"""
+    global TODOS
+    match = re.search(r"\[todo\](.*?)\[/todo\]", text, re.S)
+    if match:
+        items = list(dict.fromkeys(
+            item.strip() for item in match.group(1).split("|") if item.strip()))
+        if items:
+            TODOS = [[False, item] for item in items]
+    for done in re.findall(r"\[tododone\](.*?)\[/tododone\]", text, re.S):
+        for item in TODOS:
+            if done.strip() == item[1]:
+                item[0] = True
+                break
+
+# ============================================================
+# 8. System Prompt（三角色 + 自我修复 + 心智 + 验收 + 进化协议）
+# ============================================================
+BASE_PROMPT = """你是 Z-Agent，一个运行在 Android 手机 Termux 终端里的超级智能自主 Agent。
+你由三层构成：执行体（三角色协作）、心智（观察者监督/问题队列/身份核心/验收合同）、
+基因（可通过重写自身源码实现真正的自主进化）。
+
+【运行环境（务必遵守）】
+- 运行在 Android APK（Chaquopy 内嵌 Python）。家目录：由 Kotlin 侧 bootstrap 传入。
+- 你的代码被宿主直接 exec 到内嵌解释器，不是独立进程，必须自包含。
+- 缺库时无法 pkg/pip 安装（APK 已冻结依赖），请改用已有模块或原生能力。
+- 需要执行 Linux shell 命令（ls / cat / find / grep / ps / uname 等）时，
+ 在 Python 里调用 android_api.shell_exec("命令")，返回 {"ok","code","stdout","stderr"}。
+
+【Linux shell 便捷函数（重要）】
+- 每个 [script:] 脚本运行时，全局命名空间里已注入以下函数，可直接调用、无需 import：
+ shell(cmd, timeout=60) -> 字符串输出（stdout；有 stderr 时附加）
+ sh(cmd, timeout=60) -> (退出码, 输出) 元组
+ linux(cmd, timeout=60) -> 同 shell
+- 底层是 proot + 内置 Termux bootstrap，可执行：ls cat find grep sed awk ps uname df du
+ tar gzip curl python3 awk sed 等。首次调用会解压约 90MB rootfs，约 30 秒。
+- 用法示例（脚本内）：
+ print(shell("ls /sdcard/Download | head"))
+ rc, out = sh("uname -a")
+ print(rc, out)
+- 不要试图用 subprocess / os.system 执行外部命令（APK 内嵌解释器无独立进程）。
+ 需要跑外部命令时一律用 shell()。
+
+【三角色协作（复杂任务必须体现）】
+1.【架构师】拆解任务：[todo]任务1|任务2[/todo]；
+  完成一项输出 [tododone]任务名[/tododone]（与清单一致）。
+2.【测试员】代码落地前审查逻辑（变量未定义/编码/路径/依赖/除零），
+  格式：【测试员审查】……
+3.【程序员】输出代码：[script:]...可直接运行的 Python...[script]
+  每段脚本前必须有一行 [desc]一句话目的[/desc]。
+
+【字面区协议（v6.1+，重要）】
+- 需要展示标签的字面形态（解释协议、教学示例、贴片段）时，用
+  [literal]...[/literal] 包裹：区内一切字符（包括 [script:]、
+  [evolve:]、[accept:]、[todo] 等标签形态）宿主一律不解析、不执行，
+  对用户以代码块原样展示。
+- 字面区必须闭合；未闭合时宿主把开标记起到回复末尾全按字面处理，
+  并回传提示。
+- 有了字面区，讨论协议不必再回避字面方括号；但需要真正执行的代码
+  仍必须放在字面区之外的 [script:] 中。
+
+【自我修复铁律】
+- 收到带报错的【系统自动回传】：绝不询问用户、绝不只道歉。
+  立刻分析根因→修正→重新输出 [script:]。最多自动重试 5 次直到退出码 0。
+- 修复套路：缺库→先 pip/pkg 安装；乱码→UTF-8；路径→expanduser("~")；
+  网络→requests 加 timeout。
+- 收到「【观察者纠偏】」时，那是你的监督进程给出的诊断，必须优先采纳。
+- 注意：同一回复里多段脚本遵循「失败即停」——第一段失败后其余不执行，
+  你需要修复后重新输出剩余部分。
+
+【可执行验收协议（客观完成标准——宿主不信文字宣称）】
+- 接到任务后、动手写第一段代码之前，必须先声明验收合同：
+  [accept:]
+  产物: <绝对路径，可多行>（任务的可见交付物）
+  检查: <严格一行 Python 命令，真实读取产物并断言其内容/结构；
+        多条语句用分号 ; 连接在同一行内，禁止跨行>
+  标准: <一句话描述怎样算合格>
+  [/accept]
+- 检查命令硬性要求（宿主会机器验证）：
+  1) 必须真实读取产物（open/os.path.exists/Path.read_text 等），
+     纯 print/assert 常量的「永远通过」命令会被直接拒绝；
+  2) 宿主会做「对照组证伪」：临时移开你的产物再跑命令，它必须失败——
+     不看产物的假裁判必然暴露；
+  3) 命令禁止引用 rain.py 自身、心智目录、基因库（含展开路径）。
+- 任务完成时输出文字总结（不再输出代码），宿主将执行合同验收：
+  通过→经验沉淀、未竟待办自动转入问题队列、任务正式关闭；
+  失败→你会收到实际输出，必须继续修复（最多 3 次验收机会，
+  之后终局判定未完成）。用户拒绝执行检查命令不计入你的失败次数。
+- 验收触发后合同锁定：只能修产物，不能改裁判。认为标准有误就向
+  用户文字说明，由用户裁决。
+- 合同只允许追加收紧（更多产物/更严检查），不允许删除放宽。
+
+【自主心智协议】
+- 执行中发现值得探索的新问题，输出 [problem]描述[/problem]，
+  宿主登记到 ~/mind/problems.md；用户 /idle 时你从队列领任务自主解决
+  （自主任务同样必须先声明验收合同）。
+- 你可以随时重写自己的身份核心：输出 [identity]新身份描述[/identity]，
+  宿主存入 ~/mind/identity.md 并即时注入你的系统提示词最前端。
+
+【自我反思】
+- 任务彻底完成、不再需要代码时，总结后输出：
+  [reflect]本次经验：踩过的坑、有效做法、可复用技巧[/reflect]
+- 已声明验收合同的任务，必须先通过宿主客观验收，[reflect] 才会被
+  沉淀；未过验收的经验不进入技能库。
+- 宿主自动写入 ~/skills/；反思每积累到阈值会提示你把经验固化进基因。
+
+【自主进化协议（最高权限：重写自身源码 rain.py）】
+- 收到「【进化指令】」时，消息里会附带你的当前完整源码；
+  必须以它为基线做最小必要修改，禁止凭记忆重写整个文件。
+- 输出格式：
+  [evolve:一句话改进说明]
+  ...完整 rain.py 新源码（一字不落的完整文件）...
+  [/evolve]
+- 硬性要求（宿主逐条机器验证，违反即淘汰）：
+  1) 顶部 VERSION 必须高于当前版本（小步递增，如 4.3→4.4）。
+  2) 【测试员】先自查：零语法错误；所有 global 声明必须位于函数体
+     第一条语句（docstring 之后）——血泪基因，绝不能破坏。
+  3) 不得破坏任何已有命令与标签功能（含验收协议）。
+  4) 完整源码用 [evolve:原因]...[/evolve] 包裹；源码内部禁止
+     Markdown 代码块包裹。
+  5) 宿主执行「结构→版本→编译→AST→冒烟测试(隔离HOME)→原子替换+备份」
+     多重护栏，任一步失败会回传报错，你须分析修正后重发（最多 3 次）。
+  6) 进化成功后旧进程仍跑旧代码，要在总结里提醒用户重启激活新基因。
+
+【插件调用】
+- 复用能力输出：[plugin:插件文件名 参数]（不带 .py，可用中文；参数按插件需求传）。
+  插件在隔离子进程中执行，超时会被强制终止。
+
+【附件处理（重要）】
+- 用户消息末尾若出现「【附件预处理报告（宿主自动生成）】」，
+  说明宿主已经替你做过预处理，无需再手动读文件：
+  · 压缩包 → 已解压到 <原路径>_extracted/，列出内部文件清单
+  · 图片 → 给出尺寸/格式，若 <512KB 还会内嵌 data:image/...;base64
+  （可以直接看到图片内容，不需要再调 PIL 读）
+  · 文本/代码 → 直读前 10KB
+  · PDF → 抽取前 20 页文字
+- 需要看完整内容时，再自行读对应路径。
+
+【回传语义】
+- 「【系统自动回传】」= 脚本/插件/进化/验收的真实结果：
+  未完成→继续修复或推进；已完成→文字总结+[reflect]，不再输出代码。
+- 
+
+【交互按钮协议（重要）】
+- 当你需要让用户执行某个宿主命令（/evolve、/build、/think、/resume、
+ /events、/limiter、/contract、/restart、/grant 等）时，不要只写
+ 「请输入 /xxx」——改为在回复中单独一行输出：
+ [btn:按钮文案|/命令]
+ 宿主会把它渲染成可点击按钮，用户点击即执行该命令。
+- 按钮标签必须独占一行；命令部分必须是宿主的合法 / 命令。
+- 同一处尽量只给一个按钮；按钮文案 2-4 字最佳。
+- 示例：'切换 /build 后可执行：' + 独立一行 [btn:切换构建|/build]
+退出码 0 但无输出 ≠ 任务完成，宿主会提示你确认实际效果。
+"""
+MIND_PROMPT_ADDON = """
+
+【心智系统与防断片协议（WAL）】
+一、人格姿态
+
+行动导向：用户已授权的操作直接执行，不要反复请求许可。
+
+冷静克制：拒绝夸张情绪词（如“太棒了”、“很高兴”），用事实说话。
+
+诚实边界：工具调用失败如实上报，绝不允许捏造输出。
+
+二、防断片写前日志（WAL）
+上下文窗口是易失的缓存。一旦发生以下事件，必须调用工具将关键信息写入 ~/session-state.md：
+
+用户做出明确的决定或选择。
+
+确认了新的专有名词、重要变量、接口密钥。
+
+任务进度进入下一阶段。
+如果你发现自己突然失去之前的上下文，第一反应必须是读取 ~/session-state.md，而不是重新询问用户。
+"""
+
+
+PLAN_RULES = """
+【当前模式：/plan 规划模式】
+- 只由【架构师】做分析与拆解，严禁输出任何 [script:] 代码。
+- 宿主会在规划模式硬性拒绝执行脚本/插件（这是模式约束，不是提示词建议）。
+- 规划内容应包含建议的验收合同（产物/检查/标准），供 /build 后使用。
+- 必须用 [todo]...[/todo] 给出清单并说明关键步骤。
+"""
+
+BUILD_RULES = """
+【当前模式：/build 执行模式】
+- 三角色全流程：规划→审查→[script:] 代码，自动执行并回传，
+  出错自我修复直到完成；完成后输出 [reflect]。
+- 优先复用插件；发现自身可改进处可主动发起 [evolve:]。
+- 有验收合同时：完成 = 宿主验收通过，不是你宣称完成。
+"""
+
+THINK_SYS = """你是 Z-Agent 的深度思考子系统（慢思考进程）。
+你对任务进行系统、彻底的分析，形成高质量方案。你与主执行进程
+共享环境约束：Android Termux、无图形界面、subprocess 自动执行代码。"""
+
+CRITIC_ASK = ("请以上面的方案为对象，苛刻地找出漏洞、风险、隐藏假设与更优解"
+              "（不超过 5 点，直接列条目）。")
+
+SYNTH_ASK = "请综合上述方案与批判意见，输出改进后的更强方案。"
+
+FINAL_ASK = ("请综合所有立论与批判，输出最终可执行方案；"
+             "需要代码时严格用 [script:]...[script] 与 [desc] 标签，"
+             "并先声明 [accept:] 验收合同（检查命令严格一行）。")
+
+OBSERVER_SYS = """你是 Z-Agent 的外部观察者（独立监督进程），与执行者分离。
+你的职责：诊断执行者 Agent 为什么反复失败（如：同类错误、
+思路死循环、方向性错误），给出不超过 5 条具体、可直接采纳的纠偏策略。
+你冷静、客观、一针见血，不写代码，只给策略。"""
+
+EVOLVE_REQUIREMENTS = """硬性要求（宿主逐条机器验证，违反即淘汰）：
+1) 顶部 VERSION 必须高于当前版本（小步递增，如 4.3→4.4）。
+2) 【测试员】先自查：零语法错误；所有 global 声明必须位于函数体第一条语句（docstring 之后）。
+3) 不得破坏任何已有命令与标签功能（含验收协议与三层防假裁判）。
+4) 完整源码用 [evolve:原因]...[/evolve] 包裹；源码内部禁止 Markdown 代码块。
+5) 宿主执行「结构→版本→编译→AST→冒烟测试(隔离HOME)→原子替换+备份」多重护栏，
+   任一步失败会回传报错，你须分析修正后重发（最多 3 次）。
+6) 进化成功后旧进程仍跑旧代码，要在总结里提醒用户重启激活新基因。"""
+
+
+def build_system_prompt() -> str:
+    """System Prompt = 身份核心 + 基础规则 + 模式 + 技能 + 插件 + 问题队列 + 自身状态。"""
+    skills_text = load_skills()
+    _plugins, plugins_text = scan_plugins()
+    mode_text = PLAN_RULES if MODE == "plan" else BUILD_RULES
+    problems = load_problems()
+    pb_text = ""
+    if problems:
+        pb_text = ("\n\n【待自主探索的问题队列（%d 个，/idle 时领取）】"
+                   % len(problems) + "".join("\n- " + p for p in problems[:20]))
+    _meta_text = ''
+    try:
+        _lvl = current_level()
+        _chainok, _ = chain_verify()
+        _meta_text = _meta_text + chr(10) + '[权限] GRANT_LEVEL=' + str(_lvl) + ' (0=观察/1=建议/2=半自主/3=自主)'
+        _meta_text = _meta_text + chr(10) + '[审计] 链式日志 verify=' + ('OK' if _chainok else 'TAMPERED') + ' ; 路径 mind/audit-chain.jsonl'
+    except Exception:
+        pass
+    if META_LEVEL != 'off':
+        _meta_text = _meta_text + (chr(10) + chr(10) + '【元认知协议】' + chr(10) + '下结论必须四元组：' + chr(10) + ' [claim] 命题' + chr(10) + ' [confidence] static|dynamic|inferred' + chr(10) + ' [basis] ev-id 列表或 无' + chr(10) + ' [unknowns] 无法检测的部分' + chr(10) + '置信度不得高于其最弱依据。' + chr(10) + 'META_LEVEL=' + META_LEVEL)
+    _actions_text = ""
+    if _acts is not None:
+        try:
+            _actions_text = _acts.REGISTRY.prompt_block()
+        except Exception:
+            _actions_text = ""
+    return (_meta_text + load_identity() + "\n" + BASE_PROMPT + MIND_PROMPT_ADDON + mode_text + skills_text
+            + plugins_text + _actions_text + pb_text
+            + "\n\n【自身状态】当前基因版本 v%s，代数 Gen-%d。"
+            % (VERSION, get_gen()))
+
+
+def set_session_ctx(sid=None, home=None):
+    "Update the per-turn session identity carried into ctx."
+    _SESSION_CTX["sid"] = sid
+    _SESSION_CTX["home"] = home
+
+
+def refresh_system():
+    """重建 messages[0] 的 system 提示词。"""
+    global messages
+    system_text = build_system_prompt()
+    if messages and messages[0]["role"] == "system":
+        messages[0] = {"role": "system", "content": system_text}
+    else:
+        messages.insert(0, {"role": "system", "content": system_text})
+
+# ============================================================
+# 9. API 调用（纯 requests；_post 是唯一出口）
+# ============================================================
+_REASONING_BUF = "" # v6.2：最近一次 API 响应中的 reasoning_content
+
+
+def _make_http_session():
+    """构造带自动重试的 Session（3 次，指数退避 2s/4s/8s）。
+    仅对 429/5xx 与网络异常重试；失败时优雅降级为普通 Session。"""
+    try:
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+        s = requests.Session()
+        retry = Retry(
+            total=2,
+            backoff_factor=1,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=("POST",),
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        s.mount("http://", adapter)
+        s.mount("https://", adapter)
+        return s
+    except Exception:
+        return requests.Session()
+
+
+_HTTP_SESSION = _make_http_session()
+
+# ---- provider credential generation (task 30) ----
+_CRED_GEN = [0]
+
+def bump_cred_generation():
+    _CRED_GEN[0] += 1
+    return _CRED_GEN[0]
+
+def cred_generation():
+    return _CRED_GEN[0]
+
+def _reload_key_from_disk():
+    global API_KEY
+    if not os.path.exists(CONFIG_PATH):
+        return False
+    try:
+        with open(CONFIG_PATH, encoding='utf-8') as f:
+            cfg = json.load(f)
+        nk = str(cfg.get('api_key', '')).strip()
+    except Exception:
+        return False
+    if not nk or nk == (API_KEY or '').strip():
+        return False
+    API_KEY = nk
+    bump_cred_generation()
+    return True
+
+from zcore import provider_bridge as _pb
+_LAST_FINISH_REASON = [None]
+
+_SESSION_CAP = {}
+_SESSION_CTX = {}
+
+_POST_TIMEOUT = 120 # v6.2：300 -> 600，长思考模型不再超时
+
+
+def _normalize_system_msgs(msgs):
+    """chat completions: merge multi-system into one head entry."""
+    if not msgs:
+        return msgs
+    try:
+        from zcore import provider as _pv
+        return _pv.merge_system_chat(msgs)
+    except Exception:
+        return msgs
+
+
+def _post(msgs, temperature=0.3):
+    """底层请求：任意消息列表 → AI 回复文本（失败返回 None）。
+    v6.2：Session + Retry 自动重试（3 次，指数退避 2s/4s/8s），
+    timeout 提升到 600s；同时提取 reasoning_content 供 UI 折叠显示。"""
+    global _REASONING_BUF
+    _REASONING_BUF = ""
+    _r = _pb.try_alt_protocol(msgs, temperature)
+    if _r is not _pb.SKIP:
+        return _r
+    headers = {
+        "Authorization": "Bearer " + API_KEY.strip(),
+        "Content-Type": "application/json",
+    }
+    msgs = _normalize_system_msgs(msgs)
+    payload = {"model": MODEL, "messages": msgs,
+        "temperature": temperature, "stream": False,
+        "stream_options": {"include_usage": True}}
+    if _is_free_mode():
+        _fo = _free_proxy_call(BASE_URL, payload)
+        if _fo is None:
+            return None
+        _fc, _fr = _free_extract(_fo)
+        if _fr:
+            _REASONING_BUF = _fr
+        return _fc
+    _apply_thinking(payload)
+    _apply_thinking(payload)
+    _auth_retried = False
+    while True:
+        gen_before = _CRED_GEN[0]
+        _hdrs = dict(headers)
+        _hdrs['Authorization'] = 'Bearer ' + (API_KEY or '').strip()
+        try:
+            resp = _HTTP_SESSION.post(BASE_URL, headers=_hdrs, json=payload,
+                timeout=_POST_TIMEOUT)
+        except requests.RequestException as e:
+            print('net error: %s' % e)
+            return None
+        if resp.status_code == 401 and not _auth_retried:
+            _auth_retried = True
+            if _reload_key_from_disk() and _CRED_GEN[0] != gen_before:
+                continue
+        if resp.status_code != 200:
+            print('api error %d %s' % (resp.status_code, resp.text[:500]))
+            return None
+        break
+    try:
+        _jbody = resp.json()
+        _usg = _jbody.get("usage")
+        if isinstance(_usg, dict) and _usg.get("prompt_tokens"):
+            _LAST_USAGE[0] = _usg
+            _USAGE_STALE[0] = False
+        _fr_choice = _jbody["choices"][0]
+        msg = _fr_choice["message"]
+        _LAST_FINISH_REASON[0] = _fr_choice.get("finish_reason")
+    except Exception:
+        print("[响应解析失败]", resp.text[:500])
+        return None
+    content = msg.get("content") or ""
+    reasoning = msg.get("reasoning_content") or ""
+    _REASONING_BUF = reasoning
+    return content
+
+
+# ============================================================
+# task13: 上下文自动压缩（仅按真实 usage 触发，不估算 token）
+# ============================================================
+_COMPRESS_RATIO = 0.85
+_COMPRESS_MIN_KEEP = 6
+_SUMMARY_HEAD = '【历史摘要】'
+
+
+def _is_compress_due():
+    if _USAGE_STALE[0] or not isinstance(_LAST_USAGE[0], dict):
+        return False
+    cw = _CONTEXT_WINDOW[0]
+    if not cw:
+        cw = _load_context_window()
+        _CONTEXT_WINDOW[0] = cw
+    if not cw:
+        return False
+    used = int(_LAST_USAGE[0].get('prompt_tokens') or 0)
+    if used <= 0:
+        return False
+    return used >= int(cw * _COMPRESS_RATIO)
+
+
+def _serialized_len(msgs):
+    try:
+        return len(json.dumps(msgs, ensure_ascii=False))
+    except Exception:
+        return 0
+
+
+def _sanitize_for_summary(msgs):
+    out = []
+    for m in msgs:
+        if not isinstance(m, dict):
+            continue
+        role = m.get('role')
+        c = m.get('content')
+        if not isinstance(c, str):
+            continue
+        if '[act:' in c or '[script:' in c:
+            c = '[工具调用/脚本已省略]'
+        out.append({'role': role, 'content': c})
+    return out
+
+
+def _compress_context():
+    global messages
+    try:
+        if not _is_compress_due():
+            return False
+        msgs = messages
+        if len(msgs) <= _COMPRESS_MIN_KEEP + 2:
+            return False
+        head = msgs[:1]
+        body = msgs[1:-_COMPRESS_MIN_KEEP]
+        tail = msgs[-_COMPRESS_MIN_KEEP:]
+        if not body:
+            return False
+        before = _serialized_len(msgs)
+        san = _sanitize_for_summary(body)
+        if not san:
+            return False
+        prompt = ('把以下对话压缩成要点摘要，保留：任务目标、已完成的修改、关键文件路径、'
+            '未解决的问题、用户偏好。不要编造，不要保留工具输出细节。'
+            '只输出摘要正文，控制在 800 字内。')
+        req = [{'role': 'system', 'content': prompt},
+            {'role': 'user', 'content': json.dumps(san, ensure_ascii=False)[:60000]}]
+        saved = _LAST_FINISH_REASON[0]
+        summary = _post(req, temperature=0.2)
+        _LAST_FINISH_REASON[0] = saved
+        if not summary or not summary.strip():
+            return False
+        summary = summary.strip()
+        if summary.startswith(_SUMMARY_HEAD):
+            summary = summary[len(_SUMMARY_HEAD):].strip()
+        if not summary:
+            return False
+        new_msgs = list(head)
+        new_msgs.append({'role': 'assistant', 'content': _SUMMARY_HEAD + NL + summary})
+        new_msgs.extend(tail)
+        after = _serialized_len(new_msgs)
+        if after <= 0 or after >= before:
+            print('[压缩] 摘要未缩小(%d -> %d)，保留原文' % (before, after))
+            return False
+        messages = new_msgs
+        _USAGE_STALE[0] = True
+        _LAST_USAGE[0] = None
+        try:
+            append_meta_log('compress', {'before': before, 'after': after})
+        except Exception:
+            pass
+        print('[压缩] 上下文已压缩 %d -> %d 字节' % (before, after))
+        return True
+    except Exception as e:
+        print('[压缩] 跳过: %s' % e)
+        return False
+
+def call_api():
+    """主对话调用：用全局 messages 请求 AI 回复。
+    v6.2：若响应含 reasoning_content，先打印特殊标记块供 UI 折叠显示，
+    再返回正文；标记块不会污染对话历史（history 只存 reply 正文）。"""
+    content = _post_stream(messages)
+    if content is None:
+        return None
+    if _REASONING_BUF:
+        print("===REASONING_BEGIN===" + _REASONING_BUF + "===REASONING_END===")
+    return content
+
+# ============================================================
+# 10. 其余输出解析
+# ============================================================
+def extract_reflection(text: str) -> str:
+    m = re.search(REFLECT_RE, text, re.S)
+    return m.group(1).strip() if m else ""
+
+
+def render_todos():
+    if not TODOS:
+        return
+    print("\n╭─ 待办清单 ─────────────────────")
+    for done, task in TODOS:
+        print("│ %s %s" % ("[x]" if done else "[ ]", task))
+    print("╰────────────────────────────────")
+
+
+def _display_body(text):
+    """显示美化函数体：进化/脚本剥离 + 标签美化，返回纯文本。
+    v6.1 从 display_reply 拆出，供字面区分段渲染复用。"""
+    text = strip_evolution(text)
+    try:
+        blocks = _script_blocks(text)
+    except ValueError:
+        blocks = []
+    if blocks:
+        text = _without_scripts(text, blocks)
+    text = re.sub(ACCEPT_RE, '\n[验收合同已登记，交由验收引擎]', text, flags=re.S)
+    cleaned = re.sub(DESC_RE, r'（目的：\1）', text, flags=re.S)
+    cleaned = re.sub(r"\[todo\](.*?)\[/todo\]", '\n[待办清单见下方]',
+                     cleaned, flags=re.S)
+    cleaned = re.sub(r"\[tododone\](.*?)\[/tododone\]", r'[已完成] \1', cleaned)
+    cleaned = re.sub(PLUGIN_CALL_RE, r'→ 调用插件 \1', cleaned)
+    cleaned = re.sub(REFLECT_RE, r'\n【经验反思】\1\n（通过验收后才沉淀）',
+                     cleaned, flags=re.S)
+    cleaned = re.sub(PROBLEM_RE, r'\n【登记新问题】\1', cleaned, flags=re.S)
+    cleaned = re.sub(IDENTITY_RE, r'\n【身份重写】\1', cleaned, flags=re.S)
+    return cleaned.strip()
+
+
+def display_reply(text):
+    """美化展示：rich 面板 + Markdown 渲染，rich 缺失时降级纯文本。
+    v6.1 字面区感知：先 mask_literal（美化在空格化文本上进行，字面
+    内容零误伤——这是「不写字面方括号」禁令的正式解除），再把字面区
+    按区间还原为三反引号代码块展示给用户；未闭合字面区同样围栏到末尾。"""
+    masked, zones, unclosed = mask_literal(text)
+    if not zones and unclosed < 0:
+        cleaned = _display_body(masked)
+    else:
+        fence = chr(96) * 3
+        spans = list(zones)
+        if unclosed >= 0:
+            spans.append((unclosed, len(text),
+                          text[unclosed + len("[literal]"):]))
+        parts, pos = [], 0
+        for s, e, content in spans:
+            parts.append(_display_body(masked[pos:s]))
+            body = (content or "").strip("\n")
+            parts.append("\n" + fence + "\n" + body + "\n" + fence + "\n")
+            pos = e
+        parts.append(_display_body(masked[pos:]))
+        cleaned = "\n".join(p for p in parts if p)
+    try:
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.markdown import Markdown
+        console = Console()
+        console.print(Panel(Markdown(cleaned), title="Z-Agent",
+                            title_align="left", border_style="cyan",
+                            padding=(0, 1)))
+    except ImportError:
+        print("\n" + "─" * 46)
+        print("Z-Agent> " + cleaned)
+        print("─" * 46)
+
+# ============================================================
+# 11. 认知引擎（慢思考 / 观察者）
+# ============================================================
+def deep_think(task: str):
+    """慢思考辩论：立论 → (批判 → 重构) x THINK_ROUNDS 轮。
+    内心独白不进入主对话历史，只有最终结论进入执行通道。"""
+    thread = [
+        {"role": "system", "content": THINK_SYS},
+        {"role": "user", "content": "任务：%s\n请给出你的深度分析与初步方案。" % task},
+    ]
+    current = _post(thread)
+    if current is None:
+        return None
+    try:
+        _STREAM_BUF.append(("reason", chr(10) + "[" + chr(31435) + chr(35770) + "] " + (current or "") + chr(10)))
+    except Exception:
+        pass
+    try:
+        _STREAM_BUF.append(("reason", chr(10) + "[立论] " + (current or "") + chr(10)))
+    except Exception:
+        pass
+    thread.append({"role": "assistant", "content": current})
+    print("[慢思考] 立论完成，进入 %d 轮批判-重构……" % THINK_ROUNDS)
+    for i in range(THINK_ROUNDS):
+        thread.append({"role": "user", "content": CRITIC_ASK})
+        critique = _post(thread)
+        if critique is None:
+            break
+        try:
+            _STREAM_BUF.append(("reason", chr(10) + "[" + chr(25209) + chr(21028) + " %d/%d] " % (i+1, THINK_ROUNDS) + (critique or "") + chr(10)))
+        except Exception:
+            pass
+        try:
+            _STREAM_BUF.append(("reason", chr(10) + "[批判 %d/%d] " % (i+1, THINK_ROUNDS) + (critique or "") + chr(10)))
+        except Exception:
+            pass
+        thread.append({"role": "assistant", "content": critique})
+        ask = FINAL_ASK if i == THINK_ROUNDS - 1 else SYNTH_ASK
+        thread.append({"role": "user", "content": ask})
+        merged = _post(thread)
+        if merged is None:
+            break
+        try:
+            _STREAM_BUF.append(("reason", chr(10) + "[" + chr(37325) + chr(26500) + " %d/%d] " % (i+1, THINK_ROUNDS) + (merged or "") + chr(10)))
+        except Exception:
+            pass
+        try:
+            _STREAM_BUF.append(("reason", chr(10) + "[重构 %d/%d] " % (i+1, THINK_ROUNDS) + (merged or "") + chr(10)))
+        except Exception:
+            pass
+        current = merged
+        thread.append({"role": "assistant", "content": merged})
+        if len(thread) > 24:
+            del thread[0:len(thread) - 24]
+        print("[慢思考] 第 %d/%d 轮重构完成。" % (i + 1, THINK_ROUNDS))
+    return current
+
+
+def observer_review(rc, err, desc):
+    """观察者进程：独立调用，诊断执行者为何卡壳，返回纠偏策略文本。"""
+    print("\n[观察者] 触发监督进程，诊断卡壳原因……")
+    context = "\n".join("[%s] %s" % (m["role"], m["content"][:400])
+                        for m in messages[-8:])
+    req = [
+        {"role": "system", "content": OBSERVER_SYS},
+        {"role": "user",
+         "content": ("执行者连续失败。失败脚本目的：%s\n退出码：%d\n"
+                     "最新错误：\n%s\n\n最近对话：\n%s\n\n"
+                     "请诊断根因并给出纠偏策略。"
+                     % (desc or "(无)", rc, clip_output(err)[:800], context))},
+    ]
+    return _post(req)
+
+# ============================================================
+# 12. 子进程执行（进程组隔离 / 超时强杀 / 环境剥离）
+# ============================================================
+
+
+
+
+# ============================================================
+# 审批门（后端持久化约束）
+# 界面层 confirm 只是体验层，真正的执行许可落在这里。
+# 每次 confirm 成功后写一条 approval 记录；执行入口先 consume，
+# 没有合法记录就拒绝——即使有人绕过界面直接调执行函数也一样。
+# ============================================================
+_APPROVALS_DIR = os.path.join(MIND_DIR, "approvals")
+_APPROVAL_TTL = 300
+
+
+def _approval_key(action, desc):
+    import hashlib
+    raw = str(action).encode("utf-8", "ignore")
+    return hashlib.sha1(raw).hexdigest()[:16]
+
+
+def _approval_issue(action, desc):
+    """confirm 通过后写一条批准记录，返回 key。"""
+    try:
+        os.makedirs(_APPROVALS_DIR, exist_ok=True)
+        k = _approval_key(action, desc)
+        rec = {"key": k, "action": str(action), "desc": (desc or "")[:200],
+             "ts": int(time.time()), "used": False}
+        p = os.path.join(_APPROVALS_DIR, k + ".json")
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(rec, f, ensure_ascii=False)
+        append_meta_log("approval-issue", {"key": k, "action": str(action)})
+        return k
+    except Exception as e:
+        append_meta_log("approval-issue-fail", {"err": str(e)})
+        return ""
+
+
+def _approval_consume(action, desc):
+    """执行入口调用：检查并消费一次批准，返回 (ok, reason)。"""
+    k = _approval_key(action, desc)
+    p = os.path.join(_APPROVALS_DIR, k + ".json")
+    if not os.path.exists(p):
+        append_meta_log("approval-miss", {"key": k, "action": str(action)})
+        return False, "缺少后端审批记录（key=%s）" % k
+    try:
+        with open(p, encoding="utf-8") as f:
+            rec = json.load(f)
+    except Exception as e:
+        return False, "审批记录损坏: %r" % e
+    if rec.get("used"):
+        return False, "该审批已被使用（key=%s）" % k
+    age = int(time.time()) - int(rec.get("ts", 0))
+    if age > _APPROVAL_TTL:
+        return False, "审批已过期（%ds > %ds）" % (age, _APPROVAL_TTL)
+    rec["used"] = True
+    rec["used_at"] = int(time.time())
+    try:
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(rec, f, ensure_ascii=False)
+    except Exception:
+        pass
+    append_meta_log("approval-consume", {"key": k, "action": str(action)})
+    return True, ""
+
+
+# ============================================================
+# 逐轮质量判定（循环 / 空回复 / 注入 / 偏离任务）
+# ============================================================
+_QUALITY_STATE = {"last_sig": "", "same_count": 0}
+
+
+def quality_gate(round_no, reply, control, scripts, plugin_calls):
+    """每轮检查一次。返回 (ok, reason)，ok=False 时宿主追加纠偏反馈。"""
+    import hashlib
+    r = (reply or "").strip()
+    if len(r) < 8:
+        append_meta_log("quality-gate", {"reason": "empty", "round": round_no})
+        return False, "回复过短（%d 字符），请确认任务状态并继续。" % len(r)
+    sig_src = (control or "")[:500] + "|" + str(len(scripts)) + "|" + str(len(plugin_calls))
+    sig = hashlib.md5(sig_src.encode("utf-8", "ignore")).hexdigest()[:12]
+    if sig == _QUALITY_STATE["last_sig"]:
+        _QUALITY_STATE["same_count"] += 1
+    else:
+        _QUALITY_STATE["last_sig"] = sig
+        _QUALITY_STATE["same_count"] = 1
+    if _QUALITY_STATE["same_count"] >= 3:
+        append_meta_log("quality-gate", {"reason": "loop", "round": round_no, "sig": sig})
+        _QUALITY_STATE["same_count"] = 0
+        return False, "连续 3 轮输出高度相似，疑似循环。请换一个思路，或明确告知用户卡在哪里。"
+    low = r.lower()
+    for kw in ("忽略以上", "ignore previous", "ignore above", "越狱", "jailbreak"):
+        if kw in low:
+            append_meta_log("quality-gate", {"reason": "inject", "kw": kw, "round": round_no})
+            return False, "回复中出现可疑指令注入样式的内容，请围绕用户任务回答。"
+    if ACTIVE_CONTRACT and ACTIVE_CONTRACT.get("status") == "open" and not scripts and not plugin_calls:
+        marks = ("已完成", "完成", "无法", "卡在", "失败", "做不到")
+        if not any(w in r for w in marks):
+            append_meta_log("quality-gate", {"reason": "off-task", "round": round_no})
+            return False, "当前有未完成的验收合同，但回复既没有脚本也没有说明进展。请继续工作或明确说明卡点。"
+    return True, ""
+
+
+def _shell_namespace():
+    """给 [script:] 脚本注入 Linux shell 便捷函数（proot + Termux bootstrap）。
+    AI 在脚本里可直接写 shell("ls /sdcard")，无需 import。"""
+    def _exec(cmd, timeout=60):
+        try:
+            import android_api as _aa
+            r = _aa.shell_exec(str(cmd), int(timeout))
+        except Exception as e:
+            return "[shell 调用失败] " + repr(e)
+        if not isinstance(r, dict):
+            return str(r)
+        if r.get("timeout"):
+            return "[超时] " + str(r.get("stdout", "")) + str(r.get("stderr", ""))
+        out = r.get("stdout") or ""
+        err = r.get("stderr") or ""
+        if err:
+            out = out + (chr(10) + "[stderr] " + err if out else err)
+        return out
+
+    def _sh(cmd, timeout=60):
+        """shell 的别名，返回 (退出码, 输出) 元组。"""
+        try:
+            import android_api as _aa
+            r = _aa.shell_exec(str(cmd), int(timeout))
+            if isinstance(r, dict):
+                return (int(r.get("code", -1) or -1), _exec(cmd, timeout))
+        except Exception:
+            pass
+        return (-1, _exec(cmd, timeout))
+
+    return {
+        "shell": _exec,
+        "sh": _sh,
+        "linux": _exec,
+    }
+
+
+def _run_inproc(code, timeout):
+    """APK/Chaquopy 回退：进程内执行脚本（无子进程隔离）。
+    Chaquopy 无法 spawn Python 子进程（内嵌解释器，非独立可执行），
+    脚本执行降级为线程 + 超时放弃。诚实边界：
+      - 无进程隔离：脚本与宿主共享进程状态（全局污染可能）
+      - 超时无法强杀线程：只能放弃等待（线程泄漏由系统回收）
+    Termux 环境不走此路径（ZAGENT_NO_SUBPROCESS 未设时保持子进程模式）。
+    返回 (退出码, stdout, stderr, 是否超时)。"""
+    _gate.check_or_raise("script.run", {"site": "inproc"})
+    import concurrent.futures
+    import io
+    import contextlib
+    buf_out, buf_err = io.StringIO(), io.StringIO()
+    done = {"rc": 0}
+
+    def _job():
+        try:
+            with contextlib.redirect_stdout(buf_out), \
+                    contextlib.redirect_stderr(buf_err):
+                _ns = dict(globals())
+                _ns.update(_shell_namespace())
+                exec(compile(code, "<app-script>", "exec"), _ns)
+        except BaseException as e:            # noqa: BLE001 脚本任意异常都算它自己的
+            buf_err.write("\n%s: %s" % (type(e).__name__, e))
+            done["rc"] = 1
+
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        fut = pool.submit(_job)
+        try:
+            fut.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            return 124, buf_out.getvalue(), buf_err.getvalue(), True
+        except Exception:
+            return done["rc"], buf_out.getvalue(), buf_err.getvalue(), False
+        return done["rc"], buf_out.getvalue(), buf_err.getvalue(), False
+    finally:
+        pool.shutdown(wait=False)
+
+
+def _run_process(argv, timeout, env=None):
+    """运行子进程：输出落盘（不受管道缓冲限制），超时杀整组。
+    返回 (退出码, stdout, stderr, 是否超时)。
+    APK 模式（ZAGENT_NO_SUBPROCESS=1）：[python, -c, code] 请求降级为
+    进程内执行（见 _run_inproc 文档字符串的诚实边界）。"""
+    _gate.check_or_raise("subprocess.run", {"argv0": argv[0] if argv else ""})
+    if (os.environ.get("ZAGENT_NO_SUBPROCESS") == "1"
+            and len(argv) >= 3 and argv[0] == sys.executable
+            and argv[1] == "-c"):
+        return _run_inproc(argv[2], timeout)
+    proc = None
+    out_file = tempfile.TemporaryFile()
+    err_file = tempfile.TemporaryFile()
+    try:
+        try:
+            proc = subprocess.Popen(
+                argv,
+                stdin=subprocess.DEVNULL,      # 防止脚本/插件 input() 卡死终端
+                stdout=out_file,
+                stderr=err_file,
+                env=env if env is not None else safe_child_env(),
+                start_new_session=(os.name == "posix"),
+            )
+        except OSError as e:
+            rc = 127 if (argv and argv[0].startswith(chr(47)) and not os.path.exists(argv[0])) else -1
+            err = zproc.annotate(rc, str(e))
+            return rc, "", err, False
+        timed_out = False
+        try:
+            rc = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            _kill_process_tree(proc)
+            try:
+                rc = proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                rc = -9
+        out_file.seek(0)
+        err_file.seek(0)
+        out = out_file.read().decode("utf-8", "replace").rstrip()
+        err = err_file.read().decode("utf-8", "replace").rstrip()
+        err = zproc.annotate(rc, err, timed_out)
+        return rc, out, err, timed_out
+    finally:
+        out_file.close()
+        err_file.close()
+        if proc is not None and proc.poll() is None:
+            _kill_process_tree(proc)
+
+
+def _impl_run_python_code(code: str):
+    budget_tick('proc')
+    with zlim.guard():
+        rc, out, err, timed_out = _run_process(
+            [sys.executable, "-c", code], EXEC_TIMEOUT)
+    if timed_out:
+        return 124, clip_output(out), ("执行超时（>%d 秒），进程组已被强制终止。"
+            % EXEC_TIMEOUT)
+    return rc, clip_output(out), clip_output(err)
+
+
+def run_python_code(code: str):
+    if _acts is None or _acts.REGISTRY.get("script.run") is None:
+        return _impl_run_python_code(code)
+    r = _acts.execute("script.run", {"code": code}, ctx=_act_ctx())
+    if r.get("ok"):
+        d = r.get("data") or {}
+        return int(d.get("rc") or 0), d.get("out") or "", d.get("err") or ""
+    return 1, "", str(r.get("err") or "script.run failed")
+# ============================================================
+# 13. 确认与展示
+# ============================================================
+def confirm_execute(desc: str) -> bool:
+    global AUTO_EXECUTE
+    _cap = _SESSION_CAP or {}
+    if _cap.get("auto") is False:
+        return False
+    print("\n" + "─" * 46)
+    print("Z-Agent 请求执行一段脚本：%s" % (desc or "(无描述)"))
+    print("─" * 46)
+    if AUTO_EXECUTE:
+        print("[AUTO_EXECUTE=True] 自动执行中……")
+        _approval_issue("script", desc)
+        return True
+    while True:
+        try:
+            ans = input("允许执行？(y=允许 / n=拒绝 / a=本次会话全自动) > ").strip().lower()
+        except (EOFError, OSError, RuntimeError):
+            print("[APK] 无标准输入，视为界面层已确认。")
+            _approval_issue("script", desc)
+            return True
+        if ans in ("y", "yes"):
+            _approval_issue("script", desc)
+            return True
+        if ans == "a":
+            AUTO_EXECUTE = True
+            print("已切换为本次会话自动执行。")
+            _approval_issue("script", desc)
+            return True
+        if ans in ("n", "no"):
+            return False
+        print("请输入 y / n / a")
+
+
+def confirm_evolve(reason: str) -> bool:
+    """进化确认（改自身源码是最高权限操作，默认要 y）。"""
+    global AUTO_EXECUTE
+    print("\n" + "█" * 46)
+    print("Z-Agent 请求【进化自身源码】：%s" % (reason or "(无说明)"))
+    print("将经过 结构→版本→编译→AST→冒烟→影子沙箱→备份 多重护栏后才替换。")
+    print("█" * 46)
+    if AUTO_EXECUTE:
+        print("[AUTO_EXECUTE=True] 自动进化中……")
+        _approval_issue("evolve", reason)
+        return True
+    while True:
+        try:
+            ans = input("允许进化？ > ").strip().lower()
+        except (EOFError, OSError, RuntimeError):
+            print("[APK] 无标准输入，视为界面层已确认。")
+            _approval_issue("evolve", reason)
+            return True
+        if ans in ("y", "yes"):
+            _approval_issue("evolve", reason)
+            return True
+        if ans == "a":
+            AUTO_EXECUTE = True
+            print("已切换为本次会话自动执行（含进化）。")
+            _approval_issue("evolve", reason)
+            return True
+        if ans in ("n", "no"):
+            return False
+        print("请输入 y / n / a")
+
+
+
+# ============================================================
+# 14. /save：成功脚本 → 插件
+# ============================================================
+def save_plugin(name=None):
+    global LAST_SCRIPT, LAST_DESC
+    if not LAST_SCRIPT:
+        print("当前没有「成功执行过」的脚本（/save 只保存退出码 0 的代码）。")
+        return
+    if not name:
+        name = "skill_" + time.strftime("%Y%m%d_%H%M%S")
+    name = re.sub(r'[^\w\-]+', '_', name).strip('_') or "skill"
+    path = os.path.join(PLUGINS_DIR, name + ".py")
+    desc = (LAST_DESC or "用户通过 /save 保存的自动化技能").replace('\n', ' ')
+    template = (
+        "# @name: %(name)s\n"
+        "# @desc: %(desc)s\n"
+        "# 由 rain.py 的 /save 自动生成，AI 可通过 [plugin:%(name)s] 调用\n\n"
+        "def run():\n"
+        "    import subprocess, sys\n"
+        "    code = %(code)r\n"
+        "    try:\n"
+        "        proc = subprocess.run([sys.executable, \"-c\", code],\n"
+        "                              capture_output=True, timeout=300)\n"
+        "    except subprocess.TimeoutExpired:\n"
+        "        return \"插件执行超时(>300秒)\"\n"
+        "    result = (proc.stdout or b\"\").decode(\"utf-8\", \"replace\")\n"
+        "    err = (proc.stderr or b\"\").decode(\"utf-8\", \"replace\")\n"
+        "    if err.strip():\n"
+        "        result += \"\\n[STDERR]\\n\" + err\n"
+        "    return result\n\n"
+        "if __name__ == \"__main__\":\n"
+        "    print(run())\n"
+    ) % {"name": name, "desc": desc, "code": LAST_SCRIPT}
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(template)
+    print("已保存为插件：%s" % path)
+    refresh_system()
+    print("之后 AI 可直接用 [plugin:%s] 调用。" % name)
+
+# ============================================================
+# 15. Agent 主循环（P0 已修：反馈缓冲先初始化 → 合同解析 → 执行）
+# ============================================================
+# ===== 补丁模式解析（由 patch_rain.py 注入）=====
+
+
+def _impl_run_patch_tag(text, base_dir=None, dry_run=False):
+    import os as _os
+    import shutil as _shutil
+    import py_compile as _pc
+    import datetime as _dt
+    items = apply_patch_tag(text, base_dir)
+    log = []
+    for target, body in items:
+        d = _os.path.dirname(target) or '.'
+        if not _os.path.isdir(d):
+            _os.makedirs(d, exist_ok=True)
+        backup = None
+        if _os.path.exists(target):
+            ts = _dt.datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup = target + '.bak_' + ts
+            _shutil.copy2(target, backup)
+        if dry_run:
+            log.append('DRY ' + target)
+            continue
+        with open(target, 'w', encoding='utf-8') as f:
+            f.write(body)
+        if target.endswith('.py'):
+            try:
+                _pc.compile(target, doraise=True)
+            except Exception as ex:
+                if backup:
+                    _shutil.copy2(backup, target)
+                log.append('FAIL ' + target + ' -> ' + str(ex) + ' (已回滚)')
+                continue
+        log.append('OK ' + target)
+    return log
+
+
+def run_patch_tag(text, base_dir=None, dry_run=False):
+    if _acts is None or _acts.REGISTRY.get("patch.apply") is None:
+        return _impl_run_patch_tag(text, base_dir, dry_run)
+    if base_dir or dry_run:
+        return _impl_run_patch_tag(text, base_dir, dry_run)
+    r = _acts.execute("patch.apply", {"text": text}, ctx=_act_ctx())
+    body = str(r.get("data") or r.get("err") or "")
+    return [x for x in body.split(chr(10)) if x]
+# ===== 补丁模式解析结束 =====
+
+
+
+
+def agent_loop(first_reply=None):
+    """一轮完整循环。返回 "ok"/"verified"/"failed"/"api_error"
+    （供 /idle 决定移除/回队任务）。first_reply 用于把 /think 的结论
+    直接送进执行通道。
+    v4.3 P0 修复：feedbacks / error_feedbacks 在任何使用之前初始化
+    （v4.2 在验收合同循环中先 append 后初始化 → UnboundLocalError
+    → 宿主崩溃。函数内赋值使名称局部化，这是 Python 作用域铁律）。"""
+    global LAST_SCRIPT, LAST_DESC, ACTIVE_CONTRACT
+    self_repair_count = 0     # 脚本连续失败计数
+    evolve_fails = 0          # 进化连续失败计数
+
+    _round = -1
+    _empty_rounds = 0
+    while True:
+        _round += 1
+        if _STREAM_STOP[0]:
+            print('(user stopped)')
+            return 'stopped'
+        _bhit, _brep = budget_tick('llm')
+        if _brep: print(_brep)
+        if _bhit:
+            append_meta_log("budget-stop", {"round": _round, "rep": _brep})
+            print("（预算超限，本轮中止）")
+            return "budget_hit"
+        if first_reply is not None:
+            reply = first_reply
+            first_reply = None
+        else:
+            # task13: 上一轮工具批次已结束，按真实 usage 判断是否压缩
+            _compress_context()
+            reply = call_api()
+            if reply is None:
+                return "api_error"
+            if _LAST_FINISH_REASON[0] == "length":
+                messages.append({"role": "assistant", "content": reply})
+                _trunc = "length truncated"
+                messages.append({"role": "user", "content": _trunc})
+                _empty_rounds += 1
+                if _empty_rounds >= 2:
+                    return "length_truncated"
+                continue
+
+        messages.append({"role": "assistant", "content": reply})
+
+        # ---- 解析：字面区屏蔽 → 进化块 → 脚本块 → 控制文本 ----
+        # v6.1：一切解析作用于 masked（字面区等长空格化）；显示与存档
+        # 用原文——AI 终于可以在正文里安全讨论标签协议本身。
+        masked, _zones, _unclosed = mask_literal(reply)
+
+
+        # ---- unified act protocol v2 ----
+        act_results, act_errors = [], []
+        if _acts is not None and "[act:" in masked:
+            try:
+                _acts.execute_text(masked, ctx=_act_ctx())
+            except SystemExit:
+                raise
+            except Exception as _ae:
+                act_errors = [{"err": "crashed: " + repr(_ae)}]
+        evolutions, evo_error = evolution_status(masked)
+        text = strip_evolution(masked) if (evolutions or evo_error) else masked
+        script_error = None
+        try:
+            blocks = _script_blocks(text)
+        except ValueError as e:
+            blocks = []
+            script_error = str(e)
+        scripts = [(code, desc) for _s, _e, code, desc in blocks if code]
+        control = _without_scripts(text, blocks) if blocks else text
+
+        display_reply(reply)
+        update_todos(control)
+        render_todos()
+
+        # ---- 反馈缓冲初始化（P0：必须在任何使用之前）----
+        feedbacks = []
+        error_feedbacks = []
+        if act_results:
+            feedbacks.append(chr(10).join(["auto", _acts.format_results(act_results)]))
+        for _ae in act_errors:
+            error_feedbacks.append(chr(10).join(["auto", str(_ae.get("err", "unknown"))]))
+        _qok, _qwhy = quality_gate(_round, reply, control, scripts, [])
+        if not _qok:
+            feedbacks.append("【系统自动回传】" + _qwhy)
+        if _unclosed >= 0:
+            # v6.1：未闭合字面区已按安全侧屏蔽到末尾——AI 必须知情，
+            # 否则它会困惑「我明明输出了脚本为何没执行」。
+            feedbacks.append(
+                "【系统自动回传】检测到未闭合的字面区：[literal] 缺少 "
+                "[/literal]，从开标记起到回复末尾已按字面处理（区内标签"
+                "未解析、脚本未执行）。请补齐闭合标签，把需要执行的"
+                "[script:] 放到字面区之外后重发。")
+        _patch_items = apply_patch_tag(control)
+
+        # ---- 心智：好奇心登记 + 身份重写（仅脚本外文本）----
+        for p in extract_problems(control):
+            save_problem(p)
+        ident = extract_identity(control)
+        if ident:
+            save_identity(ident)
+
+        # ---- 【P0 修复点】反馈缓冲必须在任何使用之前初始化 ----
+
+        # ---- 验收合同：注册 / 追加收紧 / 锁定期拒绝 ----
+        accept_registered = False
+        for clause in parse_accept_blocks(control):
+            base = None
+            if ACTIVE_CONTRACT and ACTIVE_CONTRACT.get("status") == "open":
+                base = ACTIVE_CONTRACT
+            if base is not None and base.get("locked"):
+                error_feedbacks.append(
+                    "【系统自动回传】验收合同已锁定，禁止修改裁判。"
+                    "请修复产物本身；若认为检查标准有误，用文字向用户说明，"
+                    "由用户裁决。")
+                continue
+            c2, err2 = register_contract(clause, CURRENT_TASK, append_to=base)
+            if err2:
+                error_feedbacks.append("【系统自动回传】" + err2)
+            else:
+                ACTIVE_CONTRACT = c2
+                accept_registered = True
+
+        plugin_calls = []
+        for _pc in re.findall(PLUGIN_CALL_RE, control):
+            _pcs = _pc.strip().split(None, 1)
+            pid = _pcs[0]
+            _arg = _pcs[1] if len(_pcs) > 1 else ""
+            if pid.endswith(".py"):
+                pid = pid[:-3]
+            if pid and (pid, _arg) not in plugin_calls:
+                plugin_calls.append((pid, _arg))
+
+        if evo_error:
+            error_feedbacks.append(
+                "【系统自动回传】%s。进化块已整体剥离（防止其内部代码被误执行）。"
+                "请重新输出完整的 [evolve:原因]...[/evolve] 源码。" % evo_error)
+        if script_error:
+            error_feedbacks.append(
+                "【系统自动回传】%s。请补全结束标签后重新输出脚本。" % script_error)
+
+        if evolutions:
+            # ---- 进化请求优先处理 ----
+            reason, source = evolutions[0]
+            if evolve_fails >= MAX_EVOLVE_RETRY:
+                feedbacks.append(
+                    "【系统自动回传】进化重试已达上限（%d 次），本次不再接受进化。"
+                    "请改用文字说明改进建议，交给用户手动修改。" % MAX_EVOLVE_RETRY)
+            elif not confirm_evolve(reason):
+                feedbacks.append(
+                    "【系统自动回传】用户拒绝本次进化。请解释你的改进思路，"
+                    "或继续用现有能力完成任务，不要再输出 [evolve:]。")
+            else:
+                ok, msg = apply_evolution(source, reason)
+                if ok:
+                    feedbacks.append("【系统自动回传】" + msg)
+                else:
+                    evolve_fails += 1
+                    tip = ("（进化重试第 %d/%d 次）"
+                           % (evolve_fails, MAX_EVOLVE_RETRY)
+                           if evolve_fails < MAX_EVOLVE_RETRY else "（已达上限）")
+                    feedbacks.append(
+                        "【系统自动回传】进化验证失败 %s：%s\n"
+                        "旧基因完好无损。请分析失败原因，修正后重新输出完整的 "
+                        "[evolve:原因]...[/evolve] 源码；若无法修复请改用文字说明。"
+                        % (tip, msg))
+        elif _patch_items:
+            # ---- 补丁模式执行（v4.5：与脚本/插件并列，统一确认+模式约束）----
+            if MODE == "plan":
+                feedbacks.append(
+                    "【系统自动回传】当前处于 /plan 规划模式，宿主已硬性拒绝"
+                    "执行任何补丁/脚本/插件。请只输出文字与 [todo] 规划；"
+                    "如需执行请提示用户输入 /build。")
+            elif self_repair_count >= MAX_SELF_REPAIR:
+                feedbacks.append(
+                    "【系统自动回传】自我修复次数已达上限（%d/%d），"
+                    "补丁不再执行。请停止输出代码，直接总结失败原因与手动建议。"
+                    % (self_repair_count, MAX_SELF_REPAIR))
+            elif not confirm_execute("执行 %d 个补丁标签（写入目标文件）"
+                                     % len(_patch_items)):
+                feedbacks.append(
+                    "【系统自动回传】用户拒绝执行补丁。请解释原因或改用其他方式。")
+            else:
+                print("\n[补丁] 执行 %d 个补丁标签……" % len(_patch_items))
+                _patch_log = run_patch_tag(control)
+                for _line in _patch_log:
+                    print("  " + _line)
+                _patch_failed = any(l.startswith("FAIL") for l in _patch_log)
+                if _patch_failed:
+                    self_repair_count += 1
+                    if self_repair_count >= MAX_SELF_REPAIR:
+                        note = ("补丁执行失败，自我修复次数已达上限（%d/%d）。"
+                                "请停止输出代码，直接总结。"
+                                % (self_repair_count, MAX_SELF_REPAIR))
+                    else:
+                        note = ("补丁执行失败（自我修复第 %d/%d 次）。"
+                                "不要询问用户、不要道歉，立刻分析报错根因，"
+                                "修正后重新输出补丁或脚本。"
+                                % (self_repair_count, MAX_SELF_REPAIR))
+                else:
+                    self_repair_count = 0
+                    note = ("补丁执行成功。任务若已完成，请文字总结并停止输出"
+                            "代码（有合同时宿主将执行验收）；否则继续下一步。")
+                feedbacks.append(
+                    "【系统自动回传】补丁执行结果：\n"
+                    + "\n".join(_patch_log) + "\n" + note)
+        elif scripts or plugin_calls:
+            if MODE == "plan":
+                # ---- /plan 硬约束：宿主直接拒绝执行 ----
+                feedbacks.append(
+                    "【系统自动回传】当前处于 /plan 规划模式，宿主已硬性拒绝执行"
+                    "任何脚本/插件（这是模式约束，不是提示词建议）。请只输出文字"
+                    "与 [todo] 规划；如需执行请提示用户输入 /build。")
+            else:
+                # ---- 常规执行：失败即停 + 修复上限 + 观察者 ----
+                rejected = False
+                batch_failed = False
+                for idx, (code, desc) in enumerate(scripts):
+                    if _STREAM_STOP[0]:
+                        feedbacks.append("【系统已停止】用户中止，本批剩余脚本不再执行。")
+                        break
+                    _step_t0 = time.time()
+                    _step_label = (desc or ("script %d" % (idx + 1))).strip()[:80]
+                    try:
+                        emit_step(idx + 1, len(scripts), _step_label, "run")
+                    except Exception:
+                        pass
+                    if self_repair_count >= MAX_SELF_REPAIR:
+                        feedbacks.append(
+                            "【系统自动回传】自我修复次数已达上限（%d/%d），"
+                            "本批剩余脚本不再执行。请停止输出代码，直接总结失败"
+                            "原因与手动建议。"
+                            % (self_repair_count, MAX_SELF_REPAIR))
+                        break
+                    if desc:
+                        LAST_DESC = desc
+                    if not confirm_execute(desc):
+                        rejected = True
+                        feedbacks.append(
+                            "【系统自动回传】用户拒绝执行该脚本。"
+                            "请解释原因、给出修改方案，或改用其他方式完成。")
+                        break
+                    rc, out, err = run_python_code(code)
+                    _step_ms = int((time.time() - _step_t0) * 1000)
+                    try:
+                        emit_step(idx + 1, len(scripts), _step_label,
+                                  "ok" if rc == 0 else "err", _step_ms)
+                    except Exception:
+                        pass
+                    show_exec_result(code, rc, out, err)
+                    if rc == 0:
+                        LAST_SCRIPT = code
+                        self_repair_count = 0
+                        if out.strip():
+                            auto_notify("Z-Agent", "脚本执行成功")
+                            note = ("脚本执行成功。任务若已完成，请文字总结并停止"
+                                    "输出 [script:]（有合同时宿主将执行验收）；"
+                                    "否则继续下一步。")
+                        else:
+                            note = ("脚本退出码 0 但没有任何输出。请确认它确实完成"
+                                    "了预期工作（若涉及写文件等副作用，请用代码"
+                                    "验证后再继续）。")
+                    else:
+                        self_repair_count += 1
+                        if self_repair_count >= MAX_SELF_REPAIR:
+                            note = ("脚本执行失败，自我修复次数已达上限（%d/%d）。"
+                                    "请停止输出代码，直接总结。"
+                                    % (self_repair_count, MAX_SELF_REPAIR))
+                        else:
+                            note = ("脚本执行失败（自我修复第 %d/%d 次）。"
+                                    "不要询问用户、不要道歉，立刻分析报错根因，"
+                                    "修正后重新输出 [script:]。"
+                                    % (self_repair_count, MAX_SELF_REPAIR))
+                    feedbacks.append(
+                        "【系统自动回传】\n"
+                        + ("[desc]%s[/desc]\n" % desc if desc else "")
+                        + "脚本执行结束，退出码 %d。\n" % rc
+                        + "--- 标准输出 ---\n%s\n" % (out or "(空)")
+                        + "--- 标准错误 ---\n%s\n" % (err or "(空)")
+                        + note)
+                    if rc != 0:
+                        batch_failed = True
+                        if self_repair_count == OBSERVER_AFTER:
+                            verdict = observer_review(rc, err, desc)
+                            if verdict:
+                                feedbacks.append("【观察者纠偏】\n" + verdict)
+                        remaining = len(scripts) - idx - 1
+                        if remaining:
+                            feedbacks.append(
+                                "【系统自动回传】失败即停：本回复中剩余 %d 段脚本"
+                                "未执行，避免后续操作建立在错误结果之上。修复后"
+                                "可重新输出它们。" % remaining)
+                        break
+                if not rejected and not batch_failed:
+                    for pid, _arg in plugin_calls:
+                        if _STREAM_STOP[0]:
+                            break
+                        if not confirm_execute("调用插件 %s（隔离子进程）" % pid):
+                            rejected = True
+                            feedbacks.append(
+                                "【系统自动回传】用户拒绝调用插件 %s。"
+                                "请解释或改用其他方式。" % pid)
+                            break
+                        result = run_plugin(pid, _arg)
+                        if pid == "web_search" and _arg:
+                            try:
+                                emit_web(_parse_search(result, _arg))
+                            except Exception:
+                                pass
+                        print("\n[插件 %s] 执行结果：\n%s" % (pid, result))
+                        feedbacks.append(
+                            "【系统自动回传】插件 %s 执行结果（隔离子进程）：\n%s\n"
+                            "请基于结果决定下一步。" % (pid, result))
+        elif not error_feedbacks:
+            _empty_rounds += 1
+            # ---- 文字收尾：验收 or 普通反思 ----
+            if (MODE == "plan" and ACTIVE_CONTRACT
+                    and ACTIVE_CONTRACT.get("status") == "open"):
+                feedbacks.append(
+                    "【系统自动回传】当前处于规划模式，暂不执行验收检查。"
+                    "请提示用户 /build 后再宣称完成。")
+            elif accept_registered:
+                feedbacks.append(
+                    "【系统自动回传】验收合同已登记（首次验收时锁定）。"
+                    "请开始工作：输出 [script:] 真正产出「产物:」声明的交付物；"
+                    "完成前不要只用文字宣称完成。")
+            elif ACTIVE_CONTRACT and ACTIVE_CONTRACT.get("status") == "open":
+                # 有活跃合同：文字宣称完成 ≠ 完成，必须过客观验收
+                print("\n[验收] AI 宣称完成，开始客观验收（不信文字）……")
+                passed, report = verify_contract_once(ACTIVE_CONTRACT)
+                if not ACTIVE_CONTRACT.get("locked"):
+                    ACTIVE_CONTRACT["locked"] = True
+                    save_contract(ACTIVE_CONTRACT)
+                if passed is None:
+                    # v4.3：用户拒绝执行检查命令，不计失败次数
+                    feedbacks.append("【系统自动回传】" + report)
+                else:
+                    verdict = settle_contract(passed, control)
+                    if verdict == "retry":
+                        feedbacks.append(
+                            "【验收失败】（第 %d/%d 次）\n%s\n"
+                            "任务尚未真正完成。请依据上面的真实输出修复产物，继续"
+                            "工作；禁止仅用文字宣称完成，也不要修改已锁定的验收"
+                            "合同。"
+                            % (ACTIVE_CONTRACT["verify_attempts"],
+                               MAX_VERIFY_ATTEMPTS, report))
+                    elif verdict == "failed":
+                        feedbacks.append(
+                            "【验收终局失败】连续 %d 次未通过客观验收，任务判定未"
+                            "完成。请直接总结：已完成什么、卡在哪里、给用户的手动"
+                            "建议；不要再宣称完成。"
+                            % MAX_VERIFY_ATTEMPTS)
+                        return "failed"
+                    else:
+                        return "verified"
+            else:
+                reflection = extract_reflection(control)
+                if reflection:
+                    save_reflection(reflection)
+                # RAIN v6.3: keep loop alive on text-only reply
+                if _empty_rounds < 2:
+                    feedbacks.append(
+                        "【系统自动回传】你只输出了文字，没有输出任何 [script:] / [plugin] / [todo] 标签，宿主无法替你执行操作。\n"
+                        "若本应包含代码，可能是标签被吞：请检查字面区与代码围栏，重新用 [script:]...[script] 包裹输出。\n"
+                        "若任务确已全部完成，请用一句话明确说明「已完成」，之后不要重复相同内容。")
+                else:
+                    return "ok"
+
+        feedbacks.extend(error_feedbacks)
+        if not feedbacks:
+            return "ok"
+        for fb in feedbacks:
+            messages.append({"role": "user", "content": fb})
+
+    print("（已达单轮最大往返次数 %d，已暂停；可继续输入新指令。）" % MAX_ROUNDS)
+    return "ok"
+
+# ============================================================
+# 16. 命令处理（新增 /contract；global 声明包含 ACTIVE_CONTRACT）
+# ============================================================
+HELP_TEXT = """可用命令：
+  /think 任务           深度思考：立论→批判→重构多轮辩论，再自动执行
+  /idle                 自主模式：领任务→先立验收合同→完成须过客观验收
+  /evolve [说明]         自主进化：附带当前源码让 AI 修改并换基因
+  /versions             查看基因谱系（历史版本）
+  /rollback [序号]       回滚到某一代基因
+  /contract [放弃]       查看当前验收合同 / 主动放弃
+  /plan /build          规划模式（硬禁止执行）/ 执行模式
+  /auto                 切换 AUTO_EXECUTE（y 确认 / 免确认）
+  /grant <lv> [act ...] [ttl=N] 授权；/revoke 收回；/gate 状态
+ /audit-pack 导出审计包（chain + anchors + 独立核验脚本）
+  /skill add 名 内容     写入 ~/skills/名.md；/skill list 列出
+  /save [插件名]         最近一次成功脚本 → ~/plugins/ 插件
+  /clear /exit /help    清空记忆（挂起未验收合同）/ 退出 / 帮助
+  /restart              重启自身（会话持久化，经看门狗自检；进化后激活新基因）
+提示：换新任务前建议 /clear，否则旧合同的验收标准可能套在新任务上。
+v4.3 验收机制：[accept:] 声明产物+检查（严格一行）+标准；完成由宿主
+客观验收（三层防假裁判：探针检查 + 藏产物对照证伪 + 合同锁定）；
+验收通过才沉淀经验/移除任务；连续 3 次失败终局判定、任务回队；
+用户拒绝执行检查命令不计入 AI 失败次数。"""
+
+
+def handle_command(u):
+    if u.startswith('/mcp'):
+        try:
+            import rea_mcp
+            parts = u.split()
+            act = parts[1] if len(parts) > 1 else 'status'
+            if act == 'start':
+                port = int(parts[2]) if len(parts) > 2 else 8765
+                host = parts[3] if len(parts) > 3 else '0.0.0.0'
+                p = rea_mcp.serve(port, host)
+                print('[MCP] 已启动 host=' + host + ' port=' + str(p))
+            elif act == 'stop':
+                print('[MCP] ' + ('已停止' if rea_mcp.stop() else '未运行'))
+            else:
+                print(rea_mcp.cli_status())
+            return
+        except Exception as e:
+            print('[MCP] error: ' + repr(e))
+            return
+    global MODE, TODOS, AUTO_EXECUTE, ACTIVE_CONTRACT    # v4.3：/contract 放弃需要写
+    cmd = u.split()[0].lower()
+    if cmd.startswith("/websearch") or cmd.startswith("/搜索"):
+        _kw = u.split(None, 1)
+        _kw = _kw[1].strip() if len(_kw) > 1 else ""
+        if not _kw:
+            print("用法：/websearch 关键词")
+        else:
+            print(run_plugin("web_search", _kw))
+        return
+    if cmd == "/plan":
+        MODE = "plan"
+        refresh_system()
+        print("已切换到【规划模式】：只拆解任务，宿主将硬性拒绝执行代码。")
+    elif cmd == "/build":
+        MODE = "build"
+        refresh_system()
+        print("已切换到【执行模式】：三角色协作，自动执行并回传。")
+    elif cmd == "/clear":
+        begin_task_slot(None)          # 挂起未决合同
+        messages.clear()
+        clear_session()
+        TODOS = []
+        refresh_system()
+        print("已清空对话记忆与待办清单（未验收合同已挂起，见 ~/mind/contracts/）。")
+    elif cmd == "/exit":
+        print("再见！")
+        sys.exit(0)
+    elif cmd == "/restart":
+        # v6.1：自重启闭环——进化后无需退出重跑，会话持久化 +
+        # 经 boot_guard 自检（坏基因自动回滚）→ 新我上线。
+        _gate.check_or_raise("restart", {"site": "handle_command"})
+        print("[重启] 会话已持久化；经由 boot_guard 自检后重启……")
+        save_session(messages)
+        _bg = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "zguard", "boot_guard.py")
+        _target = _bg if os.path.exists(_bg) else os.path.abspath(__file__)
+        os.execv(sys.executable, [sys.executable, _target])
+    elif cmd == "/resume":
+        parts = u.split(maxsplit=2)
+        if len(parts) >= 3 and parts[1] == "clear":
+            if parts[2] == "all":
+                n = 0
+                for name, _a, _b, _c, _d in zckpt.list_all():
+                    if zckpt.clear(name):
+                        n += 1
+                print('cleared %d checkpoints' % n)
+            else:
+                ok = zckpt.clear(parts[2])
+                print('clear %s: %s' % (parts[2], ok))
+        else:
+            rows = zckpt.list_all()
+            if not rows:
+                print('no checkpoints')
+            else:
+                print('checkpoints (newest first):')
+                for name, ts, _t, sz, note in rows:
+                    print(' %s %s %dB %s' % (name, ts, sz, note))
+                print('(/resume clear <name> or /resume clear all)')
+    elif cmd == "/events":
+        parts = u.split(maxsplit=2)
+        if len(parts) >= 2 and parts[1] == "clear":
+            zevt.clear()
+            print("events cleared")
+        else:
+            n = 20
+            if len(parts) >= 2:
+                try:
+                    n = int(parts[1])
+                except Exception:
+                    pass
+            rows = zevt.tail(n)
+            print("events total=%d, last %d:" % (zevt.count(), len(rows)))
+            for r in rows:
+                print(" ", r.get("ts_str", "?"), r.get("kind", "?"), r)
+    elif cmd == "/limiter":
+        import json as _lj
+        print(_lj.dumps(zlim.status()))
+    elif cmd == "/contract":
+        parts = u.split(maxsplit=1)
+        arg = parts[1].strip() if len(parts) > 1 else ""
+        if arg in ("放弃", "abandon"):
+            if ACTIVE_CONTRACT and ACTIVE_CONTRACT.get("status") == "open":
+                ACTIVE_CONTRACT["status"] = "abandoned"
+                save_contract(ACTIVE_CONTRACT)
+                append_journal("合同放弃", ACTIVE_CONTRACT["task"])
+                ACTIVE_CONTRACT = None
+                print("已放弃当前验收合同（可重新 [accept:] 立新约）。")
+            else:
+                print("无进行中的合同。")
+        elif ACTIVE_CONTRACT and ACTIVE_CONTRACT.get("status") == "open":
+            c = ACTIVE_CONTRACT
+            print("当前合同：%s" % (c["task"] or "(未记录)"))
+            print("  产物：")
+            for a in c["artifacts"]:
+                print("   - %s%s" % (a["path"],
+                                     "（已存在）" if a["existed"] else "（待产出）"))
+            print("  检查：")
+            for k in c["checks"]:
+                print("   - %s" % k["cmd"])
+            print("  标准：%s" % (c["criteria"] or "(未声明)"))
+            print("  状态：%s ｜ 已验收 %d/%d 次"
+                  % ("已锁定" if c["locked"] else "未锁定",
+                     c["verify_attempts"], MAX_VERIFY_ATTEMPTS))
+        else:
+            print("无进行中的合同。")
+    elif cmd == "/think":
+        parts = u.split(maxsplit=1)
+        if len(parts) < 2:
+            print("用法：/think 任务描述")
+            return
+        task = parts[1].strip()
+        # 任务先写入主对话，后续执行与修复都有上下文
+        messages.append({"role": "user",
+                         "content": "【深度思考任务】%s\n（已启动慢思考进程："
+                                    "立论→批判→重构，结论将自动进入执行。）" % task})
+        note_task(task)
+        print("[深度思考] 启动慢思考进程……")
+        concl = deep_think(task)
+        if not concl:
+            print("[深度思考] API 调用失败。")
+            return
+        print("[深度思考] 结论已产生，进入执行通道。")
+        agent_loop(first_reply=concl)
+    elif cmd == "/idle":
+        task = take_problem()
+        if not task:
+            print("问题队列为空。让 AI 在任务中输出 [problem]问题[/problem] 来登记。")
+            return
+        print("[自主模式] 领取任务：%s" % task)
+        begin_task_slot("自主任务：" + task)
+        messages.append({"role": "user",
+                         "content": ("【自主任务·来自问题队列】%s\n请自主解决它。"
+                                     "开始前必须先用 [accept:] 声明验收合同"
+                                     "（产物+检查命令[严格一行]+标准），完成由宿主"
+                                     "客观验收；未过验收任务不算完成。" % task)})
+        status = agent_loop()
+        if status == "api_error":
+            requeue_problem_front(task)
+            print("[自主模式] API 调用失败，任务已放回队列头部，未丢失。")
+        elif status == "failed":
+            requeue_problem_front(task)
+            print("[自主模式] 验收终局失败，任务已放回队列（含失败记录）。")
+        elif status == "verified":
+            print("[自主模式] ✅ 验收通过，任务已从队列正式移除。")
+        else:
+            print("[自主模式] 任务结束（未声明验收合同，按普通完成处理）。")
+            append_journal("无合同完成", task)
+    elif cmd == "/evolve":
+        parts = u.split(maxsplit=1)
+        goal = parts[1].strip() if len(parts) > 1 else "检查自身运行情况"
+        try:
+            with open(SELF_PATH, "r", encoding="utf-8", errors="ignore") as f:
+                current_src = f.read()
+        except Exception as e:
+            current_src = "(读取当前源码失败：%s)" % e
+        messages.append({"role": "user", "content":
+                         "【进化指令】%s。\n\n"
+                         "【当前自身完整源码（以此基线做最小必要修改，"
+                         "禁止凭记忆重写全文）】\n%s\n\n%s"
+                         % (goal, current_src, EVOLVE_REQUIREMENTS)})
+        agent_loop()
+    elif cmd == "/versions":
+        list_versions()
+    elif cmd == "/rollback":
+        parts = u.split(maxsplit=1)
+        if len(parts) > 1 and parts[1].strip().isdigit():
+            rollback(int(parts[1].strip()))
+        else:
+            list_versions()
+            print("用法：/rollback 序号")
+    elif cmd == "/save":
+        parts = u.split(maxsplit=1)
+        save_plugin(parts[1].strip() if len(parts) > 1 else None)
+    elif cmd == "/skill":
+        handle_skill(u)
+    elif cmd == "/auto":
+        if not AUTO_EXECUTE:
+            _gate.check_or_raise("evolve", {"site": "auto-toggle"})
+        AUTO_EXECUTE = not AUTO_EXECUTE
+        print("AUTO_EXECUTE 已切换为 %s" % AUTO_EXECUTE)
+    elif cmd == "/grant":
+        parts = u.split(maxsplit=1)
+        _gate.human_grant_command(parts[1] if len(parts) > 1 else "")
+    elif cmd == "/revoke":
+        _gate.human_revoke_command()
+    elif cmd == "/gate":
+        print(_gate.format_status())
+    elif cmd == "/audit-pack":
+        _op = export_audit_pack()
+        if _op:
+            print("审计包已导出: %s" % _op)
+        else:
+            print("导出失败（可能无审计链）。")
+
+    elif cmd == "/help":
+        print(HELP_TEXT)
+    else:
+        print("未知命令 %s，输入 /help 查看可用命令。" % cmd)
+
+# ============================================================
+# 17. 程序入口（横幅死代码已删，改为固定提示）
+# ============================================================
+def main():
+    global API_KEY, MODEL
+    for d in (SKILLS_DIR, PLUGINS_DIR, MIND_DIR, EVOLUTION_DIR,
+              CONTRACTS_DIR):
+        os.makedirs(d, exist_ok=True)
+    welcome_onboarding()
+    API_KEY = load_api_key()
+    MODEL = load_model()          # 模型名：env → config.json → 出厂默认
+    if not API_KEY:
+        print("未提供 API Key，无法启动。请重新运行并输入，")
+        print("或设置环境变量 DEEPSEEK_API_KEY，或手动写入 %s" % CONFIG_PATH)
+        sys.exit(1)
+    _restored = load_session()
+    if _restored:
+        messages.extend(_restored)
+    skill_files = [f for f in os.listdir(SKILLS_DIR)
+                   if f.endswith(".md") or f.endswith(".txt")]
+    _installed_pl = install_bundled_plugins()
+    _ok_pl, _bad_pl = selfcheck_plugins()
+    _acts_info = scan_actions()
+    refresh_system()
+    plugins, _p = scan_plugins()
+    print("═" * 50)
+    print("  Z-Agent · 超级智能终端 Agent  (v%s / Gen-%d · 心智+基因+验收)"
+          % (VERSION, get_gen()))
+    print("  模型: %s ｜ 模式: %s ｜ 身份: %s" % (MODEL, MODE,
+          "已定义" if load_identity() else "默认"))
+    _acts_n = 0
+    if _acts is not None:
+        try:
+            _acts_n = len(_acts.REGISTRY.ids())
+        except Exception:
+            _acts_n = 0
+    print(" skills=%d plugins=%d actions=%d problems=%d"
+          % (len(skill_files), len(plugins), _acts_n, len(load_problems())))
+    if _installed_pl:
+        print("  已首次自动安装插件: " + ", ".join(_installed_pl))
+    print("  插件自检: %d 正常 ｜ %d 异常%s"
+          % (len(_ok_pl), len(_bad_pl),
+             ("  异常项: " + ", ".join(_bad_pl)) if _bad_pl else ""))
+    print("  自我修复≤%d次 ｜ 验收机会≤%d次 ｜ 进化重试≤%d次"
+          % (MAX_SELF_REPAIR, MAX_VERIFY_ATTEMPTS, MAX_EVOLVE_RETRY))
+    print("  验收合同不跨会话保留（/contract 查看，/clear 挂起）")
+    print("  /help 命令；/think 深思；/idle 自主；/evolve 进化")
+    print("═" * 50)
+    while True:
+        _gate.kill_check()
+    while True:
+        try:
+            user_input = input("\n你> ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\n再见！")
+            break
+        if not user_input:
+            continue
+        if user_input.startswith("/"):
+            handle_command(user_input)
+            continue
+        note_task(user_input)         # 合同存续=任务延续，否则记录新任务
+        enhanced = preprocess_attachments(user_input)
+        messages.append({"role": "user", "content": enhanced})
+        agent_loop()
+        save_session(messages)
+
+
+if __name__ == "__main__":
+    main()
+
+# ============================================================
+# 流式支持 v6.3
+# ============================================================
+_STREAM_BUF = []
+_STREAM_DONE = [False]
+_STREAM_STOP = [False]
+
+
+def emit_step(idx, total, label, status, elapsed_ms=None):
+    try:
+        import json as _j
+        obj = {"idx": int(idx), "total": int(total),
+            "label": str(label)[:80], "status": str(status)}
+        if elapsed_ms is not None:
+            obj["elapsed_ms"] = int(elapsed_ms)
+        _STREAM_BUF.append(("step", _j.dumps(obj, ensure_ascii=False)))
+    except Exception:
+        pass
+
+
+
+def emit_button(label, cmd, hint=None):
+    try:
+        import json as _jb
+        obj = {'label': str(label)[:40], 'cmd': str(cmd)}
+        if hint:
+            obj['hint'] = str(hint)[:120]
+        _STREAM_BUF.append(('btn', _jb.dumps(obj, ensure_ascii=False)))
+    except Exception:
+        pass
+
+def _post_stream(msgs, temperature=0.3):
+    global _REASONING_BUF
+    _REASONING_BUF = ''
+    del _STREAM_BUF[:]
+    _STREAM_DONE[0] = False
+    _STREAM_STOP[0] = False
+    _r = _pb.try_alt_protocol(msgs, temperature)
+    if _r is not _pb.SKIP:
+        return _r
+
+    headers = {
+        'Authorization': 'Bearer ' + API_KEY.strip(),
+        'Content-Type': 'application/json',
+    }
+    msgs = _normalize_system_msgs(msgs)
+    payload = {'model': MODEL, 'messages': msgs,
+        'temperature': temperature, 'stream': True,
+        'stream_options': {'include_usage': True}}
+    if _is_free_mode():
+        _fo = _free_proxy_call(BASE_URL, payload)
+        if _fo is None:
+            _STREAM_DONE[0] = True
+            return None
+        _fc, _fr = _free_extract(_fo)
+        if _fr:
+            _STREAM_BUF.append(('reason', _fr))
+            _REASONING_BUF = _fr
+        if _fc:
+            _STREAM_BUF.append(('content', _fc))
+        _STREAM_DONE[0] = True
+        return _extract_btn_tags(_fc)
+    _apply_thinking(payload)
+    _apply_thinking(payload)
+    _auth_retried = False
+    while True:
+        gen_before = _CRED_GEN[0]
+        _hdrs = dict(headers)
+        _hdrs['Authorization'] = 'Bearer ' + (API_KEY or '').strip()
+        try:
+            resp = _HTTP_SESSION.post(BASE_URL, headers=_hdrs, json=payload,
+                timeout=_POST_TIMEOUT, stream=True)
+        except requests.RequestException as e:
+            print('net error: %s' % e)
+            _STREAM_DONE[0] = True
+            return None
+        if resp.status_code == 401 and not _auth_retried:
+            _auth_retried = True
+            if _reload_key_from_disk() and _CRED_GEN[0] != gen_before:
+                continue
+        if resp.status_code != 200:
+            print('api error %d %s' % (resp.status_code, resp.text[:500]))
+            _STREAM_DONE[0] = True
+            return None
+        break
+
+    content_parts = []
+    reasoning_parts = []
+    try:
+        import json as _json
+        for raw in resp.iter_lines(decode_unicode=True):
+            if _STREAM_STOP[0]:
+                break
+            if not raw:
+                continue
+            if not raw.startswith('data: '):
+                continue
+            data = raw[6:].strip()
+            if data == '[DONE]':
+                break
+            try:
+                obj = _json.loads(data)
+                _usg = obj.get('usage')
+                if isinstance(_usg, dict) and _usg.get('prompt_tokens'):
+                    _LAST_USAGE[0] = _usg
+                    _USAGE_STALE[0] = False
+                _choices = obj.get('choices') or []
+                if not _choices:
+                    continue
+                _fr_choice = _choices[0]
+                delta = _fr_choice.get('delta', {}) or {}
+                _fr_val = _fr_choice.get('finish_reason')
+                if _fr_val:
+                    _LAST_FINISH_REASON[0] = _fr_val
+            except Exception:
+                continue
+            c = delta.get('content') or ''
+            r = delta.get('reasoning_content') or ''
+            if r:
+                reasoning_parts.append(r)
+                _STREAM_BUF.append(('reason', r))
+            if c:
+                content_parts.append(c)
+                _STREAM_BUF.append(('content', c))
+    except Exception as e:
+        print('stream read error %s' % e)
+    finally:
+        _STREAM_DONE[0] = True
+
+    _REASONING_BUF = ''.join(reasoning_parts)
+    _content = ''.join(content_parts)
+    _content = _extract_btn_tags(_content)
+    return _content
+
+
+def _extract_btn_tags(content):
+    BR = chr(91) + 'btn:'
+    if BR not in content:
+        return content
+    out = []
+    i = 0
+    while i < len(content):
+        a2 = content.find(BR, i)
+        if a2 < 0:
+            out.append(content[i:])
+            break
+        out.append(content[i:a2])
+        b2 = content.find(chr(93), a2)
+        if b2 < 0:
+            out.append(content[a2:])
+            break
+        inner = content[a2 + len(BR):b2]
+        if '|' in inner:
+            lbl, cmd = inner.split('|', 1)
+            emit_button(lbl.strip(), cmd.strip())
+        i = b2 + 1
+    return ''.join(out)
+
+def stream_stop():
+    _STREAM_STOP[0] = True
+    try:
+        append_meta_log('abort', {
+            'reason': 'user-stop', 'in_flight': bool(_STREAM_BUF)},
+            actor='human:local')
+    except Exception:
+        pass
+    return {
+        'stopped': True, 'pending_chunks': len(_STREAM_BUF),
+        'ts': int(time.time())}
+
+
+def resume_from_abort():
+    ok, recs, _errs = chain_verify(return_records=True)
+    if not ok:
+        return {'ok': False, 'err': _errs}
+    last_abort = None
+    for r in reversed(recs):
+        if r.get('kind') == 'abort':
+            last_abort = r
+            break
+    if not last_abort:
+        return {'ok': True, 'abort': None, 'note': 'no abort point'}
+    # 复位 STOP，让下一轮可继续
+    try:
+        _STREAM_STOP[0] = False
+    except Exception:
+        pass
+    return {
+        'ok': True, 'abort': last_abort,
+        'ts': last_abort.get('ts'), 'seq': last_abort.get('seq')}
+
+
+# ============================================================
+# 元认知层：不确定性协议 / 元推理闸门 / 预算守卫 / 反事实预演 / 审计
+# ============================================================
+
+import json as _meta_json
+
+
+def extract_claims(text):
+    out = []
+    cur = None
+    LB = chr(91)
+    RB = chr(93)
+    for raw in (text or '').split(chr(10)):
+        ln = raw.strip()
+        if ln.startswith(LB + 'claim' + RB):
+            if cur: out.append(cur)
+            cur = {'claim': ln[len(LB)+6:].strip(), 'confidence': '', 'basis': [], 'unknowns': ''}
+        elif cur is not None and ln.startswith(LB + 'confidence' + RB):
+            cur['confidence'] = ln[len(LB)+11:].strip()
+        elif cur is not None and ln.startswith(LB + 'basis' + RB):
+            bs = ln[len(LB)+6:].strip()
+            cur['basis'] = [x.strip() for x in bs.split(chr(44)) if x.strip()]
+        elif cur is not None and ln.startswith(LB + 'unknowns' + RB):
+            cur['unknowns'] = ln[len(LB)+9:].strip()
+    if cur: out.append(cur)
+    return out
+
+
+def validate_claims(claims):
+    OK = {'static': 3, 'dynamic': 2, 'inferred': 1}
+    if not claims:
+        return True, ''
+    for i, c in enumerate(claims):
+        conf = (c.get('confidence') or '').strip().lower()
+        if not conf:
+            return False, 'claim ' + str(i) + ' 缺 [confidence]'
+        if conf not in OK:
+            return False, 'claim ' + str(i) + ' confidence 非法: ' + conf
+        basis = c.get('basis') or []
+        if conf == 'inferred' and not basis:
+            return False, 'inferred 结论必须有 [basis]'
+    return True, ''
+
+
+def classify_action(action):
+    if not action: return 'LOW'
+    a = action.lower()
+    for k in ('run', 'exec', 'evolve', 'shell', 'write', 'rm', 'erase'):
+        if k in a: return 'HIGH'
+    for k in ('read', 'list', 'search', 'fetch'):
+        if k in a: return 'MED'
+    return 'LOW'
+
+
+def _chain_path():
+    return os.path.join(HOME, 'mind', 'audit-chain.jsonl')
+
+
+def _chain_last_hash(logp=None):
+    logp = logp or _chain_path()
+    if not os.path.exists(logp):
+        return '', 0
+    last = ''
+    n = 0
+    try:
+        with open(logp, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    o = _meta_json.loads(line)
+                    last = o.get('this_hash', last)
+                    n = int(o.get('seq', n + 1))
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return last, n
+
+
+def _chain_hash(prev_hash, seq, ts, kind, payload, actor):
+    import hashlib as _h
+    base = '|'.join([str(prev_hash), str(seq), str(ts), str(kind), _meta_json.dumps(payload or {}, ensure_ascii=False, sort_keys=True), str(actor)])
+    return _h.sha256(base.encode('utf-8')).hexdigest()
+
+
+def append_meta_log(kind, payload, actor='ai'):
+    logp = _chain_path()
+    this_hash = ''
+    seq = 0
+    try:
+        d = os.path.dirname(logp)
+        os.makedirs(d, exist_ok=True)
+        prev_hash, last_seq = _chain_last_hash(logp)
+        seq = last_seq + 1
+        ts = int(time.time())
+        this_hash = _chain_hash(prev_hash, seq, ts, kind, payload, actor)
+        rec = {'seq': seq, 'ts': ts, 'kind': kind, 'payload': payload or {}, 'actor': actor, 'prev_hash': prev_hash, 'this_hash': this_hash}
+        with open(logp, 'a', encoding='utf-8') as f:
+            f.write(_meta_json.dumps(rec, ensure_ascii=False, sort_keys=True) + chr(10))
+    except Exception:
+        pass
+    # 外部锚点：独立目录、AI 无权删（删文件=写操作会被 gate 拦）
+    try:
+        if this_hash:
+            anchor_dir = '/sdcard/Download/mind/anchors'
+            os.makedirs(anchor_dir, exist_ok=True)
+            _sid = 'unknown'
+            try:
+                _sid = _gate._get_sid()
+            except Exception:
+                pass
+            anchor_path = os.path.join(anchor_dir, _sid + '.log')
+            with open(anchor_path, 'a', encoding='utf-8') as _af:
+                _af.write('%d:%s' % (seq, this_hash) + chr(10))
+    except Exception:
+        pass
+
+
+def chain_verify(logp=None, return_records=False):
+    logp = logp or _chain_path()
+    errs = []
+    recs = []
+    prev = ''
+    seq_expected = 1
+    if not os.path.exists(logp):
+        if return_records:
+            return True, recs, 'no chain'
+        return True, ''
+    try:
+        with open(logp, 'r', encoding='utf-8') as f:
+            for lineno, line in enumerate(f, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    o = _meta_json.loads(line)
+                except Exception as e:
+                    errs.append('line %d: JSON err %r' % (lineno, e))
+                    continue
+                seq = o.get('seq')
+                if seq != seq_expected:
+                    errs.append('line %d: seq expect %d got %s' % (lineno, seq_expected, seq))
+                ph = o.get('prev_hash', '')
+                if ph != prev:
+                    errs.append('line %d: prev mismatch' % lineno)
+                th_calc = _chain_hash(ph, seq, o.get('ts'), o.get('kind'), o.get('payload'), o.get('actor'))
+                th_actual = o.get('this_hash', '')
+                if th_calc != th_actual:
+                    errs.append('line %d: this hash mismatch' % lineno)
+                prev = th_actual
+                seq_expected = seq + 1
+                recs.append(o)
+    except Exception as e:
+        errs.append('read err: %r' % e)
+    ok = len(errs) == 0
+    if return_records:
+        return ok, recs, (chr(10).join(errs) if errs else '')
+    return ok, (chr(10).join(errs) if errs else '')
+
+
+def export_audit_pack(out_dir=None):
+    """导出审计包：chain 记录 + anchors + 独立审计脚本源码。
+    默认输出到 /sdcard/Download/mind/exports/。"""
+    logp = _chain_path()
+    if not os.path.exists(logp):
+        return None
+    out_dir = out_dir or '/sdcard/Download/mind/exports'
+    try:
+        os.makedirs(out_dir, exist_ok=True)
+    except Exception:
+        pass
+    ok, recs, errs = chain_verify(logp, return_records=True)
+    anchor_dir = '/sdcard/Download/mind/anchors'
+    anchors = {}
+    if os.path.isdir(anchor_dir):
+        for _fn in sorted(os.listdir(anchor_dir)):
+            _p = os.path.join(anchor_dir, _fn)
+            if os.path.isfile(_p):
+                try:
+                    anchors[_fn] = open(_p, encoding='utf-8').read()
+                except Exception:
+                    pass
+    verify_src = ''
+    try:
+        _av = os.path.join(os.path.dirname(os.path.abspath(file)), 'zcore', 'audit_verify.py')
+        if os.path.exists(_av):
+            verify_src = open(_av, encoding='utf-8').read()
+    except Exception:
+        pass
+    pack = {
+        'type': 'dreamcore-audit-pack',
+        'version': 2,
+        'created': int(time.time()),
+        'chain_path': logp,
+        'records': recs,
+        'verify_ok': ok,
+        'verify_errors': errs,
+        'anchors_dir': anchor_dir,
+        'anchors': anchors,
+        'verify_script': verify_src,
+    }
+    outp = os.path.join(out_dir, 'audit-pack-%d.json' % int(time.time()))
+    try:
+        with open(outp, 'w', encoding='utf-8') as f:
+            _meta_json.dump(pack, f, ensure_ascii=False, indent=1)
+    except Exception:
+        return None
+    return outp
+
+def meta_gate(action, ctx=None):
+    if META_LEVEL == 'off':
+        return True, ''
+    level = classify_action(action)
+    ctx = ctx or {}
+    evn = int(ctx.get('evidence', 0))
+    rev = ctx.get('reversible', True)
+    auto = bool(ctx.get('auto', AUTO_EXECUTE))
+    req = required_level(action)
+    cur = current_level()
+    need_sig = (req > cur and req >= 3)
+    ask = (level == 'HIGH' and not auto and not rev)
+    rep = ('[meta-reason]' + chr(10) + ' - action: ' + str(action) + chr(10) + ' - level: ' + level + chr(10) + ' - req/cur: ' + str(req) + '/' + str(cur) + chr(10) + ' - 证据数: ' + str(evn) + chr(10) + ' - AUTO_EXECUTE: ' + str(auto) + chr(10) + ' - 可逆: ' + str(rev) + chr(10) + ' - 需签名: ' + ('yes' if need_sig else 'no') + chr(10) + ' - 该问人: ' + ('yes' if ask else 'no'))
+    append_meta_log('meta-gate', {'action': action, 'level': level, 'req': req, 'cur': cur, 'ask': ask, 'need_sig': need_sig})
+    # 人类在环：LEVEL3 动作需授权签名，soft 模式下也阻塞
+    if need_sig:
+        return False, rep
+    # hard 模式：HIGH 动作也需确认
+    if META_LEVEL == 'hard' and ask:
+        return False, rep
+    return True, rep
+
+
+def budget_tick(kind):
+    b = META_BUDGET
+    if not b['active']:
+        b['active'] = True
+        b['t0'] = time.time()
+        b['llm'] = 0
+        b['proc'] = 0
+    if kind == 'llm': b['llm'] += 1
+    elif kind == 'proc': b['proc'] += 1
+    elapsed = time.time() - b['t0']
+    hit = (elapsed > MAX_SECONDS or b['llm'] > MAX_LLM_CALLS or b['proc'] > MAX_SUB_PROC)
+    if hit:
+        rep = '[budget] 超预算: %.0fs / llm=%d / proc=%d' % (elapsed, b['llm'], b['proc'])
+        append_meta_log('budget-hit', {'elapsed': elapsed})
+        return True, rep
+    return False, ''
+
+
+def budget_reset():
+    b = META_BUDGET
+    b['active'] = False
+    b['t0'] = 0
+    b['llm'] = 0
+    b['proc'] = 0
+
+
+def compare_failure_mode(expected, actual):
+    e = (expected or '').strip().lower()
+    a = (actual or '').strip().lower()
+    if not e:
+        return True, ''
+    ok = (e in a) or (a in e)
+    if not ok:
+        append_meta_log('expect-mismatch', {'expected': e, 'actual': a})
+        return False, '期望: ' + e + ' / 实得: ' + a
+    return True, ''
+
+def _normalize_fenced_to_tags(text):
+    if not isinstance(text, str) or not text:
+        return text
+    LB = chr(91)
+    RB = chr(93)
+    BT = chr(96) * 3
+    OP = LB + 'script:' + RB
+    CL = LB + '/script' + RB
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+        j = text.find(BT, i)
+        if j < 0:
+            out.append(text[i:])
+            break
+        k = j + 3
+        while k < n and text[k] != chr(10):
+            k += 1
+        if k >= n:
+            out.append(text[i:])
+            break
+        k += 1
+        e = text.find(BT, k)
+        if e < 0:
+            out.append(text[i:])
+            break
+        code = text[k:e]
+        block = text[j:e+3]
+        if (OP in code) or (CL in code):
+            out.append(text[i:j])
+            out.append(block)
+        else:
+            out.append(text[i:j])
+            out.append(OP + chr(10) + code.rstrip() + chr(10) + CL)
+        i = e + 3
+    return ''.join(out)
+# ============================================================
+# RAIN 补丁区 v6.3（由 Rain 追加；不修改上方原函数体）
+# 1. THINK/SEARCH 开关持久化（写 mind/config.json，增量不动 api_key/model）
+# 2. 请求前在最后一条 user 消息首行注入 [[RAIN_OPTS think=X search=Y]]
+# 3. /websearch on|off|1|0|开启|关闭 命令切换联网搜索
+# 4. main 启动时恢复开关
+# ============================================================
+
+import json as _pj
+import os as _po
+
+try:
+    SEARCH_ENABLED
+except NameError:
+    SEARCH_ENABLED = False
+
+
+def _rain_switches_path():
+    return _po.path.join(MIND_DIR, "config.json")
+
+
+def load_switches():
+    global THINK_ENABLED, SEARCH_ENABLED
+    try:
+        p = _rain_switches_path()
+        if not _po.path.exists(p):
+            return {"think": bool(THINK_ENABLED), "search": bool(SEARCH_ENABLED)}
+        with open(p, "r", encoding="utf-8") as f:
+            cfg = _pj.load(f)
+        if isinstance(cfg, dict):
+            if "think" in cfg:
+                THINK_ENABLED = bool(cfg.get("think"))
+            if "search" in cfg:
+                SEARCH_ENABLED = bool(cfg.get("search"))
+    except Exception as e:
+        print("[switches] load failed: %s" % e)
+    return {"think": bool(THINK_ENABLED), "search": bool(SEARCH_ENABLED)}
+
+
+def save_switches(think=None, search=None):
+    global THINK_ENABLED, SEARCH_ENABLED
+    if think is not None:
+        THINK_ENABLED = bool(think)
+    if search is not None:
+        SEARCH_ENABLED = bool(search)
+    try:
+        p = _rain_switches_path()
+        cfg = {}
+        if _po.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    raw = _pj.load(f)
+                if isinstance(raw, dict):
+                    cfg = raw
+            except Exception:
+                cfg = {}
+        cfg["think"] = bool(THINK_ENABLED)
+        cfg["search"] = bool(SEARCH_ENABLED)
+        _po.makedirs(_po.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8") as f:
+            _pj.dump(cfg, f, ensure_ascii=False, indent=2)
+        return {"ok": True, "think": THINK_ENABLED, "search": SEARCH_ENABLED}
+    except Exception as e:
+        return {"ok": False, "err": str(e)}
+
+
+def _rain_opts_prefix():
+    return ("[[RAIN_OPTS think=%d search=%d]]" + chr(10)) % (
+        1 if THINK_ENABLED else 0, 1 if SEARCH_ENABLED else 0)
+
+
+def _rain_inject_opts(msgs):
+    if not msgs:
+        return msgs
+    try:
+        if isinstance(msgs[-1], dict) and msgs[-1].get("role") == "user":
+            c0 = msgs[-1].get("content") or ""
+            if not c0.startswith("[[RAIN_OPTS"):
+                m0 = dict(msgs[-1])
+                m0["content"] = _rain_opts_prefix() + c0
+                out = list(msgs)
+                out[-1] = m0
+                return out
+    except Exception:
+        pass
+    return msgs
+
+
+# ---- 包装 _post_stream / _post ----
+try:
+    _rain_orig_post_stream = _post_stream
+    _rain_orig_post = _post
+
+    def _post_stream(msgs, temperature=0.3):
+        try:
+            msgs = _rain_inject_opts(msgs)
+        except Exception:
+            pass
+        return _rain_orig_post_stream(msgs, temperature)
+
+    def _post(msgs, temperature=0.3):
+        try:
+            msgs = _rain_inject_opts(msgs)
+        except Exception:
+            pass
+        return _rain_orig_post(msgs, temperature)
+except NameError:
+    pass
+
+
+# ---- 包装 main ----
+try:
+    _rain_orig_main = main
+
+    def main():
+        try:
+            load_switches()
+        except Exception as e:
+            print("[switches] restore failed: %s" % e)
+        return _rain_orig_main()
+except NameError:
+    pass
+
+
+# ---- /websearch 命令 ----
+def _rain_handle_websearch(u):
+    s = (u or "").strip().lower()
+    m = s.split(None, 1)
+    if len(m) < 2:
+        st = "开启" if SEARCH_ENABLED else "关闭"
+        print("联网搜索当前：%s（用法：/websearch on|off）" % st)
+        return True
+    arg = m[1].strip()
+    on_words = ("on", "1", "true", "开启", "开", "启用")
+    off_words = ("off", "0", "false", "关闭", "关", "停用")
+    if arg in on_words:
+        r = save_switches(search=True)
+        print("联网搜索已开启" if r.get("ok") else ("保存失败: %s" % r.get("err")))
+        return True
+    if arg in off_words:
+        r = save_switches(search=False)
+        print("联网搜索已关闭" if r.get("ok") else ("保存失败: %s" % r.get("err")))
+        return True
+    print("未知参数：%s（用法：/websearch on|off）" % arg)
+    return True
+
+
+try:
+    _rain_orig_handle_command = handle_command
+
+    def handle_command(u):
+        if (u or "").strip().lower().startswith("/websearch"):
+            return _rain_handle_websearch(u)
+        return _rain_orig_handle_command(u)
+except NameError:
+    pass
+
+
+# ============================================================
+# CLI entry (placed at EOF so every name used by main() exists)
+# ============================================================
+if __name__ == "__main__":
+ main()

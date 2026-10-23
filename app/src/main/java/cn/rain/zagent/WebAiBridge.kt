@@ -182,11 +182,16 @@ val q = JSONObject.quote(prompt)
 
 mainHandler.post {
 val js = readBuildJs(appContext!!).replace("RAIN_PROMPT_TOKEN", q)
-try { wv.evaluateJavascript(js) { ret -> } catch (e: Exception) { currentResult = "ERROR: WebView crashed"; currentLatch?.countDown() }
+try {
+wv.evaluateJavascript(js) { ret ->
 if (ret == null) {
 currentResult = "ERROR: JS eval returned null"
 currentLatch?.countDown()
 }
+}
+} catch (e: Exception) {
+currentResult = "ERROR: WebView crashed"
+currentLatch?.countDown()
 }
 }
 

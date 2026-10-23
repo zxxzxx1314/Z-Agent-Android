@@ -76,7 +76,6 @@ object PythonBridge {
     * 所有桥接方法入口处都会先调它，业务代码无需关心初始化时机。
     */
     @Synchronized
-    @Synchronized
     fun ensureBootstrapped(context: Context) {
         if (bootstrapped) return
         if (bootFailed) throw IllegalStateException("bootstrap failed: " + bootFailMsg)
@@ -90,7 +89,7 @@ object PythonBridge {
             deployBuiltinPlugins(app)
             insertSysPathHead(genome)
             Python.getInstance().getModule("zagent_app")
-                .callAttr(""bootstrap"", homeDir(app).absolutePath)
+                .callAttr("bootstrap", homeDir(app).absolutePath)
             bootstrapped = true
         } catch (t: Throwable) {
             bootFailed = true
@@ -120,7 +119,7 @@ object PythonBridge {
         try {
             val children = context.assets.list("plugins").orEmpty()
             for (child in children) {
-if (child.startsWith('test_') && child.endsWith('.py')) continue
+if (child.startsWith("test_") && child.endsWith(".py")) continue
                 copyAssetsDir(context, "plugins/" + child, File(homePlugins, child))
             }
         } catch (e: Exception) {
@@ -183,7 +182,7 @@ if (child.startsWith('test_') && child.endsWith('.py')) continue
         }
         outDir.mkdirs()
         for (child in children) {
-if (child.startsWith('test_') && child.endsWith('.py')) continue
+if (child.startsWith("test_") && child.endsWith(".py")) continue
             copyAssetsDir(context, "$assetPath/$child", File(outDir, child))
         }
     }
