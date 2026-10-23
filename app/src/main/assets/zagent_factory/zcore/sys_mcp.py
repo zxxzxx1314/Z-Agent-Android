@@ -1,4 +1,5 @@
 import os
+import shlex
 import subprocess
 import time
 
@@ -67,12 +68,12 @@ def call(name, args):
 				 'text': b.decode('utf-8', 'replace')}
 			except PermissionError:
 				pass
-		su = _run(['su', '-c', 'cat ' + p], 20)
+		su = _run(['su', '-c', 'cat -- ' + shlex.quote(p)], 20)
 		su['via_root'] = True
 		return su
 	if name == 'sys_list':
 		p = args.get('path', '/sdcard/Download')
 		root = bool(args.get('root', False))
-		argv = ['su', '-c', 'ls -la ' + p] if root else ['ls', '-la', p]
+		argv = ['su', '-c', 'ls -la -- ' + shlex.quote(p)] if root else ['ls', '-la', p]
 		return _run(argv, 15)
 	raise ValueError('unknown sys tool: ' + str(name))

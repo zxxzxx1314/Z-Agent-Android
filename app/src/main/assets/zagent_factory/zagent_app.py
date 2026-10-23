@@ -292,7 +292,12 @@ def _deploy_factory_genome(home):
     for rel in sorted(sources):
         h.update(sources[rel])
     sha = h.hexdigest()
-    fresh = (os.path.exists(os.path.join(genome, "zagent.py"))
+    # v6.4: APK mode redeploys genome every boot.
+    # The marker is in the same writable dir as genome; AI can read factory,
+    # compute sha, and forge it. Under APK evolve is fail-closed anyway.
+    _apk_mode = (os.environ.get("ZAGENT_NO_SUBPROCESS") == "1")
+    fresh = (not _apk_mode
+             and os.path.exists(os.path.join(genome, "zagent.py"))
              and os.path.exists(marker)
              and open(marker, encoding="utf-8").read().strip() == sha)
     if not fresh:

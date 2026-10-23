@@ -374,7 +374,7 @@ _FORBIDDEN_PATHS = tuple(p for p in (
 ) if p)
 
 # ---- 标签正则（集中定义）----
-PLUGIN_CALL_RE = r'\[plugin:([^\[\]\s]+)\]'
+PLUGIN_CALL_RE = r'\[plugin:([^\[\]]+?)\]'
 DESC_RE = r'\[desc\](.*?)\[/desc\]'
 REFLECT_RE = r'\[reflect\](.*?)\[/reflect\]'
 PROBLEM_RE = r'\[problem\](.*?)\[/problem\]'
@@ -668,7 +668,8 @@ def save_identity(text: str, expected_revision=None):
     print("[心智] 身份核心已重写并即时注入 System Prompt。")
     return True
 
-SESSION_MAX_TURNS = 40   # 会话记忆最多保留的对话条数（防文件膨胀）
+# v6.4: 40 -> 400. json only stores tail; full history via conversation_history.
+SESSION_MAX_TURNS = 400
 
 
 def load_session():
@@ -884,11 +885,11 @@ def scan_actions():
     if _acts is None:
         return {"ok": False, "err": "zcore.actions not loaded"}
     roots = []
+    if os.path.isdir(PLUGINS_DIR):
+        roots.append(PLUGINS_DIR)
     for cand in _core_action_dirs():
         if os.path.isdir(cand) and cand not in roots:
             roots.append(cand)
-    if os.path.isdir(PLUGINS_DIR):
-        roots.append(PLUGINS_DIR)
     try:
         _acts.REGISTRY.scan(roots)
     except Exception as e:
@@ -1030,10 +1031,10 @@ def fetch_page(url):
     if len(html) > MAX_HTML:
         html = html[:MAX_HTML]
         html_truncated = True
-    m = _re.search("(?is)<title[^>]>(.?)</title>", html)
+    m = _re.search("(?is)<title[^>]>(.*?)</title>", html)
     title = _re.sub("<[^>]+>", "", m.group(1)).strip() if m else u
-    html = _re.sub("(?is)<script[^>]>.?</script>", " ", html)
-    html = _re.sub("(?is)<style[^>]>.?</style>", " ", html)
+    html = _re.sub("(?is)<script[^>]>.*?</script>", " ", html)
+    html = _re.sub("(?is)<style[^>]>.*?</style>", " ", html)
     text = _re.sub("<[^>]+>", " ", html)
     text = " ".join(text.split())
     return _j.dumps({
@@ -1653,6 +1654,21 @@ def _ext(path):
     return path[i:].lower() if i >= 0 else ""
 
 
+def _safe_member_names(names, root):
+    import os as _o
+    ra = _o.path.abspath(root)
+    out = []
+    for n in names:
+        t = str(n).replace(chr(92), chr(47))
+        parts = [x for x in t.split(chr(47)) if x not in (chr(39)+chr(39), chr(46))]
+        if not parts or t.startswith(chr(47)) or (chr(46)+chr(46)) in parts:
+            continue
+        d = _o.path.abspath(_o.path.join(ra, *parts))
+        if d != ra and not d.startswith(ra + _o.sep):
+            continue
+        out.append(n)
+    return out
+
 def _extract_archive(path):
     ext = _ext(path)
     out_dir = path + "_extracted"
@@ -1665,7 +1681,7 @@ def _extract_archive(path):
             import zipfile
             with zipfile.ZipFile(path) as z:
                 names = z.namelist()
-                z.extractall(out_dir)
+                z.extractall(out_dir, members=_safe_member_names(names, out_dir))
             return out_dir, "zip 解压 %d 项" % len(names)
         except Exception as e:
             return None, "zip 解压失败: %s" % e
@@ -1674,7 +1690,11 @@ def _extract_archive(path):
             import tarfile
             with tarfile.open(path) as t:
                 names = t.getnames()
-                t.extractall(out_dir)
+                _safe = set(_safe_member_names(t.getnames(), out_dir))
+                _members = [m for m in t.getmembers()
+                            if m.name in _safe
+                            and not (m.issym() or m.islnk())]
+                t.extractall(out_dir, members=_members)
             return out_dir, "tar 解压 %d 项" % len(names)
         except Exception as e:
             return None, "tar 解压失败: %s" % e
@@ -1957,8 +1977,8 @@ def _find_code_end(text, start, markers):
     if not ok:
         best_pos, best_marker = -1, None
         for m in markers:
-            p = source.rfind(m)
-            if p > best_pos:
+            p = source.find(m)
+            if p >= 0 and (best_pos < 0 or p < best_pos):
                 best_pos, best_marker = p, m
         return (-1, None) if best_pos < 0 else (start + best_pos, best_marker)
 
@@ -2038,8 +2058,14 @@ def _script_blocks(text):
                 blocks.append((start, len(text), unwrap_code(code), "auto-close"))
                 return blocks
             raise ValueError("脚本块缺少有效的 [/script] 或 [script] 结束标签")
-        desc_matches = list(re.finditer(DESC_RE, text[cursor:start], re.S))
-        desc = desc_matches[-1].group(1).strip() if desc_matches else ""
+        desc = ""
+        _gap = text[cursor:start]
+        _dm = list(re.finditer(DESC_RE, _gap, re.S))
+        if _dm:
+            _last = _dm[-1]
+            _tail = _gap[_last.end():]
+            if len(_tail.strip()) <= 80:
+                desc = _last.group(1).strip()
         blocks.append((start, end + len(end_tag),
                     unwrap_code(text[body_start:end]), desc))
         cursor = end + len(end_tag)
@@ -2054,6 +2080,13 @@ def extract_scripts(text):
 
 
 
+def _todo_eq(a, b):
+    if a == b:
+        return True
+    def _k(x):
+        return ''.join(c for c in (x or '') if c.isalnum()).lower()
+    return _k(a) == _k(b)
+
 def update_todos(text):
     """[todo] 重建清单（去重）；[tododone] 精确匹配打勾。"""
     global TODOS
@@ -2065,7 +2098,7 @@ def update_todos(text):
             TODOS = [[False, item] for item in items]
     for done in re.findall(r"\[tododone\](.*?)\[/tododone\]", text, re.S):
         for item in TODOS:
-            if done.strip() == item[1]:
+            if done.strip() == item[1] or _todo_eq(done.strip(), item[1]):
                 item[0] = True
                 break
 
@@ -2404,6 +2437,7 @@ def _post(msgs, temperature=0.3):
     timeout 提升到 600s；同时提取 reasoning_content 供 UI 折叠显示。"""
     global _REASONING_BUF
     _REASONING_BUF = ""
+    _LAST_FINISH_REASON[0] = None
     _r = _pb.try_alt_protocol(msgs, temperature)
     if _r is not _pb.SKIP:
         return _r
@@ -2810,6 +2844,17 @@ def quality_gate(round_no, reply, control, scripts, plugin_calls):
         append_meta_log("quality-gate", {"reason": "loop", "round": round_no, "sig": sig})
         _QUALITY_STATE["same_count"] = 0
         return False, "连续 3 轮输出高度相似，疑似循环。请换一个思路，或明确告知用户卡在哪里。"
+    # v6.4: dangerous-command detection (was 5-word blacklist only)
+    _ctl = control or ""
+    _danger_subs = [
+        "rm -rf /", "rm -Rf /", "rm -FR /",
+        "chmod 777 /", "mkfs.", "of=/dev/block",
+        ":() {", "curl ", "wget "
+    ]
+    for _d in _danger_subs:
+        if _d in _ctl:
+            append_meta_log("quality-gate", {"reason": "danger", "kw": _d, "round": round_no})
+            return False, "High-risk pattern detected; rewrite unless truly needed."
     low = r.lower()
     for kw in ("忽略以上", "ignore previous", "ignore above", "越狱", "jailbreak"):
         if kw in low:
@@ -2881,7 +2926,23 @@ def _run_inproc(code, timeout):
                     contextlib.redirect_stderr(buf_err):
                 _ns = dict(globals())
                 _ns.update(_shell_namespace())
+                # v6.4 audit: shallow copy lets scripts mutate ACTIVE_CONTRACT in place
+                _ac_key = "ACTIVE_CONTRACT"
+                _cb = None
+                try:
+                    _c0 = _ns.get(_ac_key)
+                    if isinstance(_c0, dict):
+                        _cb = dict(_c0)
+                except Exception:
+                    pass
                 exec(compile(code, "<app-script>", "exec"), _ns)
+                if _cb is not None:
+                    try:
+                        _c1 = _ns.get(_ac_key)
+                        if isinstance(_c1, dict) and _c1 != _cb:
+                            buf_err.write("\n[audit] script mutated ACTIVE_CONTRACT")
+                    except Exception:
+                        pass
         except BaseException as e:            # noqa: BLE001 脚本任意异常都算它自己的
             buf_err.write("\n%s: %s" % (type(e).__name__, e))
             done["rc"] = 1
@@ -3186,6 +3247,22 @@ def agent_loop(first_reply=None):
                 raise
             except Exception as _ae:
                 act_errors = [{"err": "crashed: " + repr(_ae)}]
+        if _acts is not None and chr(91) + "act:" in masked:
+            try:
+                _ac_calls = _acts.parse(masked)[0]
+            except Exception:
+                _ac_calls = []
+            _ac_parts = []
+            _ac_last = 0
+            for _ac in _ac_calls:
+                _ac_sp = _ac[2] if len(_ac) > 2 else None
+                if _ac_sp and _ac_sp[0] >= _ac_last and _ac_sp[1] > _ac_sp[0]:
+                    _ac_parts.append(masked[_ac_last:_ac_sp[0]])
+                    _ac_parts.append(chr(32) * (_ac_sp[1] - _ac_sp[0]))
+                    _ac_last = _ac_sp[1]
+            if _ac_last > 0:
+                _ac_parts.append(masked[_ac_last:])
+                masked = "".join(_ac_parts)
         evolutions, evo_error = evolution_status(masked)
         text = strip_evolution(masked) if (evolutions or evo_error) else masked
         script_error = None
@@ -3292,6 +3369,8 @@ def agent_loop(first_reply=None):
                         "旧基因完好无损。请分析失败原因，修正后重新输出完整的 "
                         "[evolve:原因]...[/evolve] 源码；若无法修复请改用文字说明。"
                         % (tip, msg))
+            if scripts:
+                feedbacks.append(MSG21)
         elif _patch_items:
             # ---- 补丁模式执行（v4.5：与脚本/插件并列，统一确认+模式约束）----
             if MODE == "plan":
@@ -3454,11 +3533,11 @@ def agent_loop(first_reply=None):
                     "完成前不要只用文字宣称完成。")
             elif ACTIVE_CONTRACT and ACTIVE_CONTRACT.get("status") == "open":
                 # 有活跃合同：文字宣称完成 ≠ 完成，必须过客观验收
+                print("\n[验收] AI 宣称完成，开始客观验收（不信文字）……")
+                passed, report = verify_contract_once(ACTIVE_CONTRACT)
                 if not ACTIVE_CONTRACT.get("locked"):
                     ACTIVE_CONTRACT["locked"] = True
                     save_contract(ACTIVE_CONTRACT)
-                print("\n[验收] AI 宣称完成，开始客观验收（不信文字）……")
-                passed, report = verify_contract_once(ACTIVE_CONTRACT)
                 if passed is None:
                     # v4.3：用户拒绝执行检查命令，不计失败次数
                     feedbacks.append("【系统自动回传】" + report)
@@ -3582,7 +3661,7 @@ def handle_command(u):
         print("[重启] 会话已持久化；经由 boot_guard 自检后重启……")
         save_session(messages)
         _bg = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           "zcore", "boot_guard.py")
+                           "zguard", "boot_guard.py")
         _target = _bg if os.path.exists(_bg) else os.path.abspath(__file__)
         os.execv(sys.executable, [sys.executable, _target])
     elif cmd == "/resume":
@@ -3725,7 +3804,11 @@ def handle_command(u):
         handle_skill(u)
     elif cmd == "/auto":
         if not AUTO_EXECUTE:
-            _gate.check_or_raise("evolve", {"site": "auto-toggle"})
+            try:
+                _gate.check_or_raise("evolve", {"site": "auto-toggle"})
+            except Exception as _e:
+                print("gate blocked: " + str(_e))
+                return
         AUTO_EXECUTE = not AUTO_EXECUTE
         print("AUTO_EXECUTE 已切换为 %s" % AUTO_EXECUTE)
     elif cmd == "/grant":
@@ -3852,6 +3935,7 @@ def emit_button(label, cmd, hint=None):
 def _post_stream(msgs, temperature=0.3):
     global _REASONING_BUF
     _REASONING_BUF = ''
+    _LAST_FINISH_REASON[0] = None
     del _STREAM_BUF[:]
     _STREAM_DONE[0] = False
     _STREAM_STOP[0] = False
@@ -3957,10 +4041,14 @@ def _extract_btn_tags(content):
     BR = chr(91) + 'btn:'
     if BR not in content:
         return content
+    try:
+        _mkc = mask_literal(content)[0]
+    except Exception:
+        _mkc = content
     out = []
     i = 0
     while i < len(content):
-        a2 = content.find(BR, i)
+        a2 = _mkc.find(BR, i)
         if a2 < 0:
             out.append(content[i:])
             break
@@ -4398,7 +4486,9 @@ def _rain_inject_opts(msgs):
             if not c0.startswith("[[RAIN_OPTS"):
                 m0 = dict(msgs[-1])
                 m0["content"] = _rain_opts_prefix() + c0
-                msgs[-1] = m0
+                out = list(msgs)
+                out[-1] = m0
+                return out
     except Exception:
         pass
     return msgs
@@ -4411,14 +4501,14 @@ try:
 
     def _post_stream(msgs, temperature=0.3):
         try:
-            _rain_inject_opts(msgs)
+            msgs = _rain_inject_opts(msgs)
         except Exception:
             pass
         return _rain_orig_post_stream(msgs, temperature)
 
     def _post(msgs, temperature=0.3):
         try:
-            _rain_inject_opts(msgs)
+            msgs = _rain_inject_opts(msgs)
         except Exception:
             pass
         return _rain_orig_post(msgs, temperature)
@@ -4472,3 +4562,10 @@ try:
         return _rain_orig_handle_command(u)
 except NameError:
     pass
+
+
+# ============================================================
+# CLI entry (placed at EOF so every name used by main() exists)
+# ============================================================
+if __name__ == "__main__":
+ main()

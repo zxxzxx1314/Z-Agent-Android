@@ -1,4 +1,4 @@
-import json, threading, http.server
+import json, os, threading, http.server
 from pathlib import Path
 try:
  from zcore import sys_mcp
@@ -256,6 +256,16 @@ def _rpc(obj):
 class _Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, a=None, b=None, c=None, d=None):
         return
+    def _auth_ok(self):
+        tok = mcp_freeze.token()
+        if not tok:
+            return True
+        got = self.headers.get('Authorization') or ''
+        if got.startswith('Bearer '):
+            got = got[7:].strip()
+        else:
+            got = self.headers.get('X-MCP-Token') or ''
+        return got == tok
     def _send(self, code, body):
         data = body.encode("utf-8")
         self.send_response(code)
@@ -267,6 +277,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/health"):
             self._send(200, json.dumps({"ok": True, "port": STATE["port"]}))
+        elif not self._auth_ok():
+            self._send(401, json.dumps({"error": "unauthorized"}))
         elif self.path.startswith("/tools"):
             self._send(200, json.dumps({"tools": tools()}, ensure_ascii=False))
         elif self.path.startswith("/resources"):
@@ -276,6 +288,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         else:
             self._send(200, json.dumps({"ok": True, "server": "rea-lite"}))
     def do_POST(self):
+        if not self._auth_ok():
+            self._send(401, json.dumps({"error": "unauthorized"}))
+            return
         try:
             n = int(self.headers.get("Content-Length", "0") or "0")
             raw = self.rfile.read(n).decode("utf-8") if n > 0 else ""
@@ -300,9 +315,13 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self._send(200, json.dumps(r, ensure_ascii=False))
 
 def serve(port=None, host=None):
-    mcp_freeze.freeze(tools(), token=None, tag="serve")
     port = int(port or DEFAULT_PORT)
-    h = host or '0.0.0.0'
+    h = host or '127.0.0.1'
+    tok = os.environ.get('REA_MCP_TOKEN', '') or None
+    _loop = h in ('127.0.0.1', '::1', 'localhost')
+    if not _loop and not tok:
+        raise RuntimeError('MCP on %s requires REA_MCP_TOKEN env' % h)
+    mcp_freeze.freeze(tools(), token=tok, tag='serve')
     if STATE["srv"] is not None:
         return STATE["port"]
     try:

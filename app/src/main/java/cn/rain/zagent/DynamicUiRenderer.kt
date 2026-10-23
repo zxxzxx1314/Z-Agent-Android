@@ -101,17 +101,18 @@ setTextColor(ContextCompat.getColor(context, R.color.danger))
 })
 }
 
-sheet.setOnDismissListener {
-latch.countDown()
-}
-
 val scroll = ScrollView(context)
 scroll.addView(root)
 sheet.setContentView(scroll)
 sheet.show()
+sheet.setOnDismissListener {
+latch.countDown()
+}
 }
 
-latch.await(10, TimeUnit.MINUTES)
+if (!latch.await(10, TimeUnit.SECONDS)) {
+return "{\"error\":\"ui_timeout\"}"
+}
 return resultStr
 }
 }

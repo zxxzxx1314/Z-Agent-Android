@@ -126,13 +126,21 @@ def _hide_artifact(p):
 
 
 def _restore_artifact(p, backup):
-    """恢复产物（若检查命令在对照期创建了同名垃圾，先清除）。"""
-    if os.path.exists(p):
-        if os.path.isdir(backup):
-            shutil.rmtree(p)
-        else:
-            os.unlink(p)
-    os.rename(backup, p)
+    """Recover artifact; clear same-name junk left by check cmd.
+    v6.4: judge p by its own type, never by backup type; fully tolerant."""
+    try:
+        if os.path.exists(p) or os.path.islink(p):
+            if os.path.isdir(p) and not os.path.islink(p):
+                shutil.rmtree(p, ignore_errors=True)
+            else:
+                try:
+                    os.unlink(p)
+                except OSError:
+                    shutil.rmtree(p, ignore_errors=True)
+        os.rename(backup, p)
+        return True
+    except Exception:
+        return False
 
 
 def _without_scripts(text, blocks):
@@ -152,35 +160,18 @@ def safe_child_env():
     return env
 
 
-def _kill_process_tree(proc, grace=2.0):
-    pid = getattr(proc, "pid", None)
-    if pid is None:
-        return
-    pgid = None
+def _kill_process_tree(proc):
+    """终止整个进程组（POSIX），子进程拉起的孙进程一并回收。"""
     try:
-        pgid = os.getpgid(pid)
+        if os.name == "posix" and hasattr(os, "killpg"):
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        else:
+            proc.kill()
     except (ProcessLookupError, PermissionError, OSError):
-        pass
-    leader = pgid is not None and pgid == pid
-    def send(sig):
         try:
-            if leader:
-                os.killpg(pgid, sig)
-            else:
-                proc.send_signal(sig)
-        except (ProcessLookupError, PermissionError, OSError):
+            proc.kill()
+        except Exception:
             pass
-    send(signal.SIGTERM)
-    try:
-        proc.wait(timeout=grace)
-        return
-    except Exception:
-        pass
-    send(signal.SIGKILL)
-    try:
-        proc.wait(timeout=2)
-    except Exception:
-        pass
 
 
 def show_exec_result(code, rc, out, err):

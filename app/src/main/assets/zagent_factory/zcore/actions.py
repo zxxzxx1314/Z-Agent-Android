@@ -21,6 +21,10 @@ import traceback
 try:
     from . import gate as _gate
     from . import proc as _proc
+    try:
+        from .util import safe_child_env as _safe_env
+    except Exception:
+        _safe_env = None
     from .action_manifest import (ManifestError, coerce_args, from_file,
         scan_dir)
 except ImportError:
@@ -400,7 +404,7 @@ def _exec_process(m, args, ctx):
     blob = base64.b64encode(
         json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
     res = _proc.run([sys.executable, "-c", _RUNNER, blob],
-        timeout=int(m.get("timeout") or 60))
+        timeout=int(m.get("timeout") or 60), env=(_safe_env() if _safe_env else None))
     if res.get("kind") == "timeout":
         # 子进程已启动，可能已产生副作用，标记 unknown 禁止重试。
         return {"ok": False, "outcome": OUTCOME_UNKNOWN,

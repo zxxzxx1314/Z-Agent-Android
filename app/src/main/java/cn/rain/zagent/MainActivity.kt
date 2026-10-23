@@ -678,6 +678,7 @@ requestNotifyPermission()
     }
 override fun onResume() {
     super.onResume()
+    if (!::sp.isInitialized) return
     ensureExternalAccess()
     if (!reportedStartup) {
         val ms = AppStartup.elapsed()
@@ -4233,6 +4234,7 @@ private fun showAddQuickSheet() {
 }
     // -- 外部插件目录授权（方案 A）--
     private fun ensureExternalAccess() {
+        if (!::sp.isInitialized) return
         if (android.os.Build.VERSION.SDK_INT < 30) return
         if (Environment.isExternalStorageManager()) return
         if (sp.getBoolean("ext_asked", false)) return

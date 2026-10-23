@@ -84,6 +84,18 @@ def run_standard(m, sandbox, ck):
         return "（影子剧本已耗尽，本轮直接收尾，不再输出任何标签。）"
 
     m._post = fake_post
+    def fake_post_stream(msgs, temperature=0.3):
+        del m._STREAM_BUF[:]
+        m._STREAM_DONE[0] = False
+        m._STREAM_STOP[0] = False
+        m._REASONING_BUF = ''
+        r = fake_post(msgs, temperature)
+        if r:
+            m._STREAM_BUF.append(('content', r))
+        m._STREAM_DONE[0] = True
+        return r
+
+    m._post_stream = fake_post_stream
     m.AUTO_EXECUTE = True       # 影子会话无人值守，绕过 y/n 交互确认
 
     # 等价 main() 的启动准备（目录 + system prompt），但不进 REPL

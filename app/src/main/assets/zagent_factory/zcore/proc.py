@@ -65,7 +65,7 @@ def _terminate_group(proc):
         pass
 
 
-def run(argv, timeout=120):
+def run(argv, timeout=120, env=None):
     if isinstance(argv, str):
         argv = ["sh", "-c", argv]
     argv0 = argv[0] if argv else None
@@ -78,6 +78,7 @@ def run(argv, timeout=120):
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=env,
             start_new_session=True,
         )
     except (FileNotFoundError, PermissionError, OSError) as e:

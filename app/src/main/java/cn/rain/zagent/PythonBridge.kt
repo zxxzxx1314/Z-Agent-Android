@@ -64,6 +64,8 @@ object PythonBridge {
 
     @Volatile
     private var bootstrapped = false
+    private var bootFailed = false
+    private var bootFailMsg = ""
 
     // ------------------------------------------------------------------
     // 初始化
@@ -74,19 +76,27 @@ object PythonBridge {
     * 所有桥接方法入口处都会先调它，业务代码无需关心初始化时机。
     */
     @Synchronized
+    @Synchronized
     fun ensureBootstrapped(context: Context) {
         if (bootstrapped) return
+        if (bootFailed) throw IllegalStateException("bootstrap failed: " + bootFailMsg)
         val app = context.applicationContext
-        if (!Python.isStarted()) {
-            Python.start(AndroidPlatform(app))
+        try {
+            if (!Python.isStarted()) {
+                Python.start(AndroidPlatform(app))
+            }
+            AndroidAPI.init(app)
+            val genome = deployFactoryGenome(app)
+            deployBuiltinPlugins(app)
+            insertSysPathHead(genome)
+            Python.getInstance().getModule("zagent_app")
+                .callAttr(""bootstrap"", homeDir(app).absolutePath)
+            bootstrapped = true
+        } catch (t: Throwable) {
+            bootFailed = true
+            bootFailMsg = t.message ?: t.javaClass.simpleName
+            throw t
         }
-        AndroidAPI.init(app)
-        val genome = deployFactoryGenome(app)
-    deployBuiltinPlugins(app)
-        insertSysPathHead(genome)
-        Python.getInstance().getModule("zagent_app")
-            .callAttr("bootstrap", homeDir(app).absolutePath)
-        bootstrapped = true
     }
 
     /** home = filesDir/zagent_home（zagent 的 HOME、mind/、plugins/ 都在其下） */
@@ -238,10 +248,19 @@ if (child.startsWith('test_') && child.endsWith('.py')) continue
     // ------------------------------------------------------------------
 
     /** 一轮交互（命令或对话），返回本轮全部输出文本 */
+    private val runLock = java.util.concurrent.atomic.AtomicBoolean(false)
+
     fun runAgent(context: Context, userInput: String): String {
-        ensureBootstrapped(context)
-        return Python.getInstance().getModule("zagent_app")
-            .callAttr("run_agent", userInput)?.toString() ?: ""
+        if (!runLock.compareAndSet(false, true)) {
+            return "[busy] 已有任务在执行，请等待完成或先点击停止。"
+        }
+        try {
+            ensureBootstrapped(context)
+            return Python.getInstance().getModule("zagent_app")
+                .callAttr("run_agent", userInput)?.toString() ?: ""
+        } finally {
+            runLock.set(false)
+        }
     }
 
     /** 写入 API Key 并热更新 */
