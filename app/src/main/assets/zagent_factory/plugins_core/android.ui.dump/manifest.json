@@ -1,0 +1,13 @@
+{
+ "id": "android.ui.dump",
+ "name": "uiautomator fallback",
+ "desc": "Fallback to uiautomator dump via root when accessibility tree is unavailable",
+ "version": "1.0",
+ "level": 2,
+ "permission": ["root"],
+ "isolation": "inproc",
+ "timeout": 30,
+ "tags": ["android", "ui", "root"],
+ "args": {"timeout": {"type": "int", "default": 20, "desc": "dump timeout seconds"}},
+ "requires": {"root": "REQUIRED"}
+}

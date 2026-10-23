@@ -1,0 +1,33 @@
+{
+ "id": "android.shell_exec",
+ "name": "Linux 命令",
+ "desc": "在 APK 内置 proot Linux 环境执行命令，返回 stdout/stderr/退出码",
+ "version": "1.0",
+ "level": 2,
+ "permission": [
+  "shell"
+ ],
+ "isolation": "inproc",
+ "timeout": 300,
+ "tags": [
+  "android",
+  "shell"
+ ],
+ "args": {
+  "cmd": {
+   "type": "string",
+   "required": true,
+   "desc": "shell 命令"
+  },
+  "timeout": {
+   "type": "int",
+   "default": 60,
+   "desc": "秒，1..300"
+  }
+ },
+ "requires": {
+  "android_api": [
+   "shell_exec"
+  ]
+ }
+}

@@ -1,0 +1,18 @@
+{
+ "id": "android.ui.click",
+ "name": "tap",
+ "desc": "Click by x/y or by text. accessibility first, root fallback when NOT_DISPATCHED",
+ "version": "1.0",
+ "level": 2,
+ "permission": ["accessibility"],
+ "isolation": "inproc",
+ "timeout": 40,
+ "tags": ["android", "ui"],
+ "args": {
+ "x": {"type": "float"},
+ "y": {"type": "float"},
+ "text": {"type": "string"},
+ "duration_ms": {"type": "int", "default": 50}
+ },
+ "requires": {}
+}

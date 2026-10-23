@@ -1,0 +1,22 @@
+{
+ "id": "android.shell_status",
+ "name": "Linux 状态",
+ "desc": "查询内置 proot Linux 环境是否就绪",
+ "version": "1.0",
+ "level": 0,
+ "permission": [
+  "android"
+ ],
+ "isolation": "inproc",
+ "timeout": 15,
+ "tags": [
+  "android",
+  "shell"
+ ],
+ "args": {},
+ "requires": {
+  "android_api": [
+   "linux_status"
+  ]
+ }
+}

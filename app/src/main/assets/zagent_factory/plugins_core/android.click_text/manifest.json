@@ -1,0 +1,26 @@
+{
+ "id": "android.click_text",
+ "name": "按文字点击",
+ "desc": "在当前界面查找文本并点击对应控件",
+ "version": "1.0",
+ "level": 2,
+ "permission": [
+  "accessibility"
+ ],
+ "isolation": "inproc",
+ "timeout": 20,
+ "tags": [
+  "android",
+  "ui"
+ ],
+ "args": {
+  "text": {
+   "type": "string",
+   "required": true,
+   "desc": "目标文本"
+  }
+ },
+ "requires": {
+  "accessibility": "REQUIRED"
+ }
+}

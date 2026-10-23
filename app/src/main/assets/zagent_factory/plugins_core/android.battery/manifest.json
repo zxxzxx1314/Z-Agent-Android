@@ -1,0 +1,22 @@
+{
+ "id": "android.battery",
+ "name": "读取电量",
+ "desc": "返回电量百分比、是否充电、机型与系统版本",
+ "version": "1.0",
+ "level": 0,
+ "permission": [
+  "android"
+ ],
+ "isolation": "inproc",
+ "timeout": 15,
+ "tags": [
+  "android",
+  "quick"
+ ],
+ "args": {},
+ "requires": {
+  "android_api": [
+   "battery"
+  ]
+ }
+}

@@ -1,0 +1,17 @@
+{
+ "id": "android.ui.observe",
+ "name": "observe",
+ "desc": "Read current interface. accessibility tree first, uiautomator fallback, optional screenshot",
+ "version": "1.0",
+ "level": 1,
+ "permission": ["accessibility"],
+ "isolation": "inproc",
+ "timeout": 40,
+ "tags": ["android", "ui"],
+ "args": {
+ "include_screenshot": {"type": "bool", "default": false},
+ "excluded_packages": {"type": "list", "default": []},
+ "timeout": {"type": "int", "default": 20}
+ },
+ "requires": {}
+}

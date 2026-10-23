@@ -1,0 +1,18 @@
+{
+"id": "file.read",
+"name": "读文件",
+"desc": "按字节预算读取文本文件；默认 16 KiB，offset 只落在完整 UTF-8 字符边界。",
+"version": "1.1",
+"level": 0,
+"permission": ["fs.read"],
+"isolation": "inproc",
+"timeout": 20,
+"tags": ["core", "fs", "quick"],
+"replaces": ["file_read"],
+"args": {
+"path": {"type": "string", "required": true, "desc": "绝对路径或 ~ 开头"},
+"limit": {"type": "int", "default": 16384, "desc": "最大读取字节数（1..262144）"},
+"offset": {"type": "int", "default": 0, "desc": "起始字节偏移，自动对齐到 UTF-8 字符边界"}
+},
+"returns": {"ok": "bool", "data": "string", "meta": "size/offset/limit/bytes_read/truncated/next_offset/remaining"}
+}

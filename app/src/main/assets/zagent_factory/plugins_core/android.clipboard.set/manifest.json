@@ -1,0 +1,27 @@
+{
+ "id": "android.clipboard.set",
+ "name": "写剪贴板",
+ "desc": "把文本写入系统剪贴板",
+ "version": "1.0",
+ "level": 1,
+ "permission": [
+  "android"
+ ],
+ "isolation": "inproc",
+ "timeout": 15,
+ "tags": [
+  "android",
+  "quick"
+ ],
+ "args": {
+  "text": {
+   "type": "string",
+   "required": true
+  }
+ },
+ "requires": {
+  "android_api": [
+   "clipboard_set"
+  ]
+ }
+}

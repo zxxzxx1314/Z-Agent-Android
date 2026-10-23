@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Legacy 完整图（API 小于 26）：accent 圆角方块 + A3-a Z -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M20,8 h68 a12,12 0 0 1 12,12 v68 a12,12 0 0 1 -12,12 h-68 a12,12 0 0 1 -12,-12 v-68 a12,12 0 0 1 12,-12 z"
+        android:fillColor="#6D4AFF" />
+    <path
+        android:pathData="M 34,36 L 70,36 Q 74,36 71.2,38.8 L 36.8,69.2 Q 34,72 38,72 L 74,72"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="10"
+        android:strokeLineCap="butt"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 74,80.5 A 4.5,4.5 0 1 1 74,89.5 A 4.5,4.5 0 1 1 74,80.5 Z" />
+</vector>

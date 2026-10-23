@@ -1,0 +1,16 @@
+{
+"id": "file.write",
+"name": "写文件",
+"desc": "覆盖写入或追加文本文件；单次上限 512 KiB，超限直接拒绝不截断。",
+"version": "1.1",
+"level": 2,
+"permission": ["fs.write"],
+"isolation": "inproc",
+"timeout": 30,
+"tags": ["core", "fs"],
+"args": {
+"path": {"type": "string", "required": true},
+"content": {"type": "string", "required": true, "desc": "UTF-8 文本，字节数 ≤ 512*1024"},
+"append": {"type": "bool", "default": false, "desc": "true 则追加"}
+}
+}

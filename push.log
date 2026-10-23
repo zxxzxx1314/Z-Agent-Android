@@ -1,0 +1,19 @@
+Fetching remote head...
+Remote HEAD: 7a77c5f82319b4f32688b8b4625cc6aeeff7cbf8
+Enumerating local files...
+Traceback (most recent call last):
+  File "/data/data/com.termux/files/home/zagent_push/push_api.py", line 112, in <module>
+    main()
+    ~~~~^^
+  File "/data/data/com.termux/files/home/zagent_push/push_api.py", line 51, in main
+    files_out = subprocess.check_output(['git', 'ls-tree', '-r', '-z', 'HEAD', '--full-tree'], stderr=subprocess.DEVNULL).decode('utf-8')
+                ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/data/com.termux/files/usr/lib/python3.14/subprocess.py", line 473, in check_output
+    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,
+           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+               **kwargs).stdout
+               ^^^^^^^^^
+  File "/data/data/com.termux/files/usr/lib/python3.14/subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['git', 'ls-tree', '-r', '-z', 'HEAD', '--full-tree']' returned non-zero exit status 128.

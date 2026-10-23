@@ -1,0 +1,23 @@
+{
+ "id": "android.clipboard.get",
+ "name": "读剪贴板",
+ "desc": "读取系统剪贴板当前文本",
+ "version": "1.0",
+ "level": 0,
+ "permission": [
+  "android"
+ ],
+ "isolation": "inproc",
+ "timeout": 15,
+ "tags": [
+  "android",
+  "quick"
+ ],
+ "args": {},
+ "sensitive_output": true,
+ "requires": {
+  "android_api": [
+   "clipboard_get"
+  ]
+ }
+}

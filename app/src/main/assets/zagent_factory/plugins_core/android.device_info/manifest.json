@@ -1,0 +1,22 @@
+{
+ "id": "android.device_info",
+ "name": "设备信息",
+ "desc": "返回品牌、机型、Android 版本与 SDK 号",
+ "version": "1.0",
+ "level": 0,
+ "permission": [
+  "android"
+ ],
+ "isolation": "inproc",
+ "timeout": 15,
+ "tags": [
+  "android",
+  "quick"
+ ],
+ "args": {},
+ "requires": {
+  "android_api": [
+   "device_info"
+  ]
+ }
+}

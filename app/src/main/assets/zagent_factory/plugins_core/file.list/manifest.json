@@ -1,0 +1,14 @@
+{
+"id": "file.list",
+"name": "列目录",
+"desc": "列出一层目录内容，目录带 / 结尾。",
+"version": "1.0",
+"level": 0,
+"permission": ["fs.read"],
+"isolation": "inproc",
+"timeout": 20,
+"tags": ["core", "fs", "quick"],
+"args": {
+"path": {"type": "string", "default": ".", "desc": "目录路径"}
+}
+}

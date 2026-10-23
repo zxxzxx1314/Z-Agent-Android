@@ -1,0 +1,22 @@
+{
+ "id": "android.shell_bootstrap",
+ "name": "Linux 初始化",
+ "desc": "解压 Termux bootstrap 并启动 proot Linux（首次约 30 秒）",
+ "version": "1.0",
+ "level": 2,
+ "permission": [
+  "shell"
+ ],
+ "isolation": "inproc",
+ "timeout": 300,
+ "tags": [
+  "android",
+  "shell"
+ ],
+ "args": {},
+ "requires": {
+  "android_api": [
+   "linux_bootstrap"
+  ]
+ }
+}

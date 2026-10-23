@@ -1,0 +1,1 @@
+{"id":"script.run","name":"执行脚本","desc":"执行 Python 脚本并返回退出码与输出","version":"1.0","level":2,"permission":["host"],"isolation":"inproc","timeout":600,"tags":["core"],"args":{"code":{"type":"string","required":true,"desc":"Python 源码"}}}

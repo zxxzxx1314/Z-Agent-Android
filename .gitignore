@@ -1,0 +1,56 @@
+# ---- 构建产物 ----
+.gradle/
+build/
+*.apk
+*.aab
+*.zip
+local.properties
+captures/
+
+# ---- IDE / 编辑器 ----
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.DS_Store
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ---- Kotlin / Java ----
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+hs_err_pid*
+
+# ---- 备份与临时文件 ----
+*.bak
+*.bak_*
+*.orig
+*.rej
+*.tmp
+*.swp
+*~
+backups/
+.bak_rain_*/
+.indent_test.txt
+_probe.sh
+_audit.sh
+_sync.sh
+_dl.log
+_artifact.zip
+_pending-*
+
+# ---- 敏感文件 ----
+tk.txt
+.push_url
+.token
+*.keystore
+*.jks
+keystore.properties

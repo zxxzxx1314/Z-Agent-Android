@@ -1,0 +1,28 @@
+{
+ "id": "android.vibrate",
+ "name": "震动",
+ "desc": "让手机震动指定毫秒数",
+ "version": "1.0",
+ "level": 1,
+ "permission": [
+  "android"
+ ],
+ "isolation": "inproc",
+ "timeout": 15,
+ "tags": [
+  "android",
+  "quick"
+ ],
+ "args": {
+  "ms": {
+   "type": "int",
+   "default": 300,
+   "desc": "10-2000"
+  }
+ },
+ "requires": {
+  "android_api": [
+   "vibrate"
+  ]
+ }
+}

@@ -1,0 +1,16 @@
+{
+ "id": "conversation.history",
+ "name": "翻历史",
+ "desc": "分页读取当前会话的完整 journal 原文（含被压缩掉的细节）。只在本会话内生效，不能跨会话。",
+ "version": "1.0",
+ "level": 0,
+ "permission": ["fs.read"],
+ "isolation": "inproc",
+ "timeout": 20,
+ "tags": ["core", "session"],
+ "args": {
+ "offset": {"type": "int", "default": 0, "desc": "起始序号（0 起）"},
+ "limit": {"type": "int", "default": 20, "desc": "本次返回条数（1..100）"}
+ },
+ "returns": {"ok": "bool", "data": "dict(offset/limit/total/items)"}
+}

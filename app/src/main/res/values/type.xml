@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!-- Z-Agent 字号标尺 · 五档 11/13/15/17/22；两主题共用 --><resources><!-- 11sp · 时间戳/状态/辅助说明 -->
+
+<dimen name="fs_caption">11sp</dimen>
+
+<!-- 13sp · 胶囊/标签/次要操作 -->
+
+<dimen name="fs_label">13sp</dimen>
+
+<!-- 15sp · 正文/输入框 -->
+
+<dimen name="fs_body">15sp</dimen>
+
+<!-- 17sp · 小标题 -->
+
+<dimen name="fs_title">17sp</dimen>
+
+<!-- 22sp · 页面主标题 -->
+
+<dimen name="fs_display">22sp</dimen>
+</resources>

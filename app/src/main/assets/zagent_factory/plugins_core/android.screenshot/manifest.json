@@ -1,0 +1,18 @@
+{
+  "id": "android.screenshot",
+  "name": "截图",
+  "desc": "对当前可截窗口截图，返回 PNG base64（API 30+）。排除自身浮层与指定包。",
+  "version": "1.0",
+  "level": 1,
+  "permission": ["accessibility"],
+  "isolation": "inproc",
+  "timeout": 30,
+  "tags": ["android", "ui", "screenshot"],
+  "args": {
+    "excluded_packages": {"type": "list", "default": [], "desc": "要排除的包名列表，如语音浮层"}
+  },
+  "requires": {
+    "min_sdk": 30,
+    "accessibility": "REQUIRED"
+  }
+}

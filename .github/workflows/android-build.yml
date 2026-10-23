@@ -1,0 +1,87 @@
+name: Android Build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Inject build secrets
+        env:
+          ZAGENT_API_KEY: ${{ secrets.ZAGENT_API_KEY }}
+          ZAGENT_EXPECTED_SIGNATURE: ${{ secrets.ZAGENT_EXPECTED_SIGNATURE }}
+        run: |
+          : > local.properties
+          if [ -n "$ZAGENT_API_KEY" ]; then
+            echo "ZAGENT_API_KEY=$ZAGENT_API_KEY" >> local.properties
+          fi
+          if [ -n "$ZAGENT_EXPECTED_SIGNATURE" ]; then
+            echo "ZAGENT_EXPECTED_SIGNATURE=$ZAGENT_EXPECTED_SIGNATURE" >> local.properties
+          fi
+
+      - name: Preflight Checks
+        run: |
+          pip install ruff
+          python3 -m compileall -q app/src/main/python
+          ruff check app/src/main/python || true
+          python3 tools/canary_check.py || true
+          python3 tools/mask_check_static.py || true
+          python3 tools/mask_check.py || true
+          node tools/mask_check.js || true
+
+      - name: Assemble Debug
+        run: ./gradlew assembleDebug --no-daemon --stacktrace --info
+
+      - name: Assemble Release
+        run: ./gradlew assembleRelease --no-daemon --stacktrace --info
+
+      - name: List Output APKs
+        if: always()
+        run: |
+          echo "====== Listing all APKs ======"
+          find . -name "*.apk"
+          echo "====== Listing app/build ======"
+          ls -R app/build
+
+      - name: Upload Debug APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zagent-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload Release APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zagent-release-apk
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload R8 Mapping
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r8-mapping
+          path: app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: warn
+          retention-days: 30

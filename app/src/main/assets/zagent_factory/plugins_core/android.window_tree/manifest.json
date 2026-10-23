@@ -1,0 +1,21 @@
+{
+ "id": "android.window_tree",
+ "name": "读界面树",
+ "desc": "读取无障碍服务当前活动窗口的 UI 树（JSON 字符串）",
+ "version": "1.0",
+ "level": 1,
+ "permission": [
+  "accessibility"
+ ],
+ "isolation": "inproc",
+ "timeout": 20,
+ "tags": [
+  "android",
+  "ui"
+ ],
+ "args": {},
+ "sensitive_output": true,
+ "requires": {
+  "accessibility": "REQUIRED"
+ }
+}

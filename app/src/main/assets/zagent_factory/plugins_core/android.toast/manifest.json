@@ -1,0 +1,27 @@
+{
+ "id": "android.toast",
+ "name": "弹提示",
+ "desc": "在屏幕上弹一条 Toast",
+ "version": "1.0",
+ "level": 1,
+ "permission": [
+  "android"
+ ],
+ "isolation": "inproc",
+ "timeout": 15,
+ "tags": [
+  "android",
+  "quick"
+ ],
+ "args": {
+  "text": {
+   "type": "string",
+   "required": true
+  }
+ },
+ "requires": {
+  "android_api": [
+   "toast"
+  ]
+ }
+}

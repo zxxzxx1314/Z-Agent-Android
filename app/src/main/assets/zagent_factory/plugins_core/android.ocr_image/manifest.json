@@ -1,0 +1,29 @@
+{
+ "id": "android.ocr_image",
+ "name": "图片 OCR",
+ "desc": "对本地图片做文字识别，返回识别出的文本",
+ "version": "1.0",
+ "level": 1,
+ "permission": [
+  "android",
+  "storage"
+ ],
+ "isolation": "inproc",
+ "timeout": 60,
+ "tags": [
+  "android",
+  "ocr"
+ ],
+ "args": {
+  "path": {
+   "type": "string",
+   "required": true,
+   "desc": "图片绝对路径"
+  }
+ },
+ "requires": {
+  "android_api": [
+   "ocr"
+  ]
+ }
+}

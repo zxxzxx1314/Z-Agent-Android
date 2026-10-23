@@ -1,0 +1,1 @@
+{"id":"plugin.call","name":"调用插件","desc":"调用 home/plugins 下的插件（隔离子进程）","version":"1.0","level":2,"permission":["host"],"isolation":"inproc","timeout":600,"tags":["core"],"args":{"id":{"type":"string","required":true},"arg":{"type":"string","default":""}}}

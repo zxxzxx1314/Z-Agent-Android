@@ -1,0 +1,33 @@
+{
+ "id": "android.eval_js",
+ "name": "网页执行 JS",
+ "desc": "在指定 URL 的隐藏 WebView 里执行 JavaScript 并取回结果",
+ "version": "1.0",
+ "level": 2,
+ "permission": [
+  "web"
+ ],
+ "isolation": "inproc",
+ "timeout": 60,
+ "tags": [
+  "android",
+  "web"
+ ],
+ "args": {
+  "url": {
+   "type": "string",
+   "required": true,
+   "desc": "页面地址"
+  },
+  "js": {
+   "type": "string",
+   "required": true,
+   "desc": "要执行的脚本"
+  }
+ },
+ "requires": {
+  "android_api": [
+   "eval_js"
+  ]
+ }
+}

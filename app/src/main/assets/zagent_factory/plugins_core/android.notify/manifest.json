@@ -1,0 +1,32 @@
+{
+ "id": "android.notify",
+ "name": "发通知",
+ "desc": "发一条系统通知",
+ "version": "1.0",
+ "level": 1,
+ "permission": [
+  "android"
+ ],
+ "isolation": "inproc",
+ "timeout": 15,
+ "tags": [
+  "android",
+  "quick"
+ ],
+ "args": {
+  "title": {
+   "type": "string",
+   "default": "Z-Agent"
+  },
+  "content": {
+   "type": "string",
+   "required": true
+  }
+ },
+ "sensitive_args": true,
+ "requires": {
+  "android_api": [
+   "notify"
+  ]
+ }
+}

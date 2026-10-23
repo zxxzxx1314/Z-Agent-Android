@@ -1,0 +1,13 @@
+{
+ "id": "android.ui.text",
+ "name": "type text",
+ "desc": "Type into focused input: ASCII via root input text, non-ASCII copied to clipboard",
+ "version": "1.0",
+ "level": 2,
+ "permission": ["root"],
+ "isolation": "inproc",
+ "timeout": 30,
+ "tags": ["android", "ui"],
+ "args": {"text": {"type": "string", "required": true}},
+ "requires": {}
+}

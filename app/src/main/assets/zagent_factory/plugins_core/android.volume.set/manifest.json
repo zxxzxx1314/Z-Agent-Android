@@ -1,0 +1,28 @@
+{
+ "id": "android.volume.set",
+ "name": "设音量",
+ "desc": "设置媒体音量，0-15",
+ "version": "1.0",
+ "level": 1,
+ "permission": [
+  "android"
+ ],
+ "isolation": "inproc",
+ "timeout": 15,
+ "tags": [
+  "android",
+  "quick"
+ ],
+ "args": {
+  "level": {
+   "type": "int",
+   "required": true,
+   "desc": "0-15"
+  }
+ },
+ "requires": {
+  "android_api": [
+   "set_volume"
+  ]
+ }
+}

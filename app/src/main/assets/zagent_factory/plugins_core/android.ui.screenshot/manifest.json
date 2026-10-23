@@ -1,0 +1,13 @@
+{
+ "id": "android.ui.screenshot",
+ "name": "screenshot",
+ "desc": "Screenshot current window (API 30+), returns PNG base64",
+ "version": "1.0",
+ "level": 1,
+ "permission": ["accessibility"],
+ "isolation": "inproc",
+ "timeout": 30,
+ "tags": ["android", "ui", "screenshot"],
+ "args": {"excluded_packages": {"type": "list", "default": []}},
+ "requires": {"min_sdk": 30}
+}

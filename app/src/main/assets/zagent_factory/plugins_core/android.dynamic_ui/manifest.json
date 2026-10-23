@@ -1,0 +1,29 @@
+{
+ "id": "android.dynamic_ui",
+ "name": "渲染动态界面",
+ "desc": "把动态 UI JSON 交给原生渲染器显示（表单/卡片/按钮）",
+ "version": "1.0",
+ "level": 1,
+ "permission": [
+  "android",
+  "ui"
+ ],
+ "isolation": "inproc",
+ "timeout": 60,
+ "tags": [
+  "android",
+  "ui"
+ ],
+ "args": {
+  "ui": {
+   "type": "string",
+   "required": true,
+   "desc": "UI JSON 字符串"
+  }
+ },
+ "requires": {
+  "android_api": [
+   "dynamic_ui"
+  ]
+ }
+}

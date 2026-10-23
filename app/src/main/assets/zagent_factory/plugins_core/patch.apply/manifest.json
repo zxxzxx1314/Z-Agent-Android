@@ -1,0 +1,1 @@
+{"id":"patch.apply","name":"打补丁","desc":"把 patch 标签写入目标文件，写后编译校验，失败回滚","version":"1.0","level":2,"permission":["host"],"isolation":"inproc","timeout":600,"tags":["core"],"args":{"text":{"type":"string","required":true}}}

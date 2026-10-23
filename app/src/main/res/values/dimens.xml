@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+<dimen name="radius_sm">10dp</dimen>
+<dimen name="radius_md">14dp</dimen>
+<dimen name="radius_lg">22dp</dimen>
+<dimen name="space_xs">4dp</dimen>
+<dimen name="space_sm">8dp</dimen>
+<dimen name="space_md">12dp</dimen>
+<dimen name="space_lg">16dp</dimen>
+<dimen name="space_xl">24dp</dimen>
+<dimen name="ctrl_h_sm">32dp</dimen>
+<dimen name="ctrl_h_md">38dp</dimen>
+<dimen name="ctrl_h_lg">44dp</dimen>
+<dimen name="pad_pill_h">14dp</dimen>
+<dimen name="pad_bubble_h">15dp</dimen>
+<dimen name="pad_bubble_v">11dp</dimen>
+<dimen name="pad_card">16dp</dimen>
+<dimen name="fs_log">11sp</dimen>
+</resources>

@@ -1,0 +1,27 @@
+{
+ "id": "android.open_url",
+ "name": "打开链接",
+ "desc": "用系统浏览器打开一个 URL",
+ "version": "1.0",
+ "level": 2,
+ "permission": [
+  "android"
+ ],
+ "isolation": "inproc",
+ "timeout": 15,
+ "tags": [
+  "android",
+  "quick"
+ ],
+ "args": {
+  "url": {
+   "type": "string",
+   "required": true
+  }
+ },
+ "requires": {
+  "android_api": [
+   "open_url"
+  ]
+ }
+}

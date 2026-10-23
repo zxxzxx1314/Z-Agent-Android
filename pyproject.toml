@@ -1,0 +1,29 @@
+# Python 代码规范配置 (Ruff)
+# 安装: pip install ruff
+# 检查: ruff check .
+# 格式化: ruff format .
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+indent-width = 4
+
+# 排除不需要检查的目录和生成物
+exclude = [
+ ".git",
+ ".gradle",
+ "build",
+ "app/build",
+ "app/src/main/assets/zagent_factory",
+ "pycache",
+ "*.pyc",
+]
+
+[tool.ruff.lint]
+# 启用规则: pycodestyle(E), pyflakes(F), isort(I), pyupgrade(UP), flake8-bugbear(B)
+select = ["E", "F", "W", "I", "UP", "B"]
+# 忽略规则: 行尾空白(W291, W293), 裸 except(E722), 名字歧义(E741)
+ignore = ["E501", "E722", "E741", "W291", "W293"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["zcore", "zguard", "rea_core", "rea_mcp", "zagent"]
