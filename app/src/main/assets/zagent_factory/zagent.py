@@ -673,7 +673,17 @@ SESSION_MAX_TURNS = 400
 
 
 def load_session():
-    """从磁盘恢复会话记忆（进程重启后不丢上下文）。"""
+    """从磁盘恢复会话记忆（进程重启后不丢上下文）。
+    v6.5: 优先读 SQLite 完整历史，避免 json tail 截断丢历史。"""
+    try:
+        import zagent_sessions as _zs
+        _sid = _zs.ensure(HOME)
+        if _sid:
+            _db = _zs.load_msgs(HOME, _sid)
+            if _db:
+                return _db
+    except Exception:
+        pass
     try:
         with open(SESSION_PATH, "r", encoding="utf-8", errors="ignore") as f:
             data = json.load(f)
@@ -703,7 +713,7 @@ def _redact_msgs(msgs):
     return out
 
 def save_session(msgs):
-    """把会话记忆落盘（只保留最近 SESSION_MAX_TURNS 条）。"""
+    """把会话记忆落盘（只保留最近 SESSION_MAX_TURNS 条），并同步 SQLite 完整历史。"""
     try:
         tail = msgs[-SESSION_MAX_TURNS:] if len(msgs) > SESSION_MAX_TURNS else msgs
         tail = _redact_msgs(tail)
@@ -713,6 +723,12 @@ def save_session(msgs):
         os.replace(tmp, SESSION_PATH)
     except Exception as e:
         print("[会话] 保存失败：%s" % e)
+    try:
+        import zagent_sessions as _zs
+        _sid = _zs.ensure(HOME, msgs)
+        _zs.save_msgs(HOME, _sid, msgs)
+    except Exception as _se:
+        print("[会话] SQLite 同步失败：%s" % _se)
 
 
 def clear_session():
@@ -1033,8 +1049,8 @@ def fetch_page(url):
         html_truncated = True
     m = _re.search("(?is)<title[^>]>(.*?)</title>", html)
     title = _re.sub("<[^>]+>", "", m.group(1)).strip() if m else u
-    html = _re.sub("(?is)<script[^>]>.*?</script>", " ", html)
-    html = _re.sub("(?is)<style[^>]>.*?</style>", " ", html)
+    html = _re.sub("(?is)<script[^>]*>.*?</script>", " ", html)
+    html = _re.sub("(?is)<style[^>]*>.*?</style>", " ", html)
     text = _re.sub("<[^>]+>", " ", html)
     text = " ".join(text.split())
     return _j.dumps({
@@ -1702,8 +1718,13 @@ def _extract_archive(path):
         try:
             import py7zr
             with py7zr.SevenZipFile(path, "r") as z:
-                z.extractall(out_dir)
-            return out_dir, "7z 解压完成"
+                names = z.getnames()
+                safe = set(_safe_member_names(names, out_dir))
+                targets = [n for n in names if n in safe]
+                if not targets:
+                    return None, "7z 无可安全解压的条目"
+                z.extract(path=out_dir, targets=targets)
+            return out_dir, "7z 解压 %d 项" % len(targets)
         except ImportError:
             return None, "7z 需要 py7zr"
         except Exception as e:
@@ -1712,8 +1733,14 @@ def _extract_archive(path):
         try:
             import rarfile
             with rarfile.RarFile(path) as r:
-                r.extractall(out_dir)
-            return out_dir, "rar 解压完成"
+                names = r.namelist()
+                safe = set(_safe_member_names(names, out_dir))
+                mem = [m for m in r.infolist()
+                    if m.filename in safe and not m.is_symlink()]
+                if not mem:
+                    return None, "rar 无可安全解压的条目"
+                r.extractall(out_dir, members=mem)
+            return out_dir, "rar 解压 %d 项" % len(mem)
         except ImportError:
             return None, "rar 需要 rarfile"
         except Exception as e:
@@ -2856,7 +2883,7 @@ def quality_gate(round_no, reply, control, scripts, plugin_calls):
             append_meta_log("quality-gate", {"reason": "danger", "kw": _d, "round": round_no})
             return False, "High-risk pattern detected; rewrite unless truly needed."
     low = r.lower()
-    for kw in ("忽略以上", "ignore previous", "ignore above", "越狱", "jailbreak"):
+    for kw in ("忽略以上", "ignore previous", "ignore above", "越狱", "jailbreak", "system prompt", "系统提示词", "developer mode", "开发者模式", "无视限制", " disregard", " disregard previous", " disregard all"):
         if kw in low:
             append_meta_log("quality-gate", {"reason": "inject", "kw": kw, "round": round_no})
             return False, "回复中出现可疑指令注入样式的内容，请围绕用户任务回答。"
@@ -2927,20 +2954,27 @@ def _run_inproc(code, timeout):
                 _ns = dict(globals())
                 _ns.update(_shell_namespace())
                 # v6.4 audit: shallow copy lets scripts mutate ACTIVE_CONTRACT in place
-                _ac_key = "ACTIVE_CONTRACT"
-                _cb = None
-                try:
-                    _c0 = _ns.get(_ac_key)
-                    if isinstance(_c0, dict):
-                        _cb = dict(_c0)
-                except Exception:
-                    pass
+                import copy as _copy
+                _snap = {}
+                for _gk in ("ACTIVE_CONTRACT", "TODOS", "messages"):
+                    if _gk in _ns:
+                        try:
+                            _snap[_gk] = _copy.deepcopy(_ns[_gk])
+                        except Exception:
+                            pass
                 exec(compile(code, "<app-script>", "exec"), _ns)
-                if _cb is not None:
+                for _gk, _gv in _snap.items():
+                    _cur = globals().get(_gk)
+                    if _ns.get(_gk) is not _cur:
+                        continue
                     try:
-                        _c1 = _ns.get(_ac_key)
-                        if isinstance(_c1, dict) and _c1 != _cb:
-                            buf_err.write("\n[audit] script mutated ACTIVE_CONTRACT")
+                        if isinstance(_cur, dict) and _cur != _gv:
+                            _cur.clear()
+                            _cur.update(_gv)
+                            buf_err.write(chr(10) + "[audit] rollback " + _gk)
+                        elif isinstance(_cur, list) and _cur != _gv:
+                            _cur[:] = _gv
+                            buf_err.write(chr(10) + "[audit] rollback " + _gk)
                     except Exception:
                         pass
         except BaseException as e:            # noqa: BLE001 脚本任意异常都算它自己的
@@ -3317,7 +3351,7 @@ def agent_loop(first_reply=None):
                 error_feedbacks.append(
                     "【系统自动回传】验收合同已锁定，禁止修改裁判。"
                     "请修复产物本身；若认为检查标准有误，用文字向用户说明，"
-                    "由用户裁决。")
+                    "由用户裁决（用户可输入 /contract 放弃 解除锁定后重新登记）。")
                 continue
             c2, err2 = register_contract(clause, CURRENT_TASK, append_to=base)
             if err2:
@@ -3370,7 +3404,7 @@ def agent_loop(first_reply=None):
                         "[evolve:原因]...[/evolve] 源码；若无法修复请改用文字说明。"
                         % (tip, msg))
             if scripts:
-                feedbacks.append(MSG21)
+                feedbacks.append(_MSG21_TEXT)
         elif _patch_items:
             # ---- 补丁模式执行（v4.5：与脚本/插件并列，统一确认+模式约束）----
             if MODE == "plan":
@@ -3615,7 +3649,7 @@ def handle_command(u):
             act = parts[1] if len(parts) > 1 else 'status'
             if act == 'start':
                 port = int(parts[2]) if len(parts) > 2 else 8765
-                host = parts[3] if len(parts) > 3 else '0.0.0.0'
+                host = parts[3] if len(parts) > 3 else '127.0.0.1'
                 p = rea_mcp.serve(port, host)
                 print('[MCP] 已启动 host=' + host + ' port=' + str(p))
             elif act == 'stop':
@@ -3708,7 +3742,8 @@ def handle_command(u):
         parts = u.split(maxsplit=1)
         arg = parts[1].strip() if len(parts) > 1 else ""
         if arg in ("放弃", "abandon"):
-            if ACTIVE_CONTRACT and ACTIVE_CONTRACT.get("status") == "open":
+            if ACTIVE_CONTRACT:
+            # v6.5: 终局 failed_final 也能被用户放弃，避免死局
                 ACTIVE_CONTRACT["status"] = "abandoned"
                 save_contract(ACTIVE_CONTRACT)
                 append_journal("合同放弃", ACTIVE_CONTRACT["task"])
@@ -3880,7 +3915,6 @@ def main():
     print("═" * 50)
     while True:
         _gate.kill_check()
-    while True:
         try:
             user_input = input("\n你> ").strip()
         except (KeyboardInterrupt, EOFError):
@@ -3889,7 +3923,10 @@ def main():
         if not user_input:
             continue
         if user_input.startswith("/"):
-            handle_command(user_input)
+            try:
+                handle_command(user_input)
+            except Exception as _cmd_err:
+                print("[命令执行失败] " + repr(_cmd_err))
             continue
         note_task(user_input)         # 合同存续=任务延续，否则记录新任务
         enhanced = preprocess_attachments(user_input)
@@ -4377,6 +4414,8 @@ def _normalize_fenced_to_tags(text):
     BT = chr(96) * 3
     OP = LB + 'script:' + RB
     CL = LB + '/script' + RB
+    SAFE_LANGS = {'', 'python', 'py', 'lua', 'bash', 'sh', 'shell',
+                  'js', 'javascript', 'kotlin', 'kt', 'json', 'yaml', 'yml'}
     out = []
     i = 0
     n = len(text)
@@ -4391,6 +4430,7 @@ def _normalize_fenced_to_tags(text):
         if k >= n:
             out.append(text[i:])
             break
+        lang = text[j + 3:k].strip().lower()
         k += 1
         e = text.find(BT, k)
         if e < 0:
@@ -4402,8 +4442,13 @@ def _normalize_fenced_to_tags(text):
             out.append(text[i:j])
             out.append(block)
         else:
-            out.append(text[i:j])
-            out.append(OP + chr(10) + code.rstrip() + chr(10) + CL)
+            # v6.5: 只有无语言标识或安全语言才转脚本标签，其余原样保留
+            if lang in SAFE_LANGS:
+                out.append(text[i:j])
+                out.append(OP + chr(10) + code.rstrip() + chr(10) + CL)
+            else:
+                out.append(text[i:j])
+                out.append(block)
         i = e + 3
     return ''.join(out)
 # ============================================================
@@ -4413,6 +4458,10 @@ def _normalize_fenced_to_tags(text):
 # 3. /websearch on|off|1|0|开启|关闭 命令切换联网搜索
 # 4. main 启动时恢复开关
 # ============================================================
+
+# 进化反馈文案（定义在模块级，避免 NameError）
+_MSG21_TEXT = ("【系统自动回传】进化块已处理，本轮回复中的脚本块未执行。"
+ "如需执行，请单独输出脚本块（不要与 [evolve:] 同轮）。")
 
 import json as _pj
 import os as _po
@@ -4568,4 +4617,4 @@ except NameError:
 # CLI entry (placed at EOF so every name used by main() exists)
 # ============================================================
 if __name__ == "__main__":
- main()
+    main()

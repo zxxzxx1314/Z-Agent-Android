@@ -104,7 +104,13 @@ setTextColor(ContextCompat.getColor(context, R.color.danger))
 val scroll = ScrollView(context)
 scroll.addView(root)
 sheet.setContentView(scroll)
+try {
 sheet.show()
+} catch (t: Throwable) {
+// activity 已销毁 / BadTokenException：仍要放行主线程等待
+latch.countDown()
+return@post
+}
 sheet.setOnDismissListener {
 latch.countDown()
 }

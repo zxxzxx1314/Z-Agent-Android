@@ -344,9 +344,17 @@ if (child.startsWith("test_") && child.endsWith(".py")) continue
 
     /** 轮询流式缓冲（JSON: {ok,chunks:[{t,v}],done}）*/
     fun pollStream(context: Context): String {
-        ensureBootstrapped(context)
-        return Python.getInstance().getModule("zagent_app")
-            .callAttr("poll_stream")?.toString() ?: ""
+        return try {
+            ensureBootstrapped(context)
+            Python.getInstance().getModule("zagent_app")
+                .callAttr("poll_stream")?.toString() ?: ""
+        } catch (t: Throwable) {
+            val o = org.json.JSONObject()
+            o.put("ok", false)
+            o.put("done", true)
+            o.put("error", "bootstrap_failed: " + (t.message ?: ""))
+            o.toString()
+        }
     }
 
     /** 请求停止当前流式输出 */

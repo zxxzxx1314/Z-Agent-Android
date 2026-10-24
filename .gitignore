@@ -54,3 +54,8 @@ tk.txt
 *.keystore
 *.jks
 keystore.properties
+# ---- Rain 备份 ----
+*.rain_bak
+*.rain_bak*
+*.bak*
+.indent_test.txt

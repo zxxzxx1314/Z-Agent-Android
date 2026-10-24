@@ -258,7 +258,7 @@ def _deploy_factory_genome(home):
     global _deploy_note
     me = os.path.dirname(os.path.abspath(__file__))
     genome = os.path.join(home, "genome")
-    marker = os.path.join(genome, ".factory_sha")
+    marker = os.path.join(home, ".factory_sha")
 
     sources, errors = None, []
     # ---- 机制0：Kotlin 预复制目录（纯磁盘读，与导入系统无关）----
@@ -293,7 +293,7 @@ def _deploy_factory_genome(home):
         h.update(sources[rel])
     sha = h.hexdigest()
     # v6.4: APK mode redeploys genome every boot.
-    # The marker is in the same writable dir as genome; AI can read factory,
+    # v6.5: marker moved out of genome dir to home/.factory_sha; AI can read factory,
     # compute sha, and forge it. Under APK evolve is fail-closed anyway.
     _apk_mode = (os.environ.get("ZAGENT_NO_SUBPROCESS") == "1")
     fresh = (not _apk_mode

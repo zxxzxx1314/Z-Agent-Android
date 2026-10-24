@@ -30,6 +30,10 @@ try:
 except ImportError:
     import gate as _gate
     import proc as _proc
+    try:
+        from util import safe_child_env as _safe_env
+    except Exception:
+        _safe_env = None
     from action_manifest import (ManifestError, coerce_args, from_file,
         scan_dir)
 
