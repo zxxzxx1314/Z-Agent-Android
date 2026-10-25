@@ -359,9 +359,16 @@ if (child.startsWith("test_") && child.endsWith(".py")) continue
 
     /** 请求停止当前流式输出 */
     fun stopStream(context: Context): String {
-        ensureBootstrapped(context)
-        return Python.getInstance().getModule("zagent_app")
-            .callAttr("stop_stream")?.toString() ?: ""
+        return try {
+            ensureBootstrapped(context)
+            Python.getInstance().getModule("zagent_app")
+                .callAttr("stop_stream")?.toString() ?: ""
+        } catch (t: Throwable) {
+            val o = org.json.JSONObject()
+            o.put("ok", false)
+            o.put("error", "bootstrap_failed: " + (t.message ?: ""))
+            o.toString()
+        }
     }
     /** 分析模块 - Kotlin 直接调用，绕过命令字符串 */
     fun analyzeAction(context: Context, action: String, arg: String): String {
