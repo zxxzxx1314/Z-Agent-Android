@@ -1718,6 +1718,7 @@ var done = false
 try {
 if (finalJson.isNotBlank()) {
 val o = JSONObject(finalJson)
+done = o.optBoolean("done", false)
 if (o.optBoolean("ok")) {
 val arr = o.optJSONArray("chunks")
 if (arr != null) {
@@ -1733,7 +1734,6 @@ when (c.optString("t")) {
 }
 }
 }
-done = o.optBoolean("done", false)
 }
 }
 } catch (e: Exception) { }
