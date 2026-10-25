@@ -3743,7 +3743,7 @@ def handle_command(u):
         arg = parts[1].strip() if len(parts) > 1 else ""
         if arg in ("放弃", "abandon"):
             if ACTIVE_CONTRACT:
-            # v6.5: 终局 failed_final 也能被用户放弃，避免死局
+                # v6.5: 终局 failed_final 也能被用户放弃，避免死局
                 ACTIVE_CONTRACT["status"] = "abandoned"
                 save_contract(ACTIVE_CONTRACT)
                 append_journal("合同放弃", ACTIVE_CONTRACT["task"])
